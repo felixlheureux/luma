@@ -16,7 +16,7 @@ import SwiftUI
         self.model = model
         super.init()
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: MenuCompanion().environment(model))
+        popover.contentViewController = NSHostingController(rootView: MenuCompanion(dismiss: { [weak self] in self?.popover.close() }).environment(model))
         refresh()
         preferenceObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -73,4 +73,7 @@ import SwiftUI
          "hasImage": statusItem?.button?.image != nil,
          "frame": statusItem?.button?.window.map { NSStringFromRect($0.frame) } ?? "unavailable"]
     }
+
+    func showForPreview() { if !popover.isShown { togglePopover() } }
+    var previewWindow: NSWindow? { popover.contentViewController?.view.window }
 }

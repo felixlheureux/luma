@@ -91,7 +91,7 @@ private struct LiveOverviewMetrics: View {
     @Environment(AppModel.self) private var model
     var body: some View {
         HStack(spacing: 14) {
-                metric("MEMORY PRESSURE", value: model.system.pressure, detail: "\(formatMemory(model.system.usedMemory)) of \(formatMemory(model.system.physicalMemory)) used", symbol: "memorychip", tint: Palette.mint, history: model.memoryHistory)
+                metric("MEMORY USED", value: formatMemory(model.system.usedMemory), detail: "of \(formatMemory(model.system.physicalMemory)) · \(model.system.pressure.lowercased()) pressure", symbol: "memorychip", tint: Palette.accent, history: model.memoryHistory)
                 metric("CPU USAGE", value: model.cpuHistory.isEmpty ? "Sampling…" : "\(Int(model.system.cpu))%", detail: "\(ProcessInfo.processInfo.activeProcessorCount) cores · \(model.system.thermal.lowercased()) thermals", symbol: "cpu", tint: Palette.blue, history: model.cpuHistory)
                 metric("AVAILABLE SPACE", value: formatBytes(model.system.availableDisk), detail: "Available for important usage", symbol: "internaldrive", tint: Palette.accent, history: nil)
             }

@@ -19,7 +19,7 @@ Every proposed cleanup has a path, an explanation, an ownership rule, and a cons
 - **Read meaningful system metrics.** See CPU, memory pressure, app/wired/compressed memory, reusable file cache, swap, thermals, battery charge, and resource consumers grouped by app.
 - **Keep useful information nearby.** Open the compact menu-bar companion for live metrics and shortcuts. Expand an app’s resource row to inspect its helper processes.
 
-The interface follows **System appearance by default**, with optional Light and Dark overrides. Purple controls retain their deeper fill and white labels. Menu-bar visibility is enabled by default and can be changed in Settings.
+The interface follows **System appearance by default**, with optional Light and Dark overrides. Purple controls retain their deeper fill and white labels. Menu-bar visibility is enabled by default and can be changed in Settings. Closing the main window keeps the menu monitor running; choose Quit Luma to stop it. RAM usage and macOS memory pressure are shown separately: high usage alone does not mean high pressure.
 
 ## What is still in progress
 
@@ -72,12 +72,13 @@ This is an early development build. Filesystem race hardening, a crash-recovery 
 ## Development
 
 ```sh
-swift build
+bash Scripts/build-app.sh debug
 bash Scripts/test.sh
+bash Scripts/check-window-lifecycle.sh
 bash Scripts/preview.sh
 ```
 
-The tests cover protected paths, symlink escapes, stale scans, ownership, reinstalled apps, hard links, hashing, memory accounting, and process grouping. Fixtures are disposable and project-local.
+The tests cover protected paths, symlink escapes, stale scans, ownership, reinstalled apps, hard links, hashing, memory accounting, and process grouping. Fixtures are disposable and project-local. After building the app, the lifecycle smoke check requires a logged-in desktop session and verifies that closing the window preserves monitoring, reopening works, and explicit Quit exits.
 
 The preview script captures light and dark app windows without cleaning files. Its fallback cannot reproduce every native composited glass layer when window capture is unavailable. Generated screenshots and local diagnostics are excluded from the repository.
 

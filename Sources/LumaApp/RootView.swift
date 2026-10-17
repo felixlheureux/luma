@@ -150,6 +150,7 @@ struct SidebarView: View {
             SettingsLink {
                 Label("Settings", systemImage: "gearshape").font(.system(size: 12)).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 11)
+                    .contentShape(Rectangle())
             }.buttonStyle(.plain).padding(.horizontal, 8)
             HStack(spacing: 5) { Image(systemName: "circle.dotted"); Text("OPEN SOURCE · LOCAL FIRST").tracking(0.7) }
                 .font(.system(size: 8, weight: .medium)).foregroundStyle(.tertiary).padding(.horizontal, 23).padding(.vertical, 21)

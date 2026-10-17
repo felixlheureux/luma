@@ -8,7 +8,7 @@ struct SystemView: View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 16) {
                 graphCard(title: "CPU", value: "\(Int(model.system.cpu))%", detail: "\(ProcessInfo.processInfo.activeProcessorCount) active cores", values: model.cpuHistory, tint: Palette.blue)
-                graphCard(title: "Memory pressure", value: model.system.pressure, detail: "\(formatMemory(model.system.usedMemory)) / \(formatMemory(model.system.physicalMemory))", values: model.memoryHistory, tint: Palette.mint)
+                graphCard(title: "Memory used", value: "\(Int(model.system.memoryUsagePercent))%", detail: "\(formatMemory(model.system.usedMemory)) / \(formatMemory(model.system.physicalMemory)) · \(model.system.pressure.lowercased()) pressure", values: model.memoryHistory, tint: Palette.accent)
             }
             Surface {
                 HStack(spacing: 30) {
@@ -29,6 +29,10 @@ struct SystemView: View {
                     }
                     Text("Reusable file cache is shown separately from used memory. macOS can reclaim it when applications need RAM.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
+                    Label("\(model.system.pressure) memory pressure", systemImage: "waveform.path.ecg")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(model.system.pressureTint)
+                    Text("Pressure reflects how easily macOS can supply RAM. High usage alone does not mean high pressure.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
             if let battery = model.system.battery {

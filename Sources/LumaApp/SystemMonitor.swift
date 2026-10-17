@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import IOKit.ps
 import LumaCore
+import SwiftUI
 
 struct SystemSample: Sendable {
     var totalDisk: Int64 = 0
@@ -19,8 +20,18 @@ struct SystemSample: Sendable {
     var cpuTicks: [UInt64] = []
     var battery: Int?
     var charging = false
+    var onExternalPower = false
     var processes: [ProcessSample] = []
     var processGroups: [ProcessGroup] = []
+    var memoryUsagePercent: Double { Double(usedMemory) / Double(max(1, physicalMemory)) * 100 }
+    var pressureTint: SwiftUI.Color {
+        switch pressure {
+        case "Low": Palette.mint
+        case "Elevated": Palette.peach
+        case "High": .red
+        default: .secondary
+        }
+    }
     var thermal: String {
         switch ProcessInfo.processInfo.thermalState {
         case .nominal: "Normal"
@@ -54,7 +65,13 @@ struct SystemSample: Sendable {
         var pressure: Int32 = 0
         var pressureSize = MemoryLayout<Int32>.size
         if sysctlbyname("kern.memorystatus_vm_pressure_level", &pressure, &pressureSize, nil, 0) == 0 {
-            result.pressure = pressure == 1 ? "Low" : pressure == 2 ? "Elevated" : pressure == 4 ? "High" : "Unavailable"
+            // This sysctl returns dispatch flags, not XNU's internal pressure enum.
+            switch pressure {
+            case Int32(DispatchSource.MemoryPressureEvent.normal.rawValue): result.pressure = "Low"
+            case Int32(DispatchSource.MemoryPressureEvent.warning.rawValue): result.pressure = "Elevated"
+            case Int32(DispatchSource.MemoryPressureEvent.critical.rawValue): result.pressure = "High"
+            default: break
+            }
         }
         var swap = xsw_usage()
         var swapSize = MemoryLayout<xsw_usage>.size
@@ -78,6 +95,7 @@ struct SystemSample: Sendable {
                    let current = details[kIOPSCurrentCapacityKey] as? Int, let max = details[kIOPSMaxCapacityKey] as? Int, max > 0 {
                     result.battery = current * 100 / max
                     result.charging = details[kIOPSIsChargingKey] as? Bool ?? false
+                    result.onExternalPower = details[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue
                 }
             }
         }

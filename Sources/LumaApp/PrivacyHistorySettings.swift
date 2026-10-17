@@ -51,8 +51,9 @@ struct HistoryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if model.history.isEmpty {
-                ContentUnavailableView("A clean slate", systemImage: "clock.arrow.circlepath", description: Text("Files moved by Luma will appear here, with their original and Trash locations. No changes have been recorded."))
-                    .padding(.vertical, 90)
+                EmptyState(symbol: "clock.arrow.circlepath", title: "A clean slate", message: "Files moved by Luma will appear here, with their original and Trash locations. No changes have been recorded.", actionTitle: "Open Trash in Finder", actionSymbol: "trash") {
+                    openTrash()
+                }.containerRelativeFrame(.vertical) { height, _ in max(300, height - 145) }
             } else {
                 Surface(padding: 18) {
                     VStack(spacing: 0) {
@@ -74,9 +75,15 @@ struct HistoryView: View {
                     }
                 }
                 Label("Restore works while the item remains in Trash and its original path is available. You can also use Finder’s Trash.", systemImage: "info.circle").font(.system(size: 11)).foregroundStyle(.secondary)
+                openTrashButton
             }
-            Button("Open Trash in Finder") { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")) }.buttonStyle(.glass)
-        }
+        }.frame(maxWidth: .infinity)
+    }
+    private var openTrashButton: some View {
+        Button("Open Trash in Finder", action: openTrash).buttonStyle(.glass)
+    }
+    private func openTrash() {
+        NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash"))
     }
 }
 

@@ -8,3 +8,6 @@ mkdir -p Documentation/Screenshots
 dist/Luma.app/Contents/MacOS/Luma --snapshot "$PWD/Documentation/Screenshots/overview.png" -luma.appearance light
 dist/Luma.app/Contents/MacOS/Luma --snapshot "$PWD/Documentation/Screenshots/overview-dark.png" -luma.appearance dark
 dist/Luma.app/Contents/MacOS/Luma --snapshot "$PWD/Documentation/Screenshots/system-dark.png" --page System -luma.appearance dark
+dist/Luma.app/Contents/MacOS/Luma --snapshot "$PWD/Documentation/Screenshots/activity-dark.png" --page Activity -luma.appearance dark
+dist/Luma.app/Contents/MacOS/Luma --snapshot-menu "$PWD/Documentation/Screenshots/menu-light.png" -luma.appearance light
+dist/Luma.app/Contents/MacOS/Luma --snapshot-menu "$PWD/Documentation/Screenshots/menu-dark.png" -luma.appearance dark

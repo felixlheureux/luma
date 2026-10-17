@@ -128,6 +128,7 @@ struct EmptyState: View {
     let title: String
     let message: String
     let actionTitle: String
+    var actionSymbol = "magnifyingglass"
     var action: () -> Void
     var body: some View {
         VStack(spacing: 17) {
@@ -135,7 +136,7 @@ struct EmptyState: View {
                 .frame(width: 90, height: 90).glassEffect(.regular.tint(Palette.accent.opacity(0.06)), in: .rect(cornerRadius: 28))
             Text(title).font(.system(size: 24, weight: .semibold))
             Text(message).font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).lineSpacing(5).frame(maxWidth: 380)
-            PrimaryButton(title: actionTitle, symbol: "magnifyingglass", action: action).padding(.top, 5)
+            PrimaryButton(title: actionTitle, symbol: actionSymbol, action: action).padding(.top, 5)
         }.frame(maxWidth: .infinity).padding(.vertical, 70)
     }
 }
