@@ -18,9 +18,9 @@ Implemented: expanded cache rules, live scan progress, category totals, per-loca
 
 Remaining release hardening:
 
-- Expand audited rules for browser caches, known generated logs, Node package caches, simulators, and other developer ecosystems.
+- Expand audited rules for additional cache versions, known generated logs, and developer ecosystems.
 - Add rule serialization and validation behind a project-owned loader; evaluate Yams as specified.
-- Add finer file-level selection, background activity checks for package managers, scan progress counts, and streaming application inventory.
+- Add finer file-level selection, streaming application inventory, and broader activity guards for additional ecosystems.
 - Strengthen filesystem handling with file-descriptor-based identity and race validation.
 - Add broader security tests, accessibility review with VoiceOver, localization, signed builds, and notarization.
 
