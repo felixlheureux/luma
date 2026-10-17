@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 25
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test release validation
+        run: python3 -m unittest discover -s Scripts -p test_release.py
+      - name: Validate release version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          version="$(python3 Scripts/release_version.py --tag "$RELEASE_TAG")"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Test filesystem safety and monitoring
+        run: bash Scripts/test.sh
+      - name: Build Apple Silicon app
+        run: bash Scripts/build-app.sh release
+      - name: Verify app
+        run: |
+          codesign --verify --deep --strict dist/Luma.app
+          test "$(lipo -archs dist/Luma.app/Contents/MacOS/Luma)" = arm64
+      - name: Package and verify installer
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          bash Scripts/package-dmg.sh
+          hdiutil verify "dist/Luma-$RELEASE_VERSION-arm64.dmg"
+          cd dist
+          shasum -a 256 "Luma-$RELEASE_VERSION-arm64.dmg" > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+      - name: Upload release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: luma-release-arm64
+          path: |
+            dist/*.dmg
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: luma-release-arm64
+          path: dist
+      - name: Publish development prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cd dist
+          sha256sum -c SHA256SUMS
+          cat > release-notes.md <<'NOTES'
+          Development build for Apple Silicon Macs running macOS 26 or later.
+
+          This build is ad-hoc signed and has not been notarized by Apple. macOS may prevent it from opening. Developer ID signing and notarization are still planned.
+
+          Download the DMG and compare its SHA-256 checksum with SHA256SUMS. Cleanup always requires review and moves selected files to the macOS Trash. See the repository README for implemented features and current limits.
+          NOTES
+          gh release create "$RELEASE_TAG" "Luma-$RELEASE_VERSION-arm64.dmg" SHA256SUMS \
+            --verify-tag --title "Luma $RELEASE_VERSION" \
+            --generate-notes --notes-file release-notes.md --prerelease --latest=false

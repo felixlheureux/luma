@@ -48,13 +48,28 @@ open dist/Luma.app
 
 Open `Package.swift` in Xcode for development. There are no third-party runtime dependencies.
 
-Local builds are ad-hoc signed. Signed, notarized public releases and Homebrew distribution are planned; there is no official Homebrew cask yet. Builds target the local architecture, and the DMG filename includes its version and architecture.
+Local builds are ad-hoc signed. Signed, notarized releases and Homebrew distribution are planned; there is no official Homebrew cask yet. Builds target the local architecture, and the DMG filename includes its version and architecture.
 
 Create a local installer after building:
 
 ```sh
 bash Scripts/package-dmg.sh
 ```
+
+## Automated releases
+
+Pushing a version tag such as `v0.1.3` runs the Release workflow. It validates the tag against `CFBundleShortVersionString` in `Resources/Info.plist` and the installer README, runs the tests, builds an Apple Silicon app, verifies its signature, and packages a DMG. After those checks pass, it creates a GitHub prerelease with the DMG, `SHA256SUMS`, and generated change notes. Regular branch commits run CI without publishing releases.
+
+For a new version, update the version and build number in `Resources/Info.plist`, update the version heading in `Resources/Installer-ReadMe.txt`, and commit and push those changes before tagging that commit:
+
+```sh
+git tag -a v0.1.3 -m "Luma 0.1.3"
+git push origin v0.1.3
+```
+
+These commands are an example for the next version; the tag must match the committed app version. Published releases are not overwritten. Current automated releases are marked as development prereleases because the app is ad-hoc signed and unnotarized. They require macOS 26+ and Apple Silicon.
+
+To test the complete build and packaging process without publishing, select **Actions → Release → Run workflow** on GitHub, or run `gh workflow run release.yml --ref main`. The DMG and checksum are available in that run’s artifacts for 14 days. This manual build never creates a release. GitHub’s built-in workflow token handles publication; no personal access token is required.
 
 ## Privacy and safety
 

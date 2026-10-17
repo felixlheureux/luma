@@ -2,6 +2,8 @@ name: Build and test
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
 
 permissions:
@@ -20,6 +22,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Show toolchain
         run: swift --version
+      - name: Test release validation
+        run: python3 -m unittest discover -s Scripts -p test_release.py
       - name: Test filesystem safety and monitoring
         run: bash Scripts/test.sh
       - name: Build app

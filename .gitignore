@@ -6,3 +6,4 @@ dist/
 *.xcodeproj/
 Resources/Luma.iconset/
 Documentation/Screenshots/
+__pycache__/
