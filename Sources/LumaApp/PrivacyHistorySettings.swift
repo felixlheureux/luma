@@ -53,7 +53,7 @@ struct HistoryView: View {
             if model.history.isEmpty {
                 EmptyState(symbol: "clock.arrow.circlepath", title: "A clean slate", message: "Files moved by Luma will appear here, with their original and Trash locations. No changes have been recorded.", actionTitle: "Open Trash in Finder", actionSymbol: "trash") {
                     openTrash()
-                }.containerRelativeFrame(.vertical) { height, _ in max(300, height - 145) }
+                }
             } else {
                 Surface(padding: 18) {
                     VStack(spacing: 0) {
