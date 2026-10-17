@@ -103,7 +103,7 @@ struct LumaMark: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10).fill(LinearGradient(colors: [Color(red: 0.62, green: 0.59, blue: 0.97), Palette.accent], startPoint: .topLeading, endPoint: .bottomTrailing))
-            Image(systemName: "circle.lefthalf.filled").font(.system(size: 20, weight: .light)).rotationEffect(.degrees(-35)).foregroundStyle(.white.opacity(0.95))
+            Image(systemName: LumaBrand.symbol).font(.system(size: 20, weight: .light)).rotationEffect(.degrees(LumaBrand.rotation)).foregroundStyle(.white.opacity(0.95))
         }
     }
 }

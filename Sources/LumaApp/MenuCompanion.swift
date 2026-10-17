@@ -15,8 +15,10 @@ struct MenuCompanion: View {
                 Button {
                     dismiss(); model.showSettingsWindow?()
                 } label: {
-                    Image(systemName: "gearshape").frame(width: 28, height: 28).contentShape(Rectangle())
-                }.buttonStyle(.glass).help("Luma Settings").accessibilityLabel("Luma Settings")
+                    Image(systemName: "gearshape").font(.system(size: 12, weight: .medium))
+                        .frame(width: 24, height: 24)
+                        .glassEffect(.regular, in: .circle).contentShape(Rectangle())
+                }.buttonStyle(.plain).help("Luma Settings").accessibilityLabel("Luma Settings")
             }
 
             HStack(spacing: 12) {

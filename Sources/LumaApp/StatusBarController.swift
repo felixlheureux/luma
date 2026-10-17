@@ -38,9 +38,7 @@ import SwiftUI
             // persisted visibility could disagree with our own enabled setting.
             item.isVisible = true
             if let button = item.button {
-                let image = NSImage(systemSymbolName: "circle.lefthalf.filled", accessibilityDescription: "Luma")
-                image?.isTemplate = true
-                button.image = image
+                button.image = LumaBrand.menuBarImage()
                 button.imagePosition = .imageOnly
                 button.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
                 button.target = self; button.action = #selector(togglePopover)
