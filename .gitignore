@@ -1,0 +1,8 @@
+.build/
+.build-tests/
+.swiftpm/
+dist/
+.DS_Store
+*.xcodeproj/
+Resources/Luma.iconset/
+Documentation/Screenshots/

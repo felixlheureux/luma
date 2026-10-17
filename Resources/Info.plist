@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleName</key><string>Luma</string>
+    <key>CFBundleDisplayName</key><string>Luma</string>
+    <key>CFBundleIdentifier</key><string>app.luma.mac</string>
+    <key>CFBundleExecutable</key><string>Luma</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>0.1.1</string>
+    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleIconFile</key><string>Luma</string>
+    <key>LSMinimumSystemVersion</key><string>26.0</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Luma contributors. GPL-3.0-or-later.</string>
+    <key>NSDownloadsFolderUsageDescription</key><string>Analyze only folders you choose to find large files and verified duplicates. Nothing is removed without review.</string>
+    <key>NSDocumentsFolderUsageDescription</key><string>Analyze a folder you explicitly choose. Your documents are never classified as junk.</string>
+    <key>NSDesktopFolderUsageDescription</key><string>Analyze a folder you explicitly choose. Nothing is selected automatically.</string>
+    <key>NSAppDataUsageDescription</key><string>Review known caches and potential app leftovers in your Library. Analysis stays on this Mac, and moving files to Trash always requires your review.</string>
+</dict></plist>

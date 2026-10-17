@@ -1,0 +1,94 @@
+<p align="center"><img src="Resources/Luma.svg" width="88" height="88" alt="Luma icon"></p>
+<h1 align="center">Luma</h1>
+<p align="center">A clearer view of your Mac.</p>
+<p align="center">Native SwiftUI · Liquid Glass · Local-first · GPL-3.0-or-later</p>
+
+Luma is an open-source macOS maintenance app for understanding storage, reviewing app leftovers, finding exact duplicates, and monitoring application resources.
+
+Every proposed cleanup has a path, an explanation, an ownership rule, and a consequence. You choose what changes. Reviewed selections move to the macOS Trash, with a local activity record.
+
+**Status:** working development build for macOS 26 and later. The workflows below are implemented; the complete product specification remains in progress.
+
+## What you can do
+
+- **Review generated data.** Inspect supported browser caches, Xcode DerivedData, Swift package caches, Homebrew downloads, and Spotify cache before removing anything.
+- **Find app leftovers.** Review data whose exact bundle identifier has no installed owner. Luma checks application folders, embedded helpers, and macOS Launch Services. Exact identifiers and explicit rules cover supported named support folders. Ownership is checked again before Trash.
+- **Understand app footprints.** Inventory apps and inspect exact matches for caches, preferences, saved state, and application support. Uninstall selections are explicit.
+- **Explore storage.** Choose a folder, see a proportional map, and filter files by size, age, or installer type. Personal files are never classified as junk.
+- **Verify duplicates.** Compare sizes, partial hashes, and full SHA-256 content. Hard-linked copies count once, and at least one copy must remain per group.
+- **Read meaningful system metrics.** See CPU, memory pressure, app/wired/compressed memory, reusable file cache, swap, thermals, battery charge, and resource consumers grouped by app.
+- **Keep useful information nearby.** Open the compact menu-bar companion for live metrics and shortcuts. Expand an app’s resource row to inspect its helper processes.
+
+The interface follows **System appearance by default**, with optional Light and Dark overrides. Purple controls retain their deeper fill and white labels. Menu-bar visibility is enabled by default and can be changed in Settings.
+
+## What is still in progress
+
+| Area | Current scope | Remaining work |
+| --- | --- | --- |
+| Clean | Six explicit generated-data rules | More browsers, logs, package managers, simulators, and device backups |
+| Applications | Inventory, exact footprints, reviewed uninstall, potential leftovers | App reset, broader ownership evidence, and update discovery |
+| Storage | Chosen-folder map and file filters | Nested browsing, volumes, developer projects, and incremental indexing |
+| Duplicates | Exact content verification | Similar-photo analysis and comparison |
+| Optimizer | Grouped resource consumers and normal quit requests | Measured recommendations and audited maintenance |
+| Privacy | macOS permission shortcuts; separation from cache cleanup | Browser privacy workflows and a permissions overview |
+| System | CPU, memory, swap, thermals, uptime, battery charge | Network, battery health, disk diagnostics, and connected devices |
+
+See the [roadmap](Documentation/Roadmap.md), [complete specification](Documentation/Product-Spec.md), and [safety model](Documentation/Safety.md) for scope and current limits.
+
+## Build and run
+
+Requires macOS 26+, Swift 6.2+, and a macOS 26+ SDK from Xcode or compatible Command Line Tools.
+
+```sh
+git clone https://github.com/felixlheureux/luma.git
+cd luma
+bash Scripts/build-app.sh
+open dist/Luma.app
+```
+
+Open `Package.swift` in Xcode for development. There are no third-party runtime dependencies.
+
+Local builds are ad-hoc signed. Signed, notarized public releases and Homebrew distribution are planned; there is no official Homebrew cask yet. Builds target the local architecture, and the DMG filename includes its version and architecture.
+
+Create a local installer after building:
+
+```sh
+bash Scripts/package-dmg.sh
+```
+
+## Privacy and safety
+
+Luma analyzes files locally. It has no telemetry, account system, root helper, or privileged background daemon. Scans run on request; lightweight monitoring runs while the app is open.
+
+- No cleanup item is selected automatically.
+- Personal files, generated data, and review candidates remain distinct.
+- Leftovers are **potentially unclaimed data**, not proof that a file is unnecessary. They can contain documents or preferences worth keeping for a reinstall.
+- Apple data, shared group containers, fuzzy folder-name matches, unsafe links, and protected locations are excluded from leftover cleanup.
+- The Safety Engine rechecks paths, identities, owners, volumes, ignore rules, and stale results before Trash.
+- Multi-item cleanup stops on failure and records completed moves. Restore works while the item remains in Trash and its original location is available.
+
+This is an early development build. Filesystem race hardening, a crash-recovery journal, and stronger restoration checks remain on the roadmap. Read the [safety model](Documentation/Safety.md) before cleanup of important data.
+
+## Development
+
+```sh
+swift build
+bash Scripts/test.sh
+bash Scripts/preview.sh
+```
+
+The tests cover protected paths, symlink escapes, stale scans, ownership, reinstalled apps, hard links, hashing, memory accounting, and process grouping. Fixtures are disposable and project-local.
+
+The preview script captures light and dark app windows without cleaning files. Its fallback cannot reproduce every native composited glass layer when window capture is unavailable. Generated screenshots and local diagnostics are excluded from the repository.
+
+Shortcuts: `Command-K` searches, `Command-R` rescans, `Command-1` through `Command-9` navigate, and `Shift-Command-D` changes the manual appearance override. Choose System in the toolbar to follow macOS again.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Luma owns its scanner logic, rule semantics, ownership checks, duplicate engine, and Safety Engine. Contributions should keep destructive decisions inspectable and test unsafe cases.
+
+The commercial app supplied during development was a product reference only. No source code, binary resources, or artwork from CleanMyMac or Pearcleaner is included.
+
+## License
+
+[GNU GPL version 3 or later](LICENSE).

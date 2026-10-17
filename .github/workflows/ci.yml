@@ -1,0 +1,28 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Show toolchain
+        run: swift --version
+      - name: Test filesystem safety and monitoring
+        run: bash Scripts/test.sh
+      - name: Build app
+        run: bash Scripts/build-app.sh release
+      - name: Verify local signature
+        run: codesign --verify --deep --strict dist/Luma.app
