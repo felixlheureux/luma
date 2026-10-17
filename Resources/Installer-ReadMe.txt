@@ -1,4 +1,4 @@
-Luma 0.1.2 — Development Build
+Luma 0.2.0 — Development Build
 
 macOS 26 or later · Apple Silicon
 
@@ -13,8 +13,9 @@ Scans run locally and cleanup always requires a review. Generated caches,
 application data, and personal files remain separate. Cleanup moves selected
 items to the macOS Trash and records their paths in Activity.
 
-This is an early, ad-hoc signed local build. It has not been notarized for
-public distribution. The full product specification, source, safety limits,
-tests, and remaining roadmap are in the supplied Luma project directory.
+This development build includes expanded browser and package-cache coverage,
+scan progress and location coverage, and recovery for interrupted cleanup and
+restore operations. The source, tests, product specification, and current
+limits are available in the Luma GitHub repository.
 
 License: GPL-3.0-or-later. The complete license is included as License.txt.

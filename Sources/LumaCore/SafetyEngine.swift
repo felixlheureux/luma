@@ -8,7 +8,7 @@ public struct SafetyEngine: Sendable {
         self.home = home; self.ignoredPaths = ignoredPaths
     }
 
-    public func validate(_ item: CleanupItem, authorizedRoots: [URL] = [], runningBundleIDs: Set<String> = []) throws {
+    public func validate(_ item: CleanupItem, authorizedRoots: [URL] = [], runningBundleIDs: Set<String> = [], activity: CleanupActivity? = nil) throws {
         let url = item.url.standardizedFileURL
         try Filesystem.validatePath(url)
         guard Date().timeIntervalSince(item.scannedAt) < 1800 else { throw LumaError.rejected("Scan is over 30 minutes old. Scan again before cleaning.") }
@@ -46,7 +46,19 @@ public struct SafetyEngine: Sendable {
                 guard metadata?["MCMMetadataIdentifier"] as? String == owner else { throw LumaError.rejected("Container ownership evidence has changed.") }
             }
         } else if let rule = Rules.generated.first(where: { $0.id == item.ruleID }) {
-            guard home.appendingPathComponent(rule.relativePath).standardizedFileURL == url else { throw LumaError.rejected("Path no longer matches the cleanup rule.") }
+            guard rule.matches(url, home: home), item.ownerBundleID == rule.owner, item.safety == rule.safety else { throw LumaError.rejected("Path or ownership no longer matches the cleanup rule.") }
+            if let owner = rule.owner, runningBundleIDs.contains(owner) { throw LumaError.rejected("Quit the owning application before cleaning its files.") }
+            var requiredTools = rule.tools
+            if rule.id == "developer.homebrew.cache" { requiredTools.insert(.packageManager) }
+            if rule.id.hasPrefix("developer.xcode.") || rule.id == "developer.swiftpm.cache" { requiredTools.insert(.xcode) }
+            if !requiredTools.isEmpty {
+                let snapshot = activity ?? CleanupActivity.collect(checkSimulators: requiredTools.contains(.simulator))
+                guard let tools = snapshot.tools else { throw LumaError.rejected("Running tools could not be checked. No cleanup was performed.") }
+                guard tools.isDisjoint(with: requiredTools) else { throw LumaError.rejected("Stop active package managers, builds, or simulators before cleaning these files.") }
+                if requiredTools.contains(.simulator), snapshot.simulatorsBooted != false {
+                    throw LumaError.rejected("Luma could not confirm that every simulator is shut down. Shut down devices in Xcode before cleaning simulator data.")
+                }
+            }
         } else {
             guard ["manual.folder-review", "duplicates.sha256"].contains(item.ruleID), item.safety == .userData,
                   Filesystem.isWithin(url, root: home), !Filesystem.isWithin(url, root: home.appendingPathComponent("Library")),
@@ -63,12 +75,4 @@ public struct SafetyEngine: Sendable {
         guard current.device == homeDevice else { throw LumaError.rejected("This item is on a different volume.") }
     }
 
-    /// The only cleanup mutation API. A review confirmation is required by the UI.
-    public func trash(_ item: CleanupItem, authorizedRoots: [URL], runningBundleIDs: Set<String>) throws -> CleanupRecord {
-        try validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: runningBundleIDs)
-        var destination: NSURL?
-        try FileManager.default.trashItem(at: item.url, resultingItemURL: &destination)
-        guard let destination else { throw LumaError.rejected("macOS did not report the Trash location. Check Trash in Finder.") }
-        return CleanupRecord(original: item.url, trashed: destination as URL, bytes: item.bytes)
-    }
 }

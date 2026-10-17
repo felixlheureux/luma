@@ -48,8 +48,40 @@ struct PrivacyView: View {
 
 struct HistoryView: View {
     @Environment(AppModel.self) private var model
+    @ViewState private var acknowledging: RecoveryNotice?
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
+            if let error = model.journalError {
+                Surface {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Activity needs attention", systemImage: "exclamationmark.circle").font(.headline)
+                        Text(error).font(.system(size: 12)).foregroundStyle(.secondary)
+                        Text("Cleanup stays paused while Luma cannot verify its activity records. Existing files and records are left in place.").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Button("Check again") { model.checkRecovery() }.buttonStyle(.glass).disabled(model.busy)
+                    }
+                }
+            }
+            if !model.recoveryNotices.isEmpty {
+                Surface {
+                    VStack(alignment: .leading, spacing: 16) {
+                        SectionHeading(title: "Interrupted operations", detail: "Review before cleaning again")
+                        ForEach(model.recoveryNotices) { notice in
+                            VStack(alignment: .leading, spacing: 9) {
+                                Text(notice.original.lastPathComponent).font(.system(size: 13, weight: .semibold))
+                                Text(notice.original.path).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+                                Text(notice.detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                                HStack {
+                                    Button("Open original folder") { NSWorkspace.shared.open(notice.original.deletingLastPathComponent()) }
+                                    Button("Open Trash", action: openTrash)
+                                    Spacer()
+                                    Button("Mark reviewed") { acknowledging = notice }
+                                }.buttonStyle(.glass).controlSize(.small).disabled(model.busy)
+                            }
+                        }
+                        Button("Check recovery again") { model.checkRecovery() }.buttonStyle(.glass).disabled(model.busy)
+                    }
+                }
+            }
             if model.history.isEmpty {
                 EmptyState(symbol: "clock.arrow.circlepath", title: "A clean slate", message: "Files moved by Luma will appear here, with their original and Trash locations. No changes have been recorded.", actionTitle: "Open Trash in Finder", actionSymbol: "trash") {
                     openTrash()
@@ -67,17 +99,26 @@ struct HistoryView: View {
                                 }
                                 Spacer()
                                 if !record.restored {
-                                    Button("Restore") { model.restore(record) }.buttonStyle(.glass).controlSize(.small).disabled(model.busy)
+                                    if record.identity != nil {
+                                        Button("Restore") { model.restore(record) }.buttonStyle(.glass).controlSize(.small).disabled(model.busy || !model.recoveryNotices.isEmpty)
+                                    } else {
+                                        Button("Open Trash", action: openTrash).buttonStyle(.glass).controlSize(.small)
+                                            .help("This older entry has no saved file identity; inspect and restore it in Finder.")
+                                    }
                                 } else { Image(systemName: "checkmark.circle").foregroundStyle(Palette.mint) }
                             }.padding(.vertical, 13)
                             if record.id != model.history.last?.id { Divider() }
                         }
                     }
                 }
-                Label("Restore works while the item remains in Trash and its original path is available. You can also use Finder’s Trash.", systemImage: "info.circle").font(.system(size: 11)).foregroundStyle(.secondary)
+                Label("Restore verifies the item’s saved identity and preserves anything already at its original path. Older entries can be restored in Finder.", systemImage: "info.circle").font(.system(size: 11)).foregroundStyle(.secondary)
                 openTrashButton
             }
         }.frame(maxWidth: .infinity)
+        .alert("Mark this operation reviewed?", isPresented: Binding(get: { acknowledging != nil }, set: { if !$0 { acknowledging = nil } })) {
+            Button("Cancel", role: .cancel) { acknowledging = nil }
+            Button("Mark reviewed") { if let notice = acknowledging { model.acknowledgeRecovery(notice) }; acknowledging = nil }
+        } message: { Text("First inspect the original folder and Trash in Finder. This dismisses the recovery notice; it does not move or restore any files.") }
     }
     private var openTrashButton: some View {
         Button("Open Trash in Finder", action: openTrash).buttonStyle(.glass)

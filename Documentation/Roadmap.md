@@ -10,22 +10,24 @@ Leftover detection checks exact identifiers in caches, application support, pref
 
 Monitoring separates reusable file cache from used RAM and uses memory units. Resource consumers are grouped under their outer application bundle, with expandable helpers and physical-footprint measurement when available. Live updates are isolated from the sidebar's layout; resizing no longer recomputes large blurred background layers.
 
-Cleanup rules currently cover Xcode DerivedData, SwiftPM cache, Homebrew downloads, Chrome cache, Safari cache, and Spotify cache. This is a deliberately limited rule set. An absent result does not mean all reclaimable data has been found.
+Cleanup now includes 18 audited rules: existing developer and app caches, Firefox/Zen local profile caches, Brave/Edge profile cache leaves, npm download and npx caches and logs, Yarn Classic's global cache, supported pnpm registry metadata, and CoreSimulator caches and logs. Browser sessions, website storage, project dependencies, pnpm shared stores, device contents, and runtimes remain outside these rules. Scans report progress and distinguish readable, empty, absent, permission-blocked, and skipped locations. An absent result does not mean all reclaimable data has been found.
 
-## 0.2 — Cleanup coverage and release hardening
+## 0.2 — Expanded scanning and recovery
+
+Implemented: expanded cache rules, live scan progress, category totals, per-location coverage and permission guidance, active developer-tool checks, simulator shutdown checks, a durable pre-move journal, interrupted Trash/Restore reconciliation, identity-verified non-overwriting Restore, and manual recovery review. All native and exported logos use the same vector geometry.
+
+Remaining release hardening:
 
 - Expand audited rules for browser caches, known generated logs, Node package caches, simulators, and other developer ecosystems.
 - Add rule serialization and validation behind a project-owned loader; evaluate Yams as specified.
 - Add finer file-level selection, background activity checks for package managers, scan progress counts, and streaming application inventory.
-- Introduce a durable journal before filesystem mutation; reconcile interrupted moves on launch.
 - Strengthen filesystem handling with file-descriptor-based identity and race validation.
 - Add broader security tests, accessibility review with VoiceOver, localization, signed builds, and notarization.
-- Add restoration identity verification and explicit partial-operation reconciliation.
 
 ## 0.3 — Application lifecycle and storage depth
 
 - Broader confidence-based ownership evidence, shared-container explanations, app reset, and expanded leftover matching.
-- Nested storage navigation, multiple volumes, permission-aware scans, incremental indexing, and FSEvents.
+- Nested storage navigation, multiple volumes, deeper permission handling, incremental indexing, and FSEvents.
 - Developer projects, Downloads categories, iOS backups, and Trash usage.
 - SQLite through GRDB when persistent indexing is introduced.
 - Sparkle 2 for Luma updates, with signed feeds; separate third-party app update discovery.

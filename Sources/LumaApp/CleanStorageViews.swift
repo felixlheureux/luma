@@ -7,22 +7,35 @@ struct CleanView: View {
     private var visible: [CleanupItem] { model.cleanup.filter { (filter == nil || $0.category == filter) && !model.isIgnored($0) } }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
+            if model.journalError != nil || !model.recoveryNotices.isEmpty {
+                Surface(padding: 16) {
+                    HStack {
+                        Label("Review Activity before starting another cleanup.", systemImage: "info.circle").font(.system(size: 12))
+                        Spacer()
+                        Button("Open Activity") { model.destination = .history }.buttonStyle(.glass)
+                    }
+                }
+            }
+            if let progress = model.scanProgress { ScanProgressCard(progress: progress) }
             if !model.completedScans.contains(.clean) {
-                EmptyState(symbol: "sparkles", title: "Make a little room.", message: "Scan known generated data from Xcode, Swift packages, Homebrew, and supported browsers and apps. Personal files stay separate.", actionTitle: model.busy ? "Scanning…" : "Scan generated data") { model.runScan(.clean) }.disabled(model.busy)
+                if model.scanProgress == nil {
+                    EmptyState(symbol: "sparkles", title: "Make a little room.", message: "Check browser caches, package downloads, developer files, and simulator diagnostics. Every location and removal consequence is explained.", actionTitle: model.busy ? "Scanning…" : "Scan generated data") { model.runScan(.clean) }.disabled(model.busy)
+                }
             } else {
+                if let report = model.cleanupReport { ScanSummaryCard(report: report) }
                 Surface {
                     HStack {
                         VStack(alignment: .leading, spacing: 9) {
                             Eyebrow(text: "Potentially reclaimable")
                             Text(formatBytes(model.cleanupBytes)).font(.system(size: 40, weight: .semibold)).tracking(-1.4)
-                            Text("Generated files that apps can recreate. Review the trade-offs first.").font(.system(size: 12)).foregroundStyle(.secondary)
+                            Text("Caches, diagnostics, and generated files. Review the trade-offs first.").font(.system(size: 12)).foregroundStyle(.secondary)
                         }
                         Spacer(); SymbolTile(symbol: "sparkles", size: 65)
                     }
                 }
                 HStack(spacing: 8) {
                     filterButton("All", category: nil)
-                    ForEach([ItemCategory.caches, .developer]) { category in filterButton(category.rawValue, category: category) }
+                    ForEach([ItemCategory.caches, .developer, .logs]) { category in filterButton(category.rawValue, category: category) }
                     Spacer()
                     Text("Nothing selected by default").font(.system(size: 10)).foregroundStyle(.tertiary)
                 }

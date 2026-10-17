@@ -85,8 +85,6 @@ jobs:
           cat > release-notes.md <<'NOTES'
           Development build for Apple Silicon Macs running macOS 26 or later.
 
-          This build is ad-hoc signed and has not been notarized by Apple. macOS may prevent it from opening. Developer ID signing and notarization are still planned.
-
           Download the DMG and compare its SHA-256 checksum with SHA256SUMS. Cleanup always requires review and moves selected files to the macOS Trash. See the repository README for implemented features and current limits.
           NOTES
           gh release create "$RELEASE_TAG" "Luma-$RELEASE_VERSION-arm64.dmg" SHA256SUMS \

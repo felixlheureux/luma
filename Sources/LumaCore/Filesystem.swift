@@ -26,7 +26,7 @@ public enum Filesystem {
         try FileManager.default.attributesOfItem(atPath: url.path)
     }
 
-    public static func inspect(_ url: URL, limit: Int = 250_000) throws -> (Int64, FileIdentity) {
+    public static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil) throws -> (Int64, FileIdentity) {
         try Task.checkCancellation()
         try validatePath(url)
         let root = try attributes(url)
@@ -35,6 +35,7 @@ public enum Filesystem {
         var records: [String] = []
         var seen: Set<String> = []
         var count = 0
+        var lastUpdate = ContinuousClock.now
         let bundleLinksAllowed = url.pathExtension == "app" && Bundle(url: url) != nil
         func visit(_ child: URL) throws {
             try Task.checkCancellation()
@@ -45,7 +46,7 @@ public enum Filesystem {
                 guard bundleLinksAllowed, isWithin(child.resolvingSymlinksInPath(), root: url) else {
                     throw LumaError.rejected("Contains a symbolic link outside an application bundle; excluded from cleanup.")
                 }
-                records.append("link|\(child.path)|\(try FileManager.default.destinationOfSymbolicLink(atPath: child.path))")
+                records.append("link|\(child.path.replacingOccurrences(of: url.path, with: "", options: .anchored))|\(try FileManager.default.destinationOfSymbolicLink(atPath: child.path))")
                 return
             }
             let dev = (a[.systemNumber] as? NSNumber)?.uint64Value ?? 0
@@ -53,11 +54,14 @@ public enum Filesystem {
             let inode = (a[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
             let bytes = (a[.size] as? NSNumber)?.int64Value ?? 0
             let date = a[.modificationDate] as? Date ?? .distantPast
-            records.append("\(child.path)|\(dev)|\(inode)|\(bytes)|\(date.timeIntervalSince1970)|\(a[.type] ?? "")")
+            records.append("\(child.path.replacingOccurrences(of: url.path, with: "", options: .anchored))|\(dev)|\(inode)|\(bytes)|\(date.timeIntervalSince1970)|\(a[.type] ?? "")")
             if a[.type] as? FileAttributeType == .typeRegular, seen.insert("\(dev):\(inode)").inserted {
                 size += bytes
             }
             count += 1
+            if count == 1 || (count % 128 == 0 && lastUpdate.duration(to: .now) >= .milliseconds(120)) {
+                progress?(count, size); lastUpdate = .now
+            }
             guard count <= limit else { throw LumaError.rejected("Item exceeds the current scan limit; narrow your selection.") }
         }
         try visit(url)
@@ -69,6 +73,7 @@ public enum Filesystem {
             for case let child as URL in walker { try visit(child) }
             if let failure { throw failure }
         }
+        progress?(count, size)
         let digest = SHA256.hash(data: Data(records.sorted().joined(separator: "\n").utf8)).map { String(format: "%02x", $0) }.joined()
         return (size, FileIdentity(device: device, inode: (root[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0,
                                    size: (root[.size] as? NSNumber)?.int64Value ?? 0,
@@ -77,8 +82,8 @@ public enum Filesystem {
 
     public static func item(_ url: URL, category: ItemCategory, safety: SafetyLevel,
                             explanation: String, consequence: String, rule: String,
-                            owner: String? = nil) throws -> CleanupItem {
-        let (size, identity) = try inspect(url)
+                            owner: String? = nil, progress: (@Sendable (Int, Int64) -> Void)? = nil) throws -> CleanupItem {
+        let (size, identity) = try inspect(url, progress: progress)
         return CleanupItem(url: url, bytes: size, category: category, safety: safety,
                            explanation: explanation, consequence: consequence, ruleID: rule,
                            ownerBundleID: owner, identity: identity, scannedAt: Date())

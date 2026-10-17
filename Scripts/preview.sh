@@ -1,8 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-swift Scripts/make-icon.swift Resources
-iconutil -c icns Resources/Luma.iconset -o Resources/Luma.icns
+bash Scripts/make-icon.sh
 bash Scripts/build-app.sh debug
 mkdir -p Documentation/Screenshots
 dist/Luma.app/Contents/MacOS/Luma --snapshot "$PWD/Documentation/Screenshots/overview.png" -luma.appearance light

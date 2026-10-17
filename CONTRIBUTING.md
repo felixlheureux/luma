@@ -6,7 +6,7 @@ Run `bash Scripts/test.sh` before submitting changes. Add regression fixtures fo
 
 Generated-data rules belong in `Sources/LumaCore/Rules.swift`; explicit named leftover mappings belong in `Sources/LumaCore/LeftoverScanner.swift` until the planned external rule loader is implemented. Each rule must have an exact bounded path, stable identifier, category, explanation, removal consequences, and owning app identifier when known. Do not use unrestricted globs or infer that old personal files are junk.
 
-No scanner may mutate the filesystem. All cleanup passes through the central Safety Engine and Trash API. New paths must include rejection tests for protected folders, symlink escapes, stale identities, and ignore rules. Never add a permanent-delete fallback to make a failing operation succeed.
+No scanner may mutate the filesystem. All cleanup passes through the central Safety Engine and CleanupJournal, which records each operation before moving anything to Trash. Restore must use the journal's verified recovery path. New paths must include rejection tests for protected folders, symlink escapes, stale identities, and ignore rules. Never add a permanent-delete fallback to make a failing operation succeed.
 
 Keep third-party dependencies small and behind project-owned interfaces. Follow the approved dependency philosophy in the canonical spec. Native Apple APIs are preferred. Formatting should stay consistent with existing Swift; SwiftFormat integration is planned before broad community contributions.
 

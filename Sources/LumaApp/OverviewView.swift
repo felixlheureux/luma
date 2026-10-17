@@ -8,6 +8,8 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 25) {
             hero
             LiveOverviewMetrics()
+            if let progress = model.scanProgress { ScanProgressCard(progress: progress) }
+            else if let report = model.cleanupReport { ScanSummaryCard(report: report) }
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeading(title: "A good place to start", detail: "You’re in control")
                 Surface(padding: 10) {
@@ -34,7 +36,7 @@ struct OverviewView: View {
                 Image(systemName: "arrow.uturn.backward.circle").font(.system(size: 15)).foregroundStyle(Palette.mint)
                 Text("Review first. Trash by default. Always your decision.").font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
-                Text("LUMA / 0.1").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(.tertiary)
+                Text("LUMA / \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "DEV")").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(.tertiary)
             }.padding(.horizontal, 3)
         }
     }

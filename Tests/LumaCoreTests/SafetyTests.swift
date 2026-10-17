@@ -24,7 +24,7 @@ private struct Fixture {
         let rule = Rules.generated[0]
         let item = try Filesystem.item(f.home.appendingPathComponent(rule.relativePath), category: .developer, safety: .safe,
             explanation: rule.explanation, consequence: rule.consequence, rule: rule.id, owner: rule.owner)
-        try SafetyEngine(home: f.home).validate(item)
+        try SafetyEngine(home: f.home).validate(item, activity: .init(tools: []))
     }
 
     @Test func protectedHomeFolderRejected() throws {
@@ -186,7 +186,7 @@ private struct Fixture {
         for rule in Rules.generated {
             #expect(!rule.relativePath.contains(".."))
             #expect(!rule.relativePath.contains("*"))
-            #expect(rule.relativePath.hasPrefix("Library/"))
+            #expect(rule.relativePath.hasPrefix("Library/") || rule.relativePath.hasPrefix(".npm/"))
             #expect(!rule.explanation.isEmpty)
             #expect(!rule.consequence.isEmpty)
         }

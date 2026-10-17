@@ -8,22 +8,94 @@ public protocol Scanner: Sendable {
 public struct GeneratedDataScanner: Scanner {
     public let id = "generated-data"
     public let home: URL
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser) { self.home = home }
+    private let progress: @Sendable (ScanProgress) -> Void
+    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser,
+                progress: @escaping @Sendable (ScanProgress) -> Void = { _ in }) {
+        self.home = home; self.progress = progress
+    }
+
     public func scan() async throws -> ScanReport {
+        let started = Date()
         var report = ScanReport()
-        for rule in Rules.generated {
+        for (index, rule) in Rules.generated.enumerated() {
             try Task.checkCancellation()
-            let url = home.appendingPathComponent(rule.relativePath)
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            let root = home.appendingPathComponent(rule.relativePath)
+            progress(.init(completedRules: index, totalRules: Rules.generated.count, current: rule.title, entries: 0, bytes: report.items.reduce(0) { $0 + $1.bytes }))
             do {
-                let item = try Filesystem.item(url, category: rule.category, safety: .safe, explanation: rule.explanation,
-                                               consequence: rule.consequence, rule: rule.id, owner: rule.owner)
-                if item.bytes > 0 { report.items.append(item) }
+                _ = try FileManager.default.attributesOfItem(atPath: root.path)
+                try Filesystem.validatePath(root)
+                let candidates: [URL]
+                if rule.profileLeaves.isEmpty { candidates = [root] }
+                else {
+                    // Mozilla marks active local cache profiles hidden on macOS.
+                    // Exact profile-name and cache-leaf checks still bound discovery.
+                    let profiles = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [])
+                    guard profiles.count <= 500 else { throw LumaError.rejected("More than 500 local profiles; this location was excluded from the scan.") }
+                    var leaves: [URL] = []
+                    for profile in profiles.sorted(by: { $0.path < $1.path }) where rule.acceptsProfile(profile.lastPathComponent) {
+                        try Task.checkCancellation()
+                        do {
+                            try Filesystem.validatePath(profile)
+                            guard try profile.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { continue }
+                            leaves += rule.profileLeaves.map { profile.appendingPathComponent($0) }
+                        } catch { appendFailure(error, rule: rule, url: profile, report: &report) }
+                    }
+                    candidates = leaves
+                    if candidates.isEmpty { report.coverage.append(coverage(rule, url: root, state: .empty, detail: "No supported local cache profiles are present.")) }
+                }
+                for url in candidates {
+                    try Task.checkCancellation()
+                    let previousBytes = report.items.reduce(0) { $0 + $1.bytes }
+                    do {
+                        _ = try FileManager.default.attributesOfItem(atPath: url.path)
+                        let item = try Filesystem.item(url, category: rule.category, safety: rule.safety,
+                            explanation: rule.explanation, consequence: rule.consequence, rule: rule.id, owner: rule.owner,
+                            progress: { entries, bytes in
+                                progress(.init(completedRules: index, totalRules: Rules.generated.count, current: rule.title, entries: entries, bytes: previousBytes + bytes))
+                            })
+                        if item.bytes > 0 { report.items.append(item) }
+                        report.coverage.append(coverage(rule, url: url, state: item.bytes > 0 ? .found : .empty, bytes: item.bytes, detail: rule.consequence))
+                        report.visited += 1
+                    } catch is CancellationError { throw CancellationError() }
+                    catch { appendFailure(error, rule: rule, url: url, report: &report) }
+                }
             } catch is CancellationError { throw CancellationError() }
-            catch { report.notices.append("\(url.lastPathComponent): \(error.localizedDescription)") }
-            report.visited += 1
+            catch { appendFailure(error, rule: rule, url: root, report: &report) }
+            progress(.init(completedRules: index + 1, totalRules: Rules.generated.count, current: rule.title, entries: 0, bytes: report.items.reduce(0) { $0 + $1.bytes }))
         }
+        report.duration = Date().timeIntervalSince(started)
+        report.items.sort { $0.bytes > $1.bytes }
         return report
+    }
+
+    private func coverage(_ rule: CleanupRule, url: URL, state: CoverageState, bytes: Int64 = 0, detail: String) -> ScanCoverage {
+        ScanCoverage(ruleID: rule.id, title: rule.title, path: url.path.replacingOccurrences(of: home.path, with: "~", options: .anchored), category: rule.category, state: state, bytes: bytes, detail: detail)
+    }
+
+    private func appendFailure(_ error: Error, rule: CleanupRule, url: URL, report: inout ScanReport) {
+        let failure = Self.failureState(error)
+        let changedDuringInspection = failure == .missing && (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
+        let state: CoverageState = changedDuringInspection ? .skipped : failure
+        let detail = state == .missing ? "This supported location is not present on this Mac." : changedDuringInspection ? "This location changed during inspection. Close its owning app and scan again." : error.localizedDescription
+        report.coverage.append(coverage(rule, url: url, state: state, detail: detail))
+        if state != .missing {
+            report.isComplete = false
+            report.notices.append("\(url.path.replacingOccurrences(of: home.path, with: "~", options: .anchored)): \(error.localizedDescription)")
+        }
+    }
+
+    public static func failureState(_ error: Error) -> CoverageState {
+        let error = error as NSError
+        if error.domain == NSCocoaErrorDomain {
+            if [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code) { return .missing }
+            if error.code == NSFileReadNoPermissionError { return .blocked }
+        }
+        if error.domain == NSPOSIXErrorDomain {
+            if error.code == 2 { return .missing }
+            if error.code == 1 || error.code == 13 { return .blocked }
+        }
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError { return failureState(underlying) }
+        return .skipped
     }
 }
 

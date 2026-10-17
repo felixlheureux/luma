@@ -59,6 +59,14 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var status = "Ready when you are"
     var lastScan: Date?
     var notices: [String] = []
+    var cleanupReport: ScanReport?
+    var scanProgress: ScanProgress?
+    var recoveryNotices: [RecoveryNotice] = []
+    var recoveryLoading = true
+    var journalError: String?
+    @ObservationIgnored private var journal: CleanupJournal?
+    @ObservationIgnored private var recoveryStarted = false
+    @ObservationIgnored private var activeScanID: UUID?
     var error: String?
     var reviewItems: [CleanupItem] = []
     var showingReview = false
@@ -71,7 +79,6 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var ignored: Set<String> = []
     var completedScans: Set<Destination> = []
     private var monitorTask: Task<Void, Never>?
-    private let stateURL: URL
     private let ignoreKey = "luma.ignoredPaths"
     var cleanupBytes: Int64 { cleanup.filter { !isIgnored($0) }.reduce(0) { $0 + $1.bytes } }
     func isIgnored(_ item: CleanupItem) -> Bool {
@@ -79,8 +86,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     }
 
     init() {
-        stateURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Luma/history.json")
-        if let data = try? Data(contentsOf: stateURL), let records = try? JSONDecoder().decode([CleanupRecord].self, from: data) { history = records }
+        do { journal = try CleanupJournal() }
+        catch { journalError = "Activity could not be loaded. Cleanup is paused to preserve its records: \(error.localizedDescription)" }
         ignored = Set(UserDefaults.standard.stringArray(forKey: ignoreKey) ?? [])
     }
 
@@ -107,14 +114,21 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     func runScan(_ target: Destination? = nil) {
         guard !busy else { return }
         let target = target ?? destination ?? .overview
-        busy = true; notices = []; selected = []; status = "Scanning locally…"
+        let scanID = UUID(); activeScanID = scanID
+        busy = true; notices = []; selected = []; scanProgress = nil; status = "Scanning locally…"
         scanTask = Task {
             do {
                 switch target {
                 case .overview, .clean:
-                    let result = try await offMain { try await GeneratedDataScanner().scan() }
+                    let reportProgress: @Sendable (ScanProgress) -> Void = { [self] update in
+                        Task { @MainActor [self] in
+                            guard activeScanID == scanID else { return }
+                            scanProgress = update
+                        }
+                    }
+                    let result = try await offMain { try await GeneratedDataScanner(progress: reportProgress).scan() }
                     try Task.checkCancellation()
-                    cleanup = result.items; notices = result.notices; completedScans.insert(.clean)
+                    cleanup = result.items; cleanupReport = result; notices = result.notices; scanProgress = nil; completedScans.insert(.clean)
                     if target == .overview {
                         status = "Generated data checked · inventorying applications…"
                         let inventory = try await offMain { try ApplicationScanner.scan() }
@@ -144,7 +158,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                     duplicates = result.0; notices = result.1; completedScans.insert(.duplicates)
                 default: break
                 }
-                lastScan = Date(); status = notices.isEmpty ? "Scan complete" : "Scan complete · \(notices.count) items couldn’t be read"
+                lastScan = Date(); status = notices.isEmpty ? "Scan complete" : "Scan complete with exclusions · \(notices.count) locations skipped"
             } catch is CancellationError { status = "Scan cancelled · no changes made" }
             catch { self.error = error.localizedDescription; status = "Scan could not finish" }
             finish()
@@ -155,7 +169,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         let child = Task.detached(priority: .utility, operation: work)
         return try await withTaskCancellationHandler(operation: { try await child.value }, onCancel: { child.cancel() })
     }
-    private func finish() { busy = false; scanTask = nil }
+    private func finish() { activeScanID = nil; scanProgress = nil; busy = false; scanTask = nil }
     func cancel() { scanTask?.cancel() }
 
     func chooseFolder(for target: Destination) {
@@ -194,6 +208,9 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     func moveToTrash() {
         guard !busy, !reviewItems.isEmpty else { return }
+        guard let journal, !recoveryLoading, journalError == nil, recoveryNotices.isEmpty else {
+            error = journalError ?? "Review interrupted operations in Activity before cleaning."; return
+        }
         let items = reviewItems
         let roots = authorizedRoots
         let exclusions = ignored
@@ -208,49 +225,72 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                 }
                 for item in items {
                     let currentRunning = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-                    let record = try await offMain {
-                        try SafetyEngine(ignoredPaths: exclusions).trash(item, authorizedRoots: roots, runningBundleIDs: currentRunning)
-                    }
+                    let record = try await journal.trash(item, authorizedRoots: roots, ignoredPaths: exclusions, runningBundleIDs: currentRunning)
                     history.insert(record, at: 0)
-                    // Persist each successful move so a later failure cannot hide earlier changes.
-                    let savedHistory = persistHistory()
                     cleanup.removeAll { $0.id == item.id }; storage.removeAll { $0.id == item.id }; footprint.removeAll { $0.id == item.id }
                     duplicates = [] // Content groups must be reverified after a move.
                     applications.removeAll { $0.url == item.url }
                     leftovers.removeAll { $0.id == item.id }
                     if item.category == .applications { didScanLeftovers = false }
-                    guard savedHistory else { throw LumaError.rejected(self.error ?? "History could not be saved. Further moves have stopped.") }
                 }
                 selected = []; status = "Moved to Trash · restore from Activity"
-            } catch { self.error = error.localizedDescription; status = "Stopped · review Activity for completed moves" }
+            } catch {
+                self.error = error.localizedDescription; status = "Stopped · review Activity for completed moves"
+                do { apply(try await journal.reconcile()) } catch { journalError = error.localizedDescription }
+            }
             finish()
         }
     }
 
-    @discardableResult func persistHistory() -> Bool {
-        do {
-            try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(history).write(to: stateURL, options: .atomic)
-            return true
-        } catch {
-            self.error = "Changes were made, but history could not be saved: \(error.localizedDescription). Your files are in Trash."
-            return false
+    func loadJournal() async {
+        guard !recoveryStarted else { return }
+        recoveryStarted = true
+        defer { recoveryLoading = false }
+        guard let journal else { return }
+        do { apply(try await journal.reconcile()) }
+        catch { journalError = "Activity recovery needs attention: \(error.localizedDescription)" }
+    }
+
+    private func apply(_ snapshot: JournalSnapshot) {
+        history = snapshot.records; recoveryNotices = snapshot.unresolved
+    }
+
+    func checkRecovery() {
+        guard !busy else { return }
+        do { journal = try CleanupJournal() }
+        catch { journalError = error.localizedDescription; return }
+        guard let journal else { return }
+        busy = true
+        Task {
+            do { apply(try await journal.reconcile()); journalError = nil }
+            catch { journalError = error.localizedDescription }
+            finish()
+        }
+    }
+
+    func acknowledgeRecovery(_ notice: RecoveryNotice) {
+        guard !busy, let journal else { return }
+        busy = true
+        Task {
+            do { apply(try await journal.acknowledge(notice.id)) }
+            catch { self.error = error.localizedDescription }
+            finish()
         }
     }
 
     func restore(_ record: CleanupRecord) {
-        do {
-            try Filesystem.validatePath(record.trashed)
-            guard Filesystem.isWithin(record.trashed, root: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")),
-                  !FileManager.default.fileExists(atPath: record.original.path),
-                  FileManager.default.fileExists(atPath: record.original.deletingLastPathComponent().path) else {
-                throw LumaError.rejected("The original location is occupied or unavailable. Restore this item using Finder’s Trash.")
+        guard !busy, !recoveryLoading, journalError == nil, let journal else { return }
+        busy = true; status = "Checking the item in Trash…"
+        Task {
+            do {
+                try await journal.restore(record)
+                apply(await journal.snapshot()); status = "Restored \(record.original.lastPathComponent)"
+            } catch {
+                self.error = error.localizedDescription
+                do { apply(try await journal.reconcile()) } catch { journalError = error.localizedDescription }
             }
-            try Filesystem.validatePath(record.original.deletingLastPathComponent())
-            try FileManager.default.moveItem(at: record.trashed, to: record.original)
-            if let index = history.firstIndex(where: { $0.id == record.id }) { history[index].restored = true }
-            persistHistory(); status = "Restored \(record.original.lastPathComponent)"
-        } catch { self.error = error.localizedDescription }
+            finish()
+        }
     }
 
     func ignore(_ item: CleanupItem) {

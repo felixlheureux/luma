@@ -68,6 +68,9 @@ struct LumaApp: App {
             }
         }
         let arguments = CommandLine.arguments
+        if let flag = arguments.firstIndex(of: "--scan-report"), arguments.indices.contains(flag + 1) {
+            checkGeneratedScan(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-window-lifecycle"), arguments.indices.contains(flag + 1) {
             checkWindowLifecycle(output: arguments[flag + 1])
         }
@@ -87,6 +90,36 @@ struct LumaApp: App {
                 catch { FileHandle.standardError.write(Data("Diagnostics could not be saved: \(error.localizedDescription)\n".utf8)) }
                 NSApplication.shared.terminate(nil)
             }
+        }
+    }
+
+    // Read-only QA: run the same scan and view used by the Clean page. Nothing
+    // is selected, reviewed, or moved by this opt-in diagnostic.
+    private func checkGeneratedScan(output: String) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            let model = AppModel.shared
+            model.destination = .clean; model.runScan(.clean)
+            let deadline = Date().addingTimeInterval(90)
+            while model.busy && Date() < deadline { try? await Task.sleep(for: .milliseconds(200)) }
+            let report = model.cleanupReport
+            let result: [String: Any] = [
+                "completed": report != nil && !model.busy,
+                "rules": Rules.generated.count, "items": report?.items.count ?? 0,
+                "coverage": report?.coverage.count ?? 0,
+                "blocked": report?.coverage.filter { $0.state == .blocked }.count ?? 0,
+                "skipped": report?.coverage.filter { $0.state == .skipped }.count ?? 0,
+                "seconds": report?.duration ?? 0,
+                "selected": model.selected.count,
+                "foundRuleIDs": Array(Set(report?.items.map(\.ruleID) ?? [])).sorted(),
+                "locations": report?.coverage.map { ["rule": $0.ruleID, "state": $0.state.rawValue, "path": $0.path, "detail": $0.detail] } ?? [],
+                "error": model.error ?? ""
+            ]
+            do { try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output)) }
+            catch { FileHandle.standardError.write(Data("Scan report failed: \(error.localizedDescription)\n".utf8)) }
+            if CommandLine.arguments.contains("--scan-snapshot"), !model.busy {
+                try? await Task.sleep(for: .seconds(1)); captureSnapshot()
+            } else { model.cancel(); NSApp.terminate(nil) }
         }
     }
 
@@ -122,7 +155,7 @@ struct LumaApp: App {
 
     private func captureSnapshot() {
         let args = CommandLine.arguments
-        guard let flag = args.firstIndex(of: "--snapshot") ?? args.firstIndex(of: "--snapshot-menu"), args.indices.contains(flag + 1) else { return }
+        guard let flag = args.firstIndex(of: "--snapshot") ?? args.firstIndex(of: "--snapshot-menu") ?? args.firstIndex(of: "--scan-snapshot"), args.indices.contains(flag + 1) else { return }
         let target = args.contains("--snapshot-menu") ? statusController?.previewWindow : NSApplication.shared.windows.first(where: { $0.isVisible && !($0 is NSPanel) })
         guard let window = target else {
             NSApplication.shared.terminate(nil)

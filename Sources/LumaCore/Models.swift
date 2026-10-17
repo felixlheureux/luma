@@ -47,7 +47,11 @@ public struct CleanupItem: Identifiable, Codable, Sendable, Equatable {
     public let ownerBundleID: String?
     public let identity: FileIdentity
     public let scannedAt: Date
-    public var name: String { url.lastPathComponent }
+    public var name: String {
+        guard let rule = Rules.generated.first(where: { $0.id == ruleID }) else { return url.lastPathComponent }
+        if url.lastPathComponent == "startupCache" { return rule.title.replacingOccurrences(of: "web caches", with: "startup cache") }
+        return rule.title
+    }
     public var displayPath: String {
         url.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~", options: .anchored)
     }
@@ -58,7 +62,33 @@ public struct ScanReport: Sendable {
     public var notices: [String] = []
     public var visited = 0
     public var isComplete = true
+    public var coverage: [ScanCoverage] = []
+    public var duration: TimeInterval = 0
     public init() {}
+}
+
+public enum CoverageState: String, Sendable, CaseIterable {
+    case found = "Found data", empty = "No data", missing = "Not present"
+    case blocked = "Access needed", skipped = "Skipped"
+}
+
+public struct ScanCoverage: Identifiable, Sendable {
+    public var id: String { ruleID + ":" + path }
+    public let ruleID: String
+    public let title: String
+    public let path: String
+    public let category: ItemCategory
+    public let state: CoverageState
+    public let bytes: Int64
+    public let detail: String
+}
+
+public struct ScanProgress: Sendable {
+    public let completedRules: Int
+    public let totalRules: Int
+    public let current: String
+    public let entries: Int
+    public let bytes: Int64
 }
 
 public struct ApplicationRecord: Identifiable, Sendable {
@@ -83,9 +113,10 @@ public struct CleanupRecord: Identifiable, Codable, Sendable {
     public let trashed: URL
     public let bytes: Int64
     public var restored: Bool
-    public init(original: URL, trashed: URL, bytes: Int64) {
-        id = UUID(); date = Date(); self.original = original
-        self.trashed = trashed; self.bytes = bytes; restored = false
+    public let identity: FileIdentity?
+    public init(id: UUID = UUID(), date: Date = Date(), original: URL, trashed: URL, bytes: Int64, identity: FileIdentity? = nil) {
+        self.id = id; self.date = date; self.original = original
+        self.trashed = trashed; self.bytes = bytes; self.identity = identity; restored = false
     }
 }
 

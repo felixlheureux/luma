@@ -98,7 +98,7 @@ public struct LeftoverScanner: Scanner {
         guard item.ruleID == "application.leftover.exact-identifier", item.safety == .review,
               let owner = item.ownerBundleID, isSupportedIdentifier(owner) else { return false }
         let namedPaths = knownPaths + Rules.generated.compactMap { rule in
-            rule.owner.map { KnownLeftoverPath(relativePath: rule.relativePath, owner: $0) }
+            rule.profileLeaves.isEmpty ? rule.owner.map { KnownLeftoverPath(relativePath: rule.relativePath, owner: $0) } : nil
         }
         return namedPaths.contains { $0.owner == owner && home.appendingPathComponent($0.relativePath).standardizedFileURL == item.url.standardizedFileURL } || locations.contains { location in
             home.appendingPathComponent(location.directory).appendingPathComponent(owner + location.suffix).standardizedFileURL == item.url.standardizedFileURL
@@ -145,7 +145,7 @@ public struct LeftoverScanner: Scanner {
             }
         }
         let namedPaths = Self.knownPaths + Rules.generated.compactMap { rule in
-            rule.owner.map { KnownLeftoverPath(relativePath: rule.relativePath, owner: $0) }
+            rule.profileLeaves.isEmpty ? rule.owner.map { KnownLeftoverPath(relativePath: rule.relativePath, owner: $0) } : nil
         }
         for path in namedPaths where Self.isSupportedIdentifier(path.owner) {
             try Task.checkCancellation()
