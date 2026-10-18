@@ -68,6 +68,14 @@ struct LumaApp: App {
             }
         }
         let arguments = CommandLine.arguments
+        #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-scan-sessions"), arguments.indices.contains(flag + 1) {
+            checkScanSessions(output: arguments[flag + 1])
+        }
+        if let flag = arguments.firstIndex(of: "--check-cleanup-review"), arguments.indices.contains(flag + 1) {
+            checkCleanupReview(output: arguments[flag + 1])
+        }
+        #endif
         if let flag = arguments.firstIndex(of: "--scan-report"), arguments.indices.contains(flag + 1) {
             checkGeneratedScan(output: arguments[flag + 1])
         }
@@ -92,6 +100,10 @@ struct LumaApp: App {
             }
         }
     }
+
+    #if DEBUG
+    func scanCheckMenuVisible() -> Bool { statusController?.diagnostics()["visible"] as? Bool == true }
+    #endif
 
     // Read-only QA: run the same scan and view used by the Clean page. Nothing
     // is selected, reviewed, or moved by this opt-in diagnostic.

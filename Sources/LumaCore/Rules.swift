@@ -15,12 +15,12 @@ public struct CleanupRule: Sendable {
     public var tools: Set<CleanupTool> = []
 
     public func matches(_ url: URL, home: URL) -> Bool {
-        let root = home.appendingPathComponent(relativePath).standardizedFileURL
-        let candidate = url.standardizedFileURL
-        if profileLeaves.isEmpty { return candidate == root }
-        guard candidate.deletingLastPathComponent().deletingLastPathComponent() == root,
+        let root = home.appendingPathComponent(relativePath).exactStandardizedFileURL
+        let candidate = url.exactStandardizedFileURL
+        if profileLeaves.isEmpty { return Filesystem.samePath(candidate, root) }
+        guard Filesystem.samePath(candidate.exactDeletingLastPathComponent().exactDeletingLastPathComponent(), root),
               profileLeaves.contains(candidate.lastPathComponent) else { return false }
-        return acceptsProfile(candidate.deletingLastPathComponent().lastPathComponent)
+        return acceptsProfile(candidate.exactDeletingLastPathComponent().lastPathComponent)
     }
 
     public func acceptsProfile(_ name: String) -> Bool {

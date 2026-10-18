@@ -1,13 +1,19 @@
 # Contributing to Luma
 
-Use the complete spec in `Documentation/Product-Spec.md` and the status in `Documentation/Roadmap.md`. Build with Swift 6.2+ and a macOS 26+ SDK.
+Use the complete spec in `Documentation/Product-Spec.md` and the status in `Documentation/Roadmap.md`. Build with Swift 6.2+ and a macOS 26+ SDK. Follow [Architecture.md](Documentation/Architecture.md) for code ownership, state/concurrency boundaries, testing and incremental file organization. The documented target layout is being adopted incrementally.
+
+Pick work from [tasks/README.md](tasks/README.md), respecting its dependencies and acceptance criteria. The user requires frequent comparisons with the reference DMGs in Downloads: inspect the relevant reference before implementation, after the first working change, and before completing a task. Record the image/version, observations, and inspection limits in [tasks/reference-checks.md](tasks/reference-checks.md). Keep Luma's assets and interface original; mount references read-only and eject them afterward.
 
 Run `bash Scripts/test.sh` before submitting changes. Add regression fixtures for new filesystem behavior. Never test cleanup against real user data. Use `bash Scripts/preview.sh` to inspect the native interface in both appearances.
 
 Generated-data rules belong in `Sources/LumaCore/Rules.swift`; explicit named leftover mappings belong in `Sources/LumaCore/LeftoverScanner.swift` until the planned external rule loader is implemented. Each rule must have an exact bounded path, stable identifier, category, explanation, removal consequences, and owning app identifier when known. Do not use unrestricted globs or infer that old personal files are junk.
 
-No scanner may mutate the filesystem. All cleanup passes through the central Safety Engine and CleanupJournal, which records each operation before moving anything to Trash. Restore must use the journal's verified recovery path. New paths must include rejection tests for protected folders, symlink escapes, stale identities, and ignore rules. Never add a permanent-delete fallback to make a failing operation succeed.
+No scanner may mutate the filesystem. All cleanup builds an immutable `CleanupPlan` and calls `CleanupJournal.execute`; the journal preflights the whole plan and revalidates each move through SafetyEngine. Individual Trash moves are private. Preserve full-content duplicate keeper checks, unique logical totals, and durable per-item plan metadata. Restore must use the journal's verified recovery path. New paths must include rejection tests for protected folders, symlink escapes, stale identities, and ignore rules. Never add a permanent-delete fallback to make a failing operation succeed.
 
 Keep third-party dependencies small and behind project-owned interfaces. Follow the approved dependency philosophy in the canonical spec. Native Apple APIs are preferred. Formatting should stay consistent with existing Swift; SwiftFormat integration is planned before broad community contributions.
 
 Use original assets and compatible source licenses. The project is licensed GPL-3.0-or-later.
+
+Debug native review QA: after `bash Scripts/build-app.sh debug`, run `dist/Luma.app/Contents/MacOS/Luma --check-cleanup-review /tmp/luma-review.json` from the repository. It creates disposable workspace fixtures, checks real sheet presentation and rejected duplicate evidence, writes its report, and quits. It never invokes cleanup.
+
+Scans use `ScanRequest`/`ScanController` and dispatch through `ScanEngine`. Send bounded progress/coverage events; do not create a Task for each file or publish partial candidates into completed feature state. A cancelled worker must exit before a queued replacement starts. Preserve the captured scope on retry and keep preview-only results out of cleanup review. Run `bash Scripts/check-scan-sessions.sh` after a debug build for native scan/session changes; it uses only generated fixtures and never executes cleanup. Set `LUMA_SCAN_QA_OUTPUT_DIR` to a temporary directory only when retaining the synthetic reports/screenshots for inspection.

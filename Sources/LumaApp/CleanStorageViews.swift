@@ -16,10 +16,9 @@ struct CleanView: View {
                     }
                 }
             }
-            if let progress = model.scanProgress { ScanProgressCard(progress: progress) }
             if !model.completedScans.contains(.clean) {
-                if model.scanProgress == nil {
-                    EmptyState(symbol: "sparkles", title: "Make a little room.", message: "Check browser caches, package downloads, developer files, and simulator diagnostics. Every location and removal consequence is explained.", actionTitle: model.busy ? "Scanning…" : "Scan generated data") { model.runScan(.clean) }.disabled(model.busy)
+                if !model.scanSessions.isBusy || (model.scanTarget != .generatedData && model.scanTarget != .overview) {
+                    EmptyState(symbol: "sparkles", title: "Make a little room.", message: "Check browser caches, package downloads, developer files, and simulator diagnostics. Every location and removal consequence is explained.", actionTitle: model.scanSessions.isBusy ? "Queue new check" : "Scan generated data") { model.runScan(.clean) }.disabled(!model.canStartScan)
                 }
             } else {
                 if let report = model.cleanupReport { ScanSummaryCard(report: report) }
@@ -70,12 +69,12 @@ struct StorageView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if !model.completedScans.contains(.storage) {
-                EmptyState(symbol: "internaldrive", title: "Follow the space.", message: "Choose a folder to see what’s inside, sized and sorted. Large files and old downloads are your data, and are never treated as junk.", actionTitle: "Choose a folder") { model.chooseFolder(for: .storage) }.disabled(model.busy)
+                EmptyState(symbol: "internaldrive", title: "Follow the space.", message: "Choose a folder to see what’s inside, sized and sorted. Large files and old downloads are your data, and are never treated as junk.", actionTitle: "Choose a folder") { model.chooseFolder(for: .storage) }.disabled(!model.canStartScan)
             } else {
                 HStack {
-                    Label(model.storageRoot?.path ?? "Selected folder", systemImage: "folder").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    Label(model.snapshot(for: .storage)?.request.root?.path ?? "Selected folder", systemImage: "folder").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     Spacer()
-                    Button("Choose another folder") { model.chooseFolder(for: .storage) }.buttonStyle(.glass).disabled(model.busy)
+                    Button("Choose another folder") { model.chooseFolder(for: .storage) }.buttonStyle(.glass).disabled(!model.canStartScan)
                 }
                 if !model.storage.isEmpty {
                     Surface {
@@ -149,10 +148,11 @@ struct TreemapView: View {
 
 struct DuplicatesView: View {
     @Environment(AppModel.self) private var model
+    @ViewState private var displayLimit = 100
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if !model.completedScans.contains(.duplicates) {
-                EmptyState(symbol: "square.on.square", title: "Same content. Clear choices.", message: "Choose a folder. Luma groups by size, checks partial hashes, then verifies full SHA-256 content. Nothing is selected automatically.", actionTitle: "Find exact duplicates") { model.chooseFolder(for: .duplicates) }.disabled(model.busy)
+                EmptyState(symbol: "square.on.square", title: "Same content. Clear choices.", message: "Choose a folder. Luma groups by size, checks partial hashes, then verifies full SHA-256 content. Nothing is selected automatically.", actionTitle: "Find exact duplicates") { model.chooseFolder(for: .duplicates) }.disabled(!model.canStartScan)
             } else {
                 Surface {
                     HStack {
@@ -162,13 +162,13 @@ struct DuplicatesView: View {
                             Text("Potential savings if you keep one copy per group.").font(.system(size: 12)).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button("Choose another folder") { model.chooseFolder(for: .duplicates) }.buttonStyle(.glass).disabled(model.busy)
+                        Button("Choose another folder") { model.chooseFolder(for: .duplicates) }.buttonStyle(.glass).disabled(!model.canStartScan)
                     }
                 }
                 if model.duplicates.isEmpty {
                     ContentUnavailableView("No exact duplicates found", systemImage: "checkmark.square", description: Text("Packages, hidden files, cloud items, and hard-linked copies are excluded."))
                 }
-                ForEach(model.duplicates) { group in
+                ForEach(Array(model.duplicates.prefix(displayLimit))) { group in
                     Surface(padding: 18) {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -182,6 +182,7 @@ struct DuplicatesView: View {
                         }
                     }
                 }
+                if model.duplicates.count > displayLimit { Button("Show 100 more groups") { displayLimit += 100 }.buttonStyle(.glass) }
                 SelectionBar(items: model.duplicates.flatMap(\.items))
                     .disabled(model.duplicates.contains { $0.items.allSatisfy { model.selected.contains($0.id) } })
                 Text("Files are revalidated before moving. Packages, links, cloud placeholders, hidden files and external volumes are excluded.").font(.system(size: 10)).foregroundStyle(.secondary)

@@ -1,0 +1,149 @@
+import AppKit
+import Foundation
+
+public enum CleanupSource: String, Codable, Sendable {
+    case generatedData, applications, leftovers, storage, duplicates
+}
+
+public struct CleanupExecutionContext: Sendable {
+    public let ignoredPaths: Set<String>
+    public let runningBundleIDs: Set<String>
+    public init(ignoredPaths: Set<String> = [], runningBundleIDs: Set<String> = []) {
+        self.ignoredPaths = ignoredPaths; self.runningBundleIDs = runningBundleIDs
+    }
+
+    @MainActor public static func current(ignoredPaths: Set<String> = []) -> Self {
+        Self(ignoredPaths: ignoredPaths, runningBundleIDs: Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)))
+    }
+}
+
+/// A reviewed, immutable selection. Creating a plan reads metadata but cannot
+/// authorize a move: the journal preflights it and checks each mutation again.
+public struct CleanupPlan: Identifiable, Sendable {
+    public let id: UUID
+    public let source: CleanupSource
+    public let createdAt: Date
+    public let items: [CleanupItem]
+    public let authorizedRoots: [URL]
+    public let ignoredPaths: Set<String>
+    public let logicalBytes: Int64
+    private let contributions: [Data: Int64]
+    private let duplicateProofs: [Data: DuplicateProof]
+
+    private struct DuplicateProof: Sendable {
+        let digest: String
+        let keeper: CleanupItem
+    }
+
+    public init(items: [CleanupItem], authorizedRoots: [URL] = [], ignoredPaths: Set<String> = [],
+                duplicateGroups: [DuplicateGroup] = [], source: CleanupSource = .storage) throws {
+        guard !items.isEmpty else { throw LumaError.rejected("Choose at least one item to review.") }
+        guard items.allSatisfy({ $0.url.isFileURL && $0.bytes >= 0 }), authorizedRoots.allSatisfy(\.isFileURL) else {
+            throw LumaError.rejected("The selection contains an invalid path or size.")
+        }
+        let paths = items.map { Data($0.url.exactStandardizedFileURL.path.utf8) }
+        let selectedPaths = Set(paths)
+        guard selectedPaths.count == items.count else { throw LumaError.rejected("The same path appears more than once. Review the selection again.") }
+        for item in items {
+            try Task.checkCancellation()
+            var parent = item.url.exactStandardizedFileURL.exactDeletingLastPathComponent()
+            while parent.path != "/" {
+                guard !selectedPaths.contains(Data(parent.path.utf8)) else {
+                    throw LumaError.rejected("A folder and one of its contents are both selected. Choose one level before reviewing.")
+                }
+                parent = parent.exactDeletingLastPathComponent()
+            }
+        }
+        let objects = Set(items.map { FileObjectID($0.identity) })
+        guard objects.count == items.count else {
+            throw LumaError.rejected("Two selected paths refer to the same filesystem object. Review one at a time.")
+        }
+
+        var seenContents: Set<FileObjectID> = []
+        var total: Int64 = 0
+        var perItem: [Data: Int64] = [:]
+        for item in items {
+            var contribution: Int64 = 0
+            let (bytes, identity) = try Filesystem.inspect(item.url, onFile: { object, bytes in
+                guard seenContents.insert(object).inserted else { return }
+                let (next, overflow) = contribution.addingReportingOverflow(bytes)
+                guard bytes >= 0, !overflow else { throw LumaError.rejected("The selection size could not be verified.") }
+                contribution = next
+            })
+            guard identity == item.identity, identity.location == item.identity.location, bytes == item.bytes else {
+                throw LumaError.rejected("Files changed since scanning. Scan again before reviewing their contents.")
+            }
+            let (next, overflow) = total.addingReportingOverflow(contribution)
+            guard !overflow else { throw LumaError.rejected("The selection is too large to total safely.") }
+            total = next; perItem[Data(item.id.utf8)] = contribution
+        }
+
+        var evidence: [Data: (member: CleanupItem, proof: DuplicateProof?)] = [:]
+        var groupIDs: Set<String> = []
+        for group in duplicateGroups where group.items.contains(where: { selectedPaths.contains(Data($0.url.exactStandardizedFileURL.path.utf8)) }) {
+            guard group.items.count >= 2, group.id.utf8.count == 64,
+                  group.id.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
+                  groupIDs.insert(group.id).inserted,
+                  Set(group.items.map { Data($0.url.exactStandardizedFileURL.path.utf8) }).count == group.items.count,
+                  Set(group.items.map { FileObjectID($0.identity) }).count == group.items.count,
+                  group.items.allSatisfy({ $0.ruleID == "duplicates.sha256" && $0.safety == .userData }) else {
+                throw LumaError.rejected("Duplicate evidence is incomplete or ambiguous. Run a new duplicate scan.")
+            }
+            let keeper = group.items.lazy.filter { member in
+                !Self.isCovered(member.url, by: selectedPaths) && !seenContents.contains(FileObjectID(member.identity))
+            }.min(by: { $0.url.path < $1.url.path })
+            let proof = keeper.map { DuplicateProof(digest: group.id, keeper: $0) }
+            for member in group.items {
+                let path = Data(member.url.exactStandardizedFileURL.path.utf8)
+                guard evidence[path] == nil else { throw LumaError.rejected("A file belongs to more than one duplicate group. Scan again.") }
+                evidence[path] = (member, proof)
+            }
+        }
+        var proofs: [Data: DuplicateProof] = [:]
+        for item in items where item.ruleID == "duplicates.sha256" {
+            guard let entry = evidence[Data(item.url.exactStandardizedFileURL.path.utf8)], entry.member == item else {
+                throw LumaError.rejected("Duplicate removal requires its complete scanned group, not only a file or rule label.")
+            }
+            guard let proof = entry.proof else {
+                throw LumaError.rejected("Keep at least one independent file outside the entire selection in each duplicate group.")
+            }
+            proofs[Data(item.id.utf8)] = proof
+        }
+
+        id = UUID(); createdAt = Date(); self.source = source; self.items = items
+        self.authorizedRoots = authorizedRoots.map(\.exactStandardizedFileURL); self.ignoredPaths = ignoredPaths
+        logicalBytes = total; contributions = perItem; duplicateProofs = proofs
+    }
+
+    private static func isCovered(_ url: URL, by selectedPaths: Set<Data>) -> Bool {
+        var ancestor = url.exactStandardizedFileURL
+        while true {
+            if selectedPaths.contains(Data(ancestor.path.utf8)) { return true }
+            if ancestor.path == "/" { return false }
+            ancestor = ancestor.exactDeletingLastPathComponent()
+        }
+    }
+
+    func accountedBytes(for item: CleanupItem) -> Int64 { contributions[Data(item.id.utf8)] ?? 0 }
+
+    func preflight(home: URL, context: CleanupExecutionContext) throws {
+        for item in items { try validate(item, home: home, context: context) }
+    }
+
+    func validate(_ item: CleanupItem, home: URL, context: CleanupExecutionContext, checkDuplicateContent: Bool = true) throws {
+        try Task.checkCancellation()
+        let engine = SafetyEngine(home: home, ignoredPaths: ignoredPaths.union(context.ignoredPaths))
+        try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs)
+        guard item.ruleID == "duplicates.sha256", checkDuplicateContent else { return }
+        guard let proof = duplicateProofs[Data(item.id.utf8)] else { throw LumaError.rejected("The duplicate group is missing. Scan again.") }
+        try engine.validate(proof.keeper, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs)
+        for member in [proof.keeper, item] {
+            let before = try Filesystem.attributes(member.url)
+            guard before[.type] as? FileAttributeType == .typeRegular,
+                  try Filesystem.hash(member.url) == proof.digest,
+                  try Filesystem.inspect(member.url).1 == member.identity else {
+                throw LumaError.rejected("A duplicate or its kept copy changed. Run a new duplicate scan before removing anything else.")
+            }
+        }
+    }
+}

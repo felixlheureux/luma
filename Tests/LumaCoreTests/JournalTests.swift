@@ -30,12 +30,21 @@ private struct JournalFixture {
     func remove() { try? FileManager.default.removeItem(at: home) }
 }
 
+
+private extension CleanupJournal {
+    func executeFixture(_ item: CleanupItem, authorizedRoots: [URL], ignoredPaths: Set<String>, runningBundleIDs: Set<String>) async throws -> CleanupRecord {
+        let plan = try CleanupPlan(items: [item], authorizedRoots: authorizedRoots, ignoredPaths: ignoredPaths)
+        let records = try await execute(plan, context: { CleanupExecutionContext(ignoredPaths: ignoredPaths, runningBundleIDs: runningBundleIDs) })
+        return try #require(records.first)
+    }
+}
+
 @Suite("Durable cleanup and restoration") struct JournalTests {
     @Test func moveAndRestorePersistAcrossJournalInstances() async throws {
         let f = try JournalFixture(); defer { f.remove() }
         let item = try f.item()
         let journal = try f.journal()
-        let record = try await journal.trash(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
+        let record = try await journal.executeFixture(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
         #expect(!FileManager.default.fileExists(atPath: item.url.path))
         #expect(record.identity == item.identity)
         let reopened = try f.journal()
@@ -85,7 +94,7 @@ private struct JournalFixture {
         let recovered = try await journal.reconcile()
         #expect(recovered.unresolved.count == 1)
         let another = try f.item("another.txt")
-        await #expect(throws: (any Error).self) { try await journal.trash(another, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: []) }
+        await #expect(throws: (any Error).self) { try await journal.executeFixture(another, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: []) }
         #expect(FileManager.default.fileExists(atPath: another.url.path))
         #expect(try await journal.acknowledge(intent.id).unresolved.isEmpty)
     }
@@ -94,7 +103,7 @@ private struct JournalFixture {
         let f = try JournalFixture(); defer { f.remove() }
         let item = try f.item()
         let journal = try f.journal()
-        let record = try await journal.trash(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
+        let record = try await journal.executeFixture(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
         try Data("changed after cleanup".utf8).write(to: record.trashed)
         await #expect(throws: (any Error).self) { try await journal.restore(record) }
         #expect(!FileManager.default.fileExists(atPath: item.url.path))
@@ -105,7 +114,7 @@ private struct JournalFixture {
         let f = try JournalFixture(); defer { f.remove() }
         let item = try f.item()
         let journal = try f.journal()
-        let record = try await journal.trash(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
+        let record = try await journal.executeFixture(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
         try Data("new file".utf8).write(to: item.url)
         await #expect(throws: (any Error).self) { try await journal.restore(record) }
         #expect(try String(contentsOf: item.url, encoding: .utf8) == "new file")
@@ -115,7 +124,7 @@ private struct JournalFixture {
         let f = try JournalFixture(); defer { f.remove() }
         let item = try f.item()
         let journal = try f.journal()
-        let record = try await journal.trash(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
+        let record = try await journal.executeFixture(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
         let intent = JournalIntent(id: UUID(), action: .restore, original: record.original, source: record.trashed, destination: record.original,
                                    identity: item.identity, bytes: item.bytes, date: Date(), recordID: record.id)
         try f.persist(JournalState(records: [record], pending: [intent]))
@@ -131,7 +140,7 @@ private struct JournalFixture {
         let journal = try f.journal()
         try FileManager.default.removeItem(at: f.directory)
         try Data("not a directory".utf8).write(to: f.directory)
-        await #expect(throws: (any Error).self) { try await journal.trash(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: []) }
+        await #expect(throws: (any Error).self) { try await journal.executeFixture(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: []) }
         #expect(FileManager.default.fileExists(atPath: item.url.path))
         #expect(try FileManager.default.contentsOfDirectory(at: f.trash, includingPropertiesForKeys: nil).isEmpty)
     }
@@ -140,8 +149,8 @@ private struct JournalFixture {
         let f = try JournalFixture(); defer { f.remove() }
         let first = try f.item("first.txt"), second = try f.item("second.txt")
         let a = try f.journal(), b = try f.journal()
-        _ = try await a.trash(first, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
-        _ = try await b.trash(second, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
+        _ = try await a.executeFixture(first, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
+        _ = try await b.executeFixture(second, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
         #expect(try await f.journal().snapshot().records.count == 2)
     }
 
@@ -149,7 +158,7 @@ private struct JournalFixture {
         let f = try JournalFixture(); defer { f.remove() }
         let item = try f.item()
         let journal = try f.journal()
-        let record = try await journal.trash(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
+        let record = try await journal.executeFixture(item, authorizedRoots: [f.downloads], ignoredPaths: [], runningBundleIDs: [])
         let other = f.home.appendingPathComponent("Other")
         try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
         try FileManager.default.removeItem(at: f.downloads)
@@ -185,6 +194,8 @@ private struct JournalFixture {
         try JSONSerialization.data(withJSONObject: json).write(to: f.directory.appendingPathComponent("history.json"))
         let journal = try f.journal()
         #expect(await journal.snapshot().records.count == 1)
+        #expect(await journal.snapshot().records.first?.planID == nil)
+        #expect(await journal.snapshot().records.first?.accountedBytes == nil)
         await #expect(throws: (any Error).self) { try await journal.restore(record) }
     }
 

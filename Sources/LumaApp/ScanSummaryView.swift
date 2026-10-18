@@ -1,28 +1,6 @@
 import SwiftUI
 import LumaCore
 
-struct ScanProgressCard: View {
-    let progress: ScanProgress
-    var body: some View {
-        Surface {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    ProgressView().controlSize(.small)
-                    Text("Checking \(progress.current)").font(.system(size: 14, weight: .semibold))
-                    Spacer()
-                    Text("\(progress.completedRules) / \(progress.totalRules) checks").monospacedDigit().foregroundStyle(.secondary)
-                }
-                ProgressView(value: Double(progress.completedRules), total: Double(max(1, progress.totalRules))).tint(Palette.accent)
-                HStack {
-                    Text(progress.entries > 0 ? "\(progress.entries.formatted()) items checked in this folder" : "Checking supported locations")
-                    Spacer()
-                    Text("\(formatBytes(progress.bytes)) found so far").monospacedDigit()
-                }.font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
 struct ScanSummaryCard: View {
     @Environment(AppModel.self) private var model
     let report: ScanReport
@@ -59,7 +37,7 @@ struct ScanSummaryCard: View {
                 Text("Sizes reflect this scan. Actual savings can differ, and disk space is recovered after Trash is emptied.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             }
-        }.sheet(isPresented: $showingCoverage) { ScanCoverageView(report: report) }
+        }.sheet(isPresented: $showingCoverage) { ScanCoverageView(report: report, request: model.snapshot(for: .generatedData)?.request ?? .init(.generatedData)) }
     }
 }
 
@@ -67,6 +45,7 @@ private struct ScanCoverageView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let report: ScanReport
+    let request: ScanRequest
     @ViewState private var filter: CoverageState?
     private var rows: [ScanCoverage] { report.coverage.filter { filter == nil || $0.state == filter } }
     var body: some View {
@@ -79,17 +58,7 @@ private struct ScanCoverageView: View {
                 Spacer()
                 Button("Done") { dismiss() }.buttonStyle(.glass).keyboardShortcut(.cancelAction)
             }
-            if report.coverage.contains(where: { $0.state == .blocked }) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Some locations need permission").font(.system(size: 13, weight: .semibold))
-                    Text("Review access in macOS Settings if you want those locations included, then scan again. Luma does not change your permissions.")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                    HStack {
-                        Button("Files & folders") { model.openSettings("com.apple.preference.security?Privacy_FilesAndFolders") }
-                        Button("Full Disk Access") { model.openSettings("com.apple.preference.security?Privacy_AllFiles") }
-                    }.buttonStyle(.glass).controlSize(.small)
-                }.padding(15).frame(maxWidth: .infinity, alignment: .leading).background(Palette.peach.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-            }
+            ScanPermissionGuidance(target: request.target, blocked: report.coverage.contains { $0.state == .blocked })
             HStack {
                 Picker("Show", selection: $filter) {
                     Text("All locations (\(report.coverage.count))").tag(Optional<CoverageState>.none)
@@ -98,7 +67,7 @@ private struct ScanCoverageView: View {
                     }
                 }.frame(width: 300)
                 Spacer()
-                Button("Scan again") { dismiss(); model.destination = .clean; model.runScan(.clean) }.buttonStyle(.glass).disabled(model.busy)
+                Button("Retry same scope") { dismiss(); model.startScan(request) }.buttonStyle(.glass).disabled(!model.canStartScan)
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {

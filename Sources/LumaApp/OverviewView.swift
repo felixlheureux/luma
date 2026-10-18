@@ -8,8 +8,7 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 25) {
             hero
             LiveOverviewMetrics()
-            if let progress = model.scanProgress { ScanProgressCard(progress: progress) }
-            else if let report = model.cleanupReport { ScanSummaryCard(report: report) }
+            if let report = model.cleanupReport { ScanSummaryCard(report: report) }
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeading(title: "A good place to start", detail: "You’re in control")
                 Surface(padding: 10) {

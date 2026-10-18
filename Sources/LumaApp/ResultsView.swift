@@ -59,7 +59,8 @@ struct SelectionBar: View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.circle").foregroundStyle(Palette.accent)
             Text("\(selected.count) selected").font(.system(size: 12, weight: .medium))
-            Text(formatBytes(selected.reduce(0) { $0 + $1.bytes })).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
+            Text("Up to \(formatBytes(selected.reduce(0) { $0 + $1.bytes }))").font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
+                .help("The final logical size is verified in review, counting shared hard-linked content once.")
             Spacer()
             if !selected.isEmpty { Button("Deselect all") { model.selected = [] }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary) }
             PrimaryButton(title: "Review selection", symbol: "arrow.right") { model.review(items) }.disabled(selected.isEmpty || model.busy)
@@ -77,10 +78,11 @@ struct ReviewSheet: View {
                 SymbolTile(symbol: "trash", size: 48)
                 VStack(alignment: .leading, spacing: 5) {
                     Text("A final look before Trash").font(.system(size: 22, weight: .semibold))
-                    Text("\(model.reviewItems.count) items · \(formatBytes(model.reviewItems.reduce(0) { $0 + $1.bytes }))").foregroundStyle(.secondary)
+                    Text("\(model.reviewItems.count) items · \(formatBytes(model.reviewPlan?.logicalBytes ?? 0))").foregroundStyle(.secondary)
                 }
             }
             Text("Luma will validate each path again, then move your selection to the macOS Trash. Space is reclaimed when Trash is emptied in Finder.").font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(4)
+            Text("Logical size counts hard-linked content once across this selection.").font(.system(size: 10)).foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     ForEach(model.reviewItems) { item in
@@ -96,7 +98,7 @@ struct ReviewSheet: View {
             HStack {
                 Button("Go back") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                PrimaryButton(title: "Move to Trash", symbol: "trash") { model.moveToTrash() }.disabled(!confirmed || model.busy)
+                PrimaryButton(title: "Move to Trash", symbol: "trash") { model.moveToTrash() }.disabled(!confirmed || model.busy || model.reviewPlan == nil)
             }
         }.padding(30).frame(width: 600)
     }

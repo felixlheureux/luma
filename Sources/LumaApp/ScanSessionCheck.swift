@@ -1,0 +1,196 @@
+#if DEBUG
+import SwiftUI
+import LumaCore
+
+private final class ScanCheckGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var used = false
+    let release = DispatchSemaphore(value: 0)
+    func pauseOnce(_ event: ScanEvent) {
+        guard case .progress(let pulse) = event, pulse.phase == "Measuring application bundles" else { return }
+        lock.lock(); let pause = !used; used = true; lock.unlock()
+        if pause { _ = release.wait(timeout: .now() + 20) }
+    }
+}
+
+extension LumaAppDelegate {
+    /// Native integration QA: fixture scans only, no cleanup execution, no
+    /// permission changes outside synthetic folders, and no external app actions.
+    func checkScanSessions(output: String) {
+        Task { @MainActor in
+            let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/Fixtures/session-\(UUID())")
+            let apps = root.appendingPathComponent("Applications"), data = root.appendingPathComponent("Data")
+            let denied = data.appendingPathComponent("Denied")
+            let gate = ScanCheckGate()
+            let model = AppModel.shared
+            let oldRunner = model.scanRunner
+            defer {
+                gate.release.signal(); model.scanRunner = oldRunner
+                try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: denied.path)
+                try? FileManager.default.removeItem(at: root)
+                NSApp.terminate(nil)
+            }
+            var report: [String: Any] = ["mutationInvoked": false]
+            do {
+                try await Task.sleep(for: .seconds(2))
+                let preparation = Task.detached(priority: .utility) {
+                    try FileManager.default.createDirectory(at: denied, withIntermediateDirectories: true)
+                    try Data("readable fixture".utf8).write(to: data.appendingPathComponent("Readable"))
+                    try Data("denied fixture".utf8).write(to: denied.appendingPathComponent("Child"))
+                    for appIndex in 0..<30 {
+                        let bundle = apps.appendingPathComponent("Fixture\(appIndex).app/Contents")
+                        try FileManager.default.createDirectory(at: bundle.appendingPathComponent("Resources"), withIntermediateDirectories: true)
+                        let plist: [String: String] = ["CFBundleIdentifier": "org.example.fixture\(appIndex)", "CFBundleShortVersionString": "1.0"]
+                        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: bundle.appendingPathComponent("Info.plist"))
+                        for fileIndex in 0..<200 {
+                            try Data("synthetic fixture \(fileIndex)".utf8).write(to: bundle.appendingPathComponent("Resources/\(fileIndex)"))
+                        }
+                    }
+                }
+                try await preparation.value
+                report["fixtureApplications"] = 30; report["fixtureResourceFiles"] = 6_000
+                model.scanRunner = { request, emit in
+                    try await ScanEngine.run(request, home: root, applicationRoots: [apps], emit: { event in
+                        emit(event); gate.pauseOnce(event)
+                    })
+                }
+                model.destination = .applications; model.applicationTab = .installed
+                model.runScan(.applications)
+                try await waitForScanCheck { model.visibleApplications.count == 30 && model.visibleApplications.allSatisfy { $0.sizeState == .pending } }
+                report["metadataVisibleBeforeSizing"] = true
+                report["previewCannotInspect"] = model.busy && model.completedSnapshots[.applications] == nil
+                guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else { throw LumaError.rejected("No main window for scan QA.") }
+                try await Task.sleep(for: .milliseconds(300))
+                try saveScanCheckWindow(window, path: output + ".png")
+                model.destination = .system
+                try await Task.sleep(for: .milliseconds(200))
+                report["navigationWhileScanning"] = model.destination == .system && model.scanSessions.isBusy
+                let beforeSettings = Set(NSApp.windows.map(\.windowNumber))
+                model.showSettingsWindow?()
+                try await Task.sleep(for: .milliseconds(500))
+                let settings = NSApp.windows.filter { !beforeSettings.contains($0.windowNumber) && $0.isVisible }
+                report["settingsWhileScanning"] = !settings.isEmpty
+                for settingsWindow in settings { settingsWindow.close() }
+                let samples = model.cpuHistory.count
+                window.performClose(nil)
+                try await Task.sleep(for: .seconds(2.5))
+                report["windowClosedDuringScan"] = !window.isVisible && model.scanSessions.isBusy
+                report["monitoringContinued"] = model.cpuHistory.count > samples
+                report["menuStayedVisible"] = self.scanCheckMenuVisible()
+                model.showMainWindow?()
+                try await Task.sleep(for: .milliseconds(300))
+                report["windowReopenedDuringScan"] = window.isVisible && model.scanSessions.isBusy
+                model.cancel()
+                report["stoppingUntilWorkerReturns"] = model.scanSessions.isBusy && model.scanSessions.session?.phase == .stopping(.cancelled)
+                gate.release.signal()
+                try await waitForScanCheck { !model.busy }
+                report["cancelledInventoryNotCommitted"] = model.completedSnapshots[.applications] == nil && model.applications.isEmpty
+
+                // Retry the real 6,000-file fixture without the synthetic blocked call.
+                model.destination = .applications
+                var heartbeats = 0, maxDelay: TimeInterval = 0, previousBeat = Date()
+                let heartbeat = Task { @MainActor in
+                    while !Task.isCancelled {
+                        do { try await Task.sleep(for: .milliseconds(30)) } catch { break }
+                        let now = Date(); maxDelay = max(maxDelay, now.timeIntervalSince(previousBeat)); previousBeat = now; heartbeats += 1
+                    }
+                }
+                let started = Date()
+                model.retryScan(.applications)
+                model.destination = .storage; model.destination = .applications
+                try await waitForScanCheck { !model.busy }
+                heartbeat.cancel()
+                report["inventorySeconds"] = Date().timeIntervalSince(started)
+                report["mainActorHeartbeatsDuringInventory"] = heartbeats
+                report["maxMainActorHeartbeatDelaySeconds"] = maxDelay
+                report["completedApplicationCount"] = model.applications.count
+                report["allSizesResolved"] = model.applications.allSatisfy { $0.sizeState == .available }
+
+                let footprintGate = ScanCheckGate()
+                model.scanRunner = { request, emit in
+                    try await ScanEngine.run(request, home: root, applicationRoots: [apps], emit: { event in
+                        emit(event)
+                        if case .item = event { footprintGate.pauseOnce(.progress(.init("Measuring application bundles"))) }
+                    })
+                }
+                if let application = model.applications.first {
+                    model.inspect(application)
+                    try await waitForScanCheck { model.scanSessions.session?.preview.items.isEmpty == false }
+                    try await Task.sleep(for: .milliseconds(350))
+                    report["footprintSheetVisibleWhileScanning"] = NSApp.windows.contains { $0.attachedSheet != nil }
+                    report["footprintInspectionTracked"] = model.canCancel && model.scanTarget == .footprint && model.footprint.isEmpty
+                    model.cancel(); footprintGate.release.signal()
+                    try await waitForScanCheck { !model.busy }
+                    report["cancelledFootprintNotCommitted"] = model.completedSnapshots[.footprint] == nil && model.footprint.isEmpty
+                    model.inspectedApp = nil
+                    try await Task.sleep(for: .milliseconds(350))
+                }
+
+                // A cancelled partial scan cannot feed AppModel's review path.
+                let item = try Filesystem.item(data.appendingPathComponent("Readable"), category: .storage, safety: .userData,
+                    explanation: "Synthetic preview", consequence: "Fixture only", rule: "manual.folder-review")
+                let previewRelease = ScanCheckGate()
+                model.scanRunner = { _, emit in
+                    emit(.item(item)); emit(.progress(.init("Measuring application bundles")))
+                    previewRelease.pauseOnce(.progress(.init("Measuring application bundles")))
+                    return ScanResult()
+                }
+                model.startScan(.init(.storage, root: data))
+                try await waitForScanCheck { model.scanSessions.session?.preview.items.count == 1 }
+                model.cancel(); previewRelease.release.signal()
+                try await waitForScanCheck { !model.busy }
+                model.selected = [item.id]; model.authorizedRoots = [data]; model.error = nil
+                model.review([item], source: .storage)
+                report["partialReviewRejected"] = model.reviewPlan == nil && model.error != nil && !model.showingReview
+                model.error = nil; model.selected = []
+
+                model.scanRunner = { request, emit in try await ScanEngine.run(request, home: root, applicationRoots: [apps], emit: emit) }
+                try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: denied.path)
+                model.startScan(.init(.storage, root: data))
+                try await waitForScanCheck { !model.busy }
+                report["deniedCoverageReported"] = model.snapshot(for: .storage)?.result.report.coverage.contains { $0.state == .blocked } == true
+                report["readableResultsRetained"] = model.storage.count == 1
+                let firstSnapshot = model.snapshot(for: .storage)?.finishedAt
+                try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: denied.path)
+                model.retryScan(.storage)
+                try await waitForScanCheck { !model.busy }
+                report["permissionRetrySameScope"] = model.snapshot(for: .storage)?.request.root == data && model.storageRoot == data
+                report["permissionRetrySucceeded"] = model.storage.count == 2 && model.snapshot(for: .storage)?.result.report.isComplete == true
+                report["newSnapshotTimestamp"] = model.snapshot(for: .storage)?.finishedAt != firstSnapshot
+                report["nothingSelected"] = model.selected.isEmpty
+            } catch { report["error"] = error.localizedDescription }
+            do { try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output)) }
+            catch { FileHandle.standardError.write(Data("Scan QA report failed: \(error.localizedDescription)\n".utf8)) }
+        }
+    }
+
+    private func waitForScanCheck(_ condition: @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(30)
+        while !condition() && Date() < deadline { try await Task.sleep(for: .milliseconds(30)) }
+        guard condition() else { throw LumaError.rejected("Native scan QA timed out.") }
+    }
+
+    private func saveScanCheckWindow(_ window: NSWindow, path: String) throws {
+        window.displayIfNeeded()
+        let capture = Process()
+        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        capture.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
+        capture.standardOutput = FileHandle.nullDevice; capture.standardError = FileHandle.nullDevice
+        try capture.run(); capture.waitUntilExit()
+        if capture.terminationStatus == 0 { return }
+        guard let view = window.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        window.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in: view.bounds, to: bitmap) }
+        let image = NSImage(size: view.bounds.size, flipped: false) { rect in
+            window.effectiveAppearance.performAsCurrentDrawingAppearance {
+                NSColor.windowBackgroundColor.setFill(); rect.fill()
+                bitmap.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+            }
+            return true
+        }
+        if let tiff = image.tiffRepresentation,
+           let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+            try png.write(to: URL(fileURLWithPath: path))
+        }
+    }
+}
+#endif

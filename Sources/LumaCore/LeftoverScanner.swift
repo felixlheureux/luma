@@ -3,17 +3,26 @@ import CoreServices
 
 /// Ownership discovery is metadata-only: no bundle sizing or file hashing.
 public enum ApplicationPresence {
-    public static func bundleIdentifiers(home: URL, roots: [URL]? = nil) throws -> Set<String> {
+    public static func bundleIdentifiers(home: URL, roots: [URL]? = nil, emit: ScanEmitter = { _ in }) throws -> Set<String> {
         let roots = roots ?? [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications"), URL(fileURLWithPath: "/System/Applications")]
         var identifiers: Set<String> = []
+        var visited = 0
         let embeddedLocations = ["Contents/PlugIns", "Contents/Extensions", "Contents/XPCServices", "Contents/Library/LoginItems", "Contents/Frameworks", "Contents/MacOS"]
         func register(_ bundleURL: URL, depth: Int = 0) throws {
             try Task.checkCancellation()
+            guard try Filesystem.attributes(bundleURL)[.type] as? FileAttributeType == .typeDirectory else { return }
+            emit(.progress(.init("Checking installed owners and helpers", current: bundleURL.lastPathComponent)))
             if let identifier = Bundle(url: bundleURL)?.bundleIdentifier { identifiers.insert(identifier.lowercased()) }
             guard depth < 3 else { return }
             for path in embeddedLocations {
+                try Task.checkCancellation()
                 let directory = bundleURL.appendingPathComponent(path)
-                guard let children = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [.skipsHiddenFiles]) else { continue }
+                let children: [URL]
+                do { children = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [.skipsHiddenFiles]) }
+                catch {
+                    if GeneratedDataScanner.failureState(error) == .missing { continue }
+                    throw error
+                }
                 for child in children where ["app", "appex", "xpc", "framework", "bundle"].contains(child.pathExtension) {
                     guard (try? child.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { continue }
                     try register(child, depth: depth + 1)
@@ -21,7 +30,13 @@ public enum ApplicationPresence {
             }
         }
         for root in roots {
-            guard FileManager.default.fileExists(atPath: root.path) else { continue }
+            try Task.checkCancellation()
+            emit(.progress(.init("Checking installed owners", current: root.lastPathComponent)))
+            do { _ = try Filesystem.attributes(root) }
+            catch {
+                if GeneratedDataScanner.failureState(error) == .missing { continue }
+                throw error
+            }
             try Filesystem.validatePath(root)
             var readError: Error?
             guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [.skipsHiddenFiles, .skipsPackageDescendants], errorHandler: { _, error in readError = error; return false }) else {
@@ -29,6 +44,9 @@ public enum ApplicationPresence {
             }
             for case let url as URL in walker {
                 try Task.checkCancellation()
+                visited += 1
+                guard visited <= 100_000 else { throw LumaError.rejected("Installed ownership inventory exceeded its entry limit. Leftover review is unavailable.") }
+                if visited % 128 == 0 { emit(.progress(.init("Checking installed owners", current: url.lastPathComponent, entries: visited))) }
                 guard url.pathExtension == "app", (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { continue }
                 try register(url)
             }
@@ -66,6 +84,7 @@ public struct LeftoverScanner: Scanner {
     public let home: URL
     private let applicationRoots: [URL]?
     private let lookup: @Sendable (String) -> Bool
+    private let emit: ScanEmitter
     public static let knownPaths: [KnownLeftoverPath] = [
         .init(relativePath: "Library/Application Support/Spotify", owner: "com.spotify.client"),
         .init(relativePath: "Library/Application Support/Slack", owner: "com.tinyspeck.slackmacgap"),
@@ -83,8 +102,9 @@ public struct LeftoverScanner: Scanner {
     ]
 
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, applicationRoots: [URL]? = nil,
-                lookup: @escaping @Sendable (String) -> Bool = ApplicationPresence.launchServicesContains) {
-        self.home = home; self.applicationRoots = applicationRoots; self.lookup = lookup
+                lookup: @escaping @Sendable (String) -> Bool = ApplicationPresence.launchServicesContains,
+                emit: @escaping ScanEmitter = { _ in }) {
+        self.home = home; self.applicationRoots = applicationRoots; self.lookup = lookup; self.emit = emit
     }
 
     public static func isSupportedIdentifier(_ id: String) -> Bool {
@@ -100,24 +120,27 @@ public struct LeftoverScanner: Scanner {
         let namedPaths = knownPaths + Rules.generated.compactMap { rule in
             rule.profileLeaves.isEmpty ? rule.owner.map { KnownLeftoverPath(relativePath: rule.relativePath, owner: $0) } : nil
         }
-        return namedPaths.contains { $0.owner == owner && home.appendingPathComponent($0.relativePath).standardizedFileURL == item.url.standardizedFileURL } || locations.contains { location in
-            home.appendingPathComponent(location.directory).appendingPathComponent(owner + location.suffix).standardizedFileURL == item.url.standardizedFileURL
+        return namedPaths.contains { $0.owner == owner && Filesystem.samePath(home.appendingPathComponent($0.relativePath), item.url) } || locations.contains { location in
+            Filesystem.samePath(home.appendingPathComponent(location.directory).appendingPathComponent(owner + location.suffix), item.url)
         }
     }
 
     public func scan() async throws -> ScanReport {
-        let installed = try ApplicationPresence.bundleIdentifiers(home: home, roots: applicationRoots)
+        let started = Date()
+        let installed = try ApplicationPresence.bundleIdentifiers(home: home, roots: applicationRoots, emit: emit)
         var report = ScanReport()
         var ownerCache: [String: Bool] = [:]
         for location in Self.locations {
             try Task.checkCancellation()
             let directory = home.appendingPathComponent(location.directory)
-            guard FileManager.default.fileExists(atPath: directory.path) else { continue }
+            emit(.progress(.init("Checking potential leftovers", current: location.directory)))
             let children: [URL]
             do {
                 try Filesystem.validatePath(directory)
                 children = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-            } catch { report.notices.append("\(location.directory): \(error.localizedDescription)"); continue }
+            } catch is CancellationError { throw CancellationError() }
+            catch { report.recordFailure(error, at: directory, category: .related, rule: id, emit: emit, missingIsExpected: true); continue }
+            guard children.count <= 100_000 else { throw LumaError.rejected("Too many entries in a leftover location. Choose a narrower workflow.") }
             for url in children {
                 try Task.checkCancellation()
                 let name = url.lastPathComponent
@@ -132,15 +155,18 @@ public struct LeftoverScanner: Scanner {
                         let metadata = url.appendingPathComponent(".com.apple.containermanagerd.metadata.plist")
                         guard let data = try? Data(contentsOf: metadata),
                               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-                              plist["MCMMetadataIdentifier"] as? String == owner else { continue }
+                              plist["MCMMetadataIdentifier"] as? String == owner else {
+                            throw LumaError.rejected("Container ownership metadata is unreadable or does not match this identifier.")
+                        }
                     }
                     let item = try Filesystem.item(url, category: .related, safety: .review,
                         explanation: "Potential leftover: this exact bundle identifier has no owner in the installed-app and embedded-helper inventory or macOS Launch Services. This is evidence to review, not proof that the data is unnecessary.",
                         consequence: "May contain app documents, settings, or offline content you want when reinstalling. Nothing is selected automatically. Shared group containers and fuzzy folder-name matches are excluded.",
-                        rule: "application.leftover.exact-identifier", owner: owner)
-                    if item.bytes > 0 { report.items.append(item) }
+                        rule: "application.leftover.exact-identifier", owner: owner,
+                        progress: { entries, bytes in emit(.progress(.init("Inspecting potential leftover", current: url.lastPathComponent, entries: entries, bytes: bytes))) })
+                    if item.bytes > 0 { report.recordItem(item, emit: emit) }
                 } catch is CancellationError { throw CancellationError() }
-                catch { report.notices.append("\(name): \(error.localizedDescription)") }
+                catch { report.recordFailure(error, at: url, category: .related, rule: id, emit: emit) }
                 report.visited += 1
             }
         }
@@ -156,12 +182,14 @@ public struct LeftoverScanner: Scanner {
                 let item = try Filesystem.item(url, category: .related, safety: .review,
                     explanation: "Potential leftover: an explicit project-owned rule maps this exact path to \(path.owner), and no installed owner or helper was found. This is a known mapping, not a fuzzy folder-name match.",
                     consequence: "May contain settings, app documents, extensions, sessions, or offline content worth keeping for a reinstall. Review every selection; this is not automatically disposable data.",
-                    rule: "application.leftover.exact-identifier", owner: path.owner)
-                if item.bytes > 0 { report.items.append(item) }
+                    rule: "application.leftover.exact-identifier", owner: path.owner,
+                    progress: { entries, bytes in emit(.progress(.init("Inspecting known app data", current: url.lastPathComponent, entries: entries, bytes: bytes))) })
+                if item.bytes > 0 { report.recordItem(item, emit: emit) }
             } catch is CancellationError { throw CancellationError() }
-            catch { report.notices.append("\(url.lastPathComponent): \(error.localizedDescription)") }
+            catch { report.recordFailure(error, at: url, category: .related, rule: id, emit: emit) }
         }
         report.items.sort { $0.bytes > $1.bytes }
+        report.duration = Date().timeIntervalSince(started)
         return report
     }
 }

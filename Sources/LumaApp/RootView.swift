@@ -6,7 +6,6 @@ struct RootView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @ViewState private var columnVisibility: NavigationSplitViewVisibility = .all
-    @AppStorage("luma.appearance") private var appearance = "system"
     var body: some View {
         @Bindable var model = model
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -18,6 +17,8 @@ struct RootView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 28) {
                             pageHeader
+                            ScanSessionPanel()
+                            if let target = model.currentScanTarget { CompletedScanCaption(target: target) }
                             Group {
                                 switch model.destination ?? .overview {
                                 case .overview: OverviewView()
@@ -50,16 +51,6 @@ struct RootView: View {
                         .padding(.vertical, 4)
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Picker("Appearance", selection: $appearance) {
-                            Label("System", systemImage: "circle.lefthalf.filled").tag("system")
-                            Label("Light", systemImage: "sun.max").tag("light")
-                            Label("Dark", systemImage: "moon").tag("dark")
-                        }
-                    } label: { Image(systemName: appearance == "dark" ? "moon" : appearance == "light" ? "sun.max" : "circle.lefthalf.filled") }
-                        .help("Appearance: System, Light, or Dark")
-                }
-                ToolbarItem(placement: .primaryAction) {
                     Button { model.showingSearch.toggle() } label: { Image(systemName: "magnifyingglass") }
                         .help("Search tools and scanned files (⌘K)").keyboardShortcut("k", modifiers: .command)
                         .popover(isPresented: $model.showingSearch, arrowEdge: .bottom) { SearchView() }
@@ -89,11 +80,12 @@ struct RootView: View {
                 Text((model.destination ?? .overview).subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
             }
             Spacer()
-            if model.busy {
-                Button { model.cancel() } label: { Label("Cancel scan", systemImage: "stop.circle") }.buttonStyle(.glass)
-            } else if [.overview, .clean, .applications].contains(model.destination ?? .overview) {
-                Button { model.runScan() } label: { Label(model.destination == .overview ? "Smart check" : "Scan again", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") }
-                    .buttonStyle(.glass).controlSize(.large).font(.system(size: 11, weight: .medium)).keyboardShortcut("r", modifiers: .command)
+            if model.canCancel {
+                Button { model.cancel() } label: { Label(model.scanSessions.isBusy ? "Cancel scan" : "Cancel review", systemImage: "stop.circle") }.buttonStyle(.glass)
+            }
+            if [.overview, .clean, .applications].contains(model.destination ?? .overview) {
+                Button { model.runScan() } label: { Label(model.scanSessions.isBusy ? "Queue new scan" : model.destination == .overview ? "Local check" : "Scan again", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") }
+                    .buttonStyle(.glass).controlSize(.large).font(.system(size: 11, weight: .medium)).keyboardShortcut("r", modifiers: .command).disabled(!model.canStartScan)
             }
         }
     }
@@ -185,13 +177,13 @@ struct WindowStatusBar: View {
             if model.busy { ProgressView().controlSize(.mini) }
             else { Circle().fill(Palette.mint).frame(width: 5, height: 5) }
             Text(model.status).lineLimit(1)
-            if !model.notices.isEmpty {
+            if !model.currentNotices.isEmpty {
                 Button { showNotices.toggle() } label: { Image(systemName: "info.circle") }.buttonStyle(.plain)
                     .popover(isPresented: $showNotices) {
                         ScrollView { VStack(alignment: .leading, spacing: 10) {
                             Text("Scan coverage").font(.headline)
-                            Text("These items were skipped. Their contents are not included in totals.").foregroundStyle(.secondary)
-                            ForEach(Array(model.notices.enumerated()), id: \.offset) { _, notice in Text(notice).textSelection(.enabled) }
+                            Text("From this feature's last completed snapshot. These excluded contents are absent from totals.").foregroundStyle(.secondary)
+                            ForEach(Array(model.currentNotices.enumerated()), id: \.offset) { _, notice in Text(notice).textSelection(.enabled) }
                         }.padding(20) }.frame(width: 420, height: 330)
                     }
             }

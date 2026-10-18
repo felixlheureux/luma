@@ -33,6 +33,13 @@ public struct FileIdentity: Codable, Sendable, Equatable {
     public let size: Int64
     public let modified: Date
     public let treeDigest: String
+    public var location: FileLocation? = nil
+
+    // Movement changes location, but not the recoverable object identity.
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.device == rhs.device && lhs.inode == rhs.inode && lhs.size == rhs.size
+            && lhs.modified == rhs.modified && lhs.treeDigest == rhs.treeDigest
+    }
 }
 
 public struct CleanupItem: Identifiable, Codable, Sendable, Equatable {
@@ -91,6 +98,8 @@ public struct ScanProgress: Sendable {
     public let bytes: Int64
 }
 
+public enum ApplicationSizeState: String, Sendable { case pending, available, unavailable }
+
 public struct ApplicationRecord: Identifiable, Sendable {
     public var id: String { url.path }
     public let url: URL
@@ -98,6 +107,7 @@ public struct ApplicationRecord: Identifiable, Sendable {
     public let bundleID: String
     public let version: String
     public let bytes: Int64
+    public var sizeState: ApplicationSizeState = .available
 }
 
 public struct DuplicateGroup: Identifiable, Sendable {
@@ -114,9 +124,15 @@ public struct CleanupRecord: Identifiable, Codable, Sendable {
     public let bytes: Int64
     public var restored: Bool
     public let identity: FileIdentity?
-    public init(id: UUID = UUID(), date: Date = Date(), original: URL, trashed: URL, bytes: Int64, identity: FileIdentity? = nil) {
+    public let planID: UUID?
+    public let planSource: CleanupSource?
+    /// Content counted once across the plan, while bytes remains this item's size.
+    public let accountedBytes: Int64?
+    public init(id: UUID = UUID(), date: Date = Date(), original: URL, trashed: URL, bytes: Int64, identity: FileIdentity? = nil,
+                planID: UUID? = nil, planSource: CleanupSource? = nil, accountedBytes: Int64? = nil) {
         self.id = id; self.date = date; self.original = original
         self.trashed = trashed; self.bytes = bytes; self.identity = identity; restored = false
+        self.planID = planID; self.planSource = planSource; self.accountedBytes = accountedBytes
     }
 }
 

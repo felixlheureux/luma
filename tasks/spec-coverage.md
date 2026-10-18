@@ -1,0 +1,74 @@
+# Product-spec coverage map
+
+Planning baseline: Luma 0.2.0, commit `d471bbcee58d816b5c5cc8ec0036fcdc1546d6e9`, reviewed on 2026-10-17. This map links the [canonical specification](../Documentation/Product-Spec.md) to current foundations and implementation tasks. A task link means planned coverage, not a completed feature. The table preserves the 0.2.0 baseline; implementation updates below distinguish delivered work from that snapshot.
+
+| Spec area | Current baseline | Task coverage |
+| --- | --- | --- |
+| 6–7: Overview / Smart Check | Live summary and generated-data/app inventory entry points; no full combined check | [003](003-scan-sessions.md), [013](013-smart-check.md), [023](023-history-scheduling-alerts.md), [032](032-unused-applications.md) |
+| 8–13: Clean, classification, user caches, logs, temporary and browser data | 18 bounded generated-data rules, progress/coverage, no default selection; broader/granular support pending | [050](050-expanded-cache-discovery.md) early batch; [008](008-community-rules.md), [031](031-granular-cleanup.md) later depth |
+| 14: Mail attachments/caches | No specialized Mail analysis/removal | [029](029-mail-storage-review.md) read-only; [039](039-mail-cache-feasibility.md) conditional removal assessment |
+| 15 / 52: Developer cleanup/projects | Bounded Xcode/SwiftPM/Homebrew/Node-related caches; no project browser | [010](010-developer-projects.md), [036](036-more-developer-ecosystems.md), [037](037-container-storage.md) |
+| 16: Trash | Native Trash moves, recorded locations, verified Restore for new records; no dedicated usage review | [030](030-trash-review.md); Finder handles permanent emptying in this planned slice |
+| 17–18 / 55: Downloads/installers | Chosen-folder filters and exact duplicates; no focused Downloads review | [011](011-downloads-review.md), [015](015-duplicate-review.md) |
+| 19: Local iPhone/iPad backups | No specialized backup analysis | [012](012-device-backups.md) with explicit supported-action gate |
+| 20–21: Binary/language-resource removal | No bundle modification | [041](041-bundle-resource-integrity.md) conditional assessment; omission is permitted by the spec if integrity cannot be preserved |
+| 22–27: Optimizer, memory/swap, heavy/hung apps | Meaningful CPU/memory/pressure/swap and grouped consumers; no sustained/hung-app recommendation engine | [017](017-monitoring-depth.md), [018](018-process-insights.md), [051](051-memory-relief.md) |
+| 28–29: Login/background items | No specialized inventory/control surface | [019](019-startup-background.md) within supported platform capabilities |
+| 30–31: Purgeable storage/snapshots | Available capacity shown; no dedicated reclaimability/snapshot inspection | [033](033-purgeable-snapshots.md) with conditional supported actions |
+| 32–35: Maintenance | No general maintenance runner | [026](026-maintenance-tools.md), [033](033-purgeable-snapshots.md); each operation needs separate platform evidence |
+| 36–41: App inventory, footprint, uninstall, relationships | Inventory, four exact identifier data paths, reviewed uninstall, and separate named leftover mappings | [003](003-scan-sessions.md), [005](005-application-footprints.md), [008](008-community-rules.md) |
+| 42: App reset | No dedicated reset review | [006](006-application-reset.md) |
+| 43: Leftovers | Exact identifiers, explicit named mappings, installed/helper/Launch Services owner checks | [005](005-application-footprints.md), [008](008-community-rules.md) refine shared evidence without fuzzy deletion |
+| 44: Unused apps | No usage-evidence review | [032](032-unused-applications.md) |
+| 45: Third-party app updates | No source-backed update discovery | [020](020-application-updates.md), separate from Luma's updater |
+| 46–51: Storage, volumes, hierarchy, map, file filters | Immediate-child chosen-folder sizes/map and filters; no drill-down or external cleanup | [004](004-storage-browser.md), [014](014-incremental-index.md), [016](016-volume-analysis.md); [038](038-external-cleanup-support.md) conditional mutation assessment |
+| 53–55: Exact duplicates | Size/partial/full SHA-256 verification and UI keep-one review; core selection-wide enforcement pending | [001](001-cleanup-plans.md), [014](014-incremental-index.md), [015](015-duplicate-review.md) |
+| 56: Similar photos | No perceptual comparison | [022](022-similar-photos.md) for folders; [040](040-photos-library-support.md) conditional provider assessment |
+| 57–60: Privacy, browser state, recent items, permissions | Native privacy-settings shortcuts; no broad private-database access | [021](021-privacy-workflows.md), [042](042-recent-activity-privacy.md) |
+| 61–64: CPU, memory, battery | Live CPU/memory/pressure/swap/thermal state and battery charge; deeper supported fields pending | [017](017-monitoring-depth.md), [018](018-process-insights.md), [051](051-memory-relief.md) |
+| 65–69: Disk health, capacity alerts, network, thermals, devices | Capacity and thermal-state foundation; no broad device/diagnostic coverage | [016](016-volume-analysis.md), [017](017-monitoring-depth.md), [023](023-history-scheduling-alerts.md), [034](034-disk-and-thermal-diagnostics.md), [035](035-connected-devices.md), [052](052-network-diagnostics.md) |
+| 70: Menu companion | Live companion enabled by default, persists after window close, exits on explicit Quit | [007](007-native-ux-and-release.md), [017](017-monitoring-depth.md), [035](035-connected-devices.md), [044](044-scale-and-resilience.md) |
+| 71: Recommendations/alerts | Basic contextual navigation; no mature trend/notification policy | [013](013-smart-check.md), [018](018-process-insights.md), [023](023-history-scheduling-alerts.md), [032](032-unused-applications.md), [035](035-connected-devices.md) |
+| 72: Ignores | Persistent file/folder path ignores and core enforcement | [043](043-ignore-policies.md) extends app/rule/volume/project/group policies |
+| 73–74 / 97: Search, favorites, power-user details | Basic search/navigation and path/rule/identity disclosures; no unified tool/favorites registry | [024](024-search-favorites.md), [031](031-granular-cleanup.md) |
+| 75–76: Scan/cleanup history | Durable file-operation intents, Activity, reconciliation, verified single-record Restore; no scan-summary history or session Undo UI | [001](001-cleanup-plans.md), [023](023-history-scheduling-alerts.md), [030](030-trash-review.md), [048](048-cleanup-session-undo.md) |
+| 77–79 / 89: Architecture and scan lifecycle | Read-only scanners, common candidates, off-main work; partial progress and global job coordination | [001](001-cleanup-plans.md), [003](003-scan-sessions.md), [014](014-incremental-index.md) |
+| 80–83: Safety, protected paths, symlinks, races | Descriptor-relative path/identity/parent/ownership checks, byte-exact tree records, supported-type policy and durable journal; residual final-move races documented | [001](001-cleanup-plans.md), [002](002-filesystem-identity.md), [038](038-external-cleanup-support.md), [044](044-scale-and-resilience.md), [047](047-provider-aware-filesystem.md) |
+| 2.1 / 2.5 / 47 / 53 / 90–94: Provider/dataless access | Per-feature cloud exclusions, without a central access/materialization policy | [047](047-provider-aware-filesystem.md); ordinary provider-managed mutations remain unavailable in 0.3.0 |
+| 84–86: Rules/community workflow | Rules and mappings compiled into Swift; contribution/safety documentation exists | [008](008-community-rules.md), [028](028-contributor-tooling.md), [031](031-granular-cleanup.md) |
+| 87–88: Persistence/indexing | JSON operation journal and preferences; no persistent analysis index | [014](014-incremental-index.md), [023](023-history-scheduling-alerts.md) |
+| 90–94: Performance, permissions, security, testing | Isolated cancellable scan workers, bounded previews/queueing, per-feature snapshots, contextual permission retry, safety fixtures, CI and native lifecycle checks; broader validation pending | [002](002-filesystem-identity.md), [003](003-scan-sessions.md), [007](007-native-ux-and-release.md), [044](044-scale-and-resilience.md), [045](045-local-diagnostics.md), [046](046-stable-milestone-audit.md) |
+| 95–99: Native UI, review, accessibility, localization | Native glass, System/light/dark, reviewed selections, initial accessibility labels; full audit/localization pending | [007](007-native-ux-and-release.md), [024](024-search-favorites.md), [025](025-localization-accessibility.md), [046](046-stable-milestone-audit.md) |
+| 100: Distribution and Luma updates | Tagged GitHub development releases, verified DMGs/checksums; no tap or in-app updater | [009](009-homebrew-distribution.md); [027](027-luma-secure-updates.md) deferred to future credentials |
+| 2.5 / 101 / 108.16: Privacy and logging | Local processing, no telemetry/account/root daemon; local diagnostic modes need export/redaction hardening | [045](045-local-diagnostics.md), [046](046-stable-milestone-audit.md) |
+| 102–104: Mature tree and product boundary | Working subset of the canonical product; navigation is not full feature coverage | This map and [046](046-stable-milestone-audit.md); optional no-go outcomes remain explicit |
+| 105–113: Dependency/ownership policy | No third-party runtime dependencies in the current baseline | [008](008-community-rules.md), [014](014-incremental-index.md), [022](022-similar-photos.md), [025](025-localization-accessibility.md), [027](027-luma-secure-updates.md), [028](028-contributor-tooling.md); review dependencies when introduced |
+
+## Updating this map
+
+Replace a planning statement with Implemented only after the task's acceptance criteria and actual code/test/native evidence support it. Use Partial when a feature has a narrower delivered slice. Record Unsupported/No-go for an evaluated capability that cannot meet the safety or platform requirements, and Deferred for work waiting on a stated external condition. Link the evidence and update public scope without claiming that task creation completed the spec.
+
+Permanent in-app Trash emptying, broad arbitrary app replacement, destructive Mail-internal operations, and other unsupported actions do not become authorized implementations through a nearby task. Keep the current native handoff/read-only behavior until a separately bounded supported design meets the product principles.
+
+
+## Compiled-reference scope audit
+
+The [compiled audit](compiled-reference-audit.md) maps every original task (001–048) to observed executable evidence or independent Luma requirements. It expands named assessment batches in 031 and clarifies 011/020. [049 — AI-tool storage](049-ai-tool-storage.md) is a new reference-driven extension for agent caches and local-model assets, outside the canonical spec's explicitly listed baseline. It remains Planned; no cache/model support is claimed from task creation.
+
+## Implementation update — task 001
+
+Implemented complete core cleanup plans and sole journal execution entry point, overlap/repeated-object rejection, unique logical review totals, full-content live duplicate keepers, whole-plan preflight and per-item context/identity checks. Durable records preserve plan IDs and unique contributions, including interrupted recovery. All 83 fixture tests pass; actual review-sheet presentation and rejection of missing duplicate evidence pass in both appearances using disposable native fixtures. See [001](001-cleanup-plans.md). This completes the selection-wide core slice of spec sections 53–54, 76, 80 and 83; task 002 now delivers descriptor identity hardening; provider policy and grouped session Undo remain planned.
+
+## Priority and scope update — memory and network
+
+Task 050 separates a first bounded cache-rule batch from 031 and joins the 0.3.0 gates. Tasks 017–019 move into the near-term parallel track; network/battery telemetry no longer blocks memory/process or startup review. Task 051 explicitly covers spec section 23's guided memory action, supported reclaim assessment and measured outcomes. Task 052 covers section 67's optional active quality test separately from passive counters. All these changes are Planned, not implemented.
+
+Task [053](053-disk-activity.md) adds planned read-only disk activity/rate assessment and supported attribution as a troubleshooting extension. It is distinct from 034 hardware health and 033 capacity/reclaimability. No compiled-reference implementation or current API/provider support is claimed.
+
+## Task 002 — Filesystem identity boundary
+
+Implemented descriptor-relative inspection and persisted parent-chain evidence, exact-byte path/record encoding, supported regular-file/directory policy, bounded internal application links, and descriptor-relative exclusive Restore. All 96 tests in nine suites pass, including deterministic mutation-boundary substitutions, a real nested case-sensitive APFS volume and native journal Trash/Restore of disposable metadata fixtures. Old journals retain read/reconciliation compatibility; historical entries without parent evidence require Finder Restore. The remaining native Trash pathname and Restore source-basename races are documented rather than claimed atomic. See [002](002-filesystem-identity.md) and [Safety.md](../Documentation/Safety.md). This closes the scoped identity/encoding slice of sections 80–83, 93–94 and 108.1–108.3; provider policy, broader filesystem resilience and reference runtime comparisons remain separately tracked.
+
+## Task 003 — Scan lifecycle and progressive inspection
+
+Implemented a single-worker scan controller with request IDs/scopes, progress/exclusions, explicit stopping/terminal states and operation-specific stall/timeout bounds. Metadata-first application inventory distinguishes pending/unavailable/measured sizes. Storage, footprints, leftovers and duplicates stream read-only batches; failed/cancelled/replaced output cannot overwrite a dated completed snapshot or feed AppModel cleanup review. Permission retry preserves target and scope, and owner-inventory read failures stop leftover detection. All 111 tests in 11 suites pass in optimized validation, including native disposable Trash/Restore. Light/dark native QA checks 30 synthetic apps/6,000 resource files, active inspection cancellation, Settings/navigation/window/menu responsiveness and scoped permission retry with no cleanup execution. See [003](003-scan-sessions.md). Existing traversal scopes are retained; task 047 remains the provider/access release gate. Reference runtime/TCC/privacy-toggle coverage is not claimed by fixture or static-resource checks.

@@ -17,7 +17,7 @@ Every proposed cleanup has a path, an explanation, an ownership rule, and a cons
 - **Explore storage.** Choose a folder, see a proportional map, and filter files by size, age, or installer type. Personal files are never classified as junk.
 - **Verify duplicates.** Compare sizes, partial hashes, and full SHA-256 content. Hard-linked copies count once, and at least one copy must remain per group.
 - **Read meaningful system metrics.** See CPU, memory pressure, app/wired/compressed memory, reusable file cache, swap, thermals, battery charge, and resource consumers grouped by app.
-- **See your scan coverage.** Follow progress as locations are inspected, review results by category, and distinguish empty or absent locations from permission failures and safety exclusions.
+- **Follow and cancel scans.** Application rows appear before bundle sizing finishes. Every scan and app inspection has tracked progress and cancellation; replacement scans queue until the old worker stops. Previews stay read-only, completed snapshots retain their timestamps, and permission retries keep the chosen scope.
 - **Recover interrupted operations.** Cleanup and Restore record their intent before moving files. Activity reconciles interrupted moves, verifies identities before Restore, and preserves occupied destinations.
 - **Keep useful information nearby.** Open the compact menu-bar companion for live metrics and shortcuts. Expand an app’s resource row to inspect its helper processes.
 
@@ -27,7 +27,7 @@ The interface follows **System appearance by default**, with optional Light and 
 
 | Area | Current scope | Remaining work |
 | --- | --- | --- |
-| Clean | 18 audited rules; browser profile caches, package caches, simulator diagnostics, live progress, and scan coverage | More cache versions and ecosystems, finer selection, device backups |
+| Clean | 18 audited rules; browser profile caches, package caches, simulator diagnostics, cancellable progress, and scan coverage | More cache versions and ecosystems, finer selection, device backups |
 | Applications | Inventory, exact footprints, reviewed uninstall, potential leftovers | App reset, broader ownership evidence, and update discovery |
 | Storage | Chosen-folder map and file filters | Nested browsing, volumes, developer projects, and incremental indexing |
 | Duplicates | Exact content verification | Similar-photo analysis and comparison |
@@ -81,10 +81,10 @@ Luma analyzes files locally. It has no telemetry, account system, root helper, o
 - Personal files, generated data, and review candidates remain distinct.
 - Leftovers are **potentially unclaimed data**, not proof that a file is unnecessary. They can contain documents or preferences worth keeping for a reinstall.
 - Apple data, shared group containers, fuzzy folder-name matches, unsafe links, and protected locations are excluded from leftover cleanup.
-- The Safety Engine rechecks paths, identities, owners, volumes, ignore rules, and stale results before Trash.
-- Multi-item cleanup stops on failure and records completed moves. Restore works while the item remains in Trash and its original location is available.
+- The Safety Engine rechecks descriptor-pinned paths and parent chains, identities, owners, volumes, ignore rules, and stale results before Trash.
+- Multi-item cleanup stops on failure and records completed moves. Restore requires an unchanged Trash item and original parent chain; older records without parent evidence use Finder Restore.
 
-This is an early development build. Cleanup and Restore use a durable journal, with file identity checks and recovery review in Activity. Further filesystem race hardening remains on the roadmap. Read the [safety model](Documentation/Safety.md) before cleanup of important data.
+This is an early development build. Cleanup and Restore use a durable journal, with file identity checks and recovery review in Activity. Descriptor checks strengthen identity validation; the final native Trash pathname race remains documented. Read the [safety model](Documentation/Safety.md) before cleanup of important data.
 
 ## Development
 
@@ -95,11 +95,11 @@ bash Scripts/check-window-lifecycle.sh
 bash Scripts/preview.sh
 ```
 
-The tests cover protected paths, symlink escapes, stale scans, ownership, reinstalled apps, browser and package cache boundaries, permission exclusions, active tools, interrupted cleanup and restore, hard links, hashing, memory accounting, and process grouping. Fixtures are disposable and project-local. After building the app, the lifecycle smoke check requires a logged-in desktop session and verifies that closing the window preserves monitoring, reopening works, and explicit Quit exits.
+The tests cover scan replacement, late events, stopping/timeouts, progressive inventory, scoped permission retry, protected paths, symlink escapes, stale scans, ownership, reinstalled apps, browser and package cache boundaries, permission exclusions, active tools, interrupted cleanup and restore, hard links, hashing, memory accounting, and process grouping. Fixtures are disposable and project-local. After building the app, the lifecycle smoke check requires a logged-in desktop session and verifies that closing the window preserves monitoring, reopening works, and explicit Quit exits.
 
 The preview script captures light and dark app windows without cleaning files. Its fallback cannot reproduce every native composited glass layer when window capture is unavailable. Generated screenshots and local diagnostics are excluded from the repository.
 
-Shortcuts: `Command-K` searches, `Command-R` rescans, `Command-1` through `Command-9` navigate, and `Shift-Command-D` changes the manual appearance override. Choose System in the toolbar to follow macOS again.
+Shortcuts: `Command-K` searches, `Command-R` rescans, `Command-1` through `Command-9` navigate, and `Shift-Command-D` changes the manual appearance override. Choose System in Settings to follow macOS again.
 
 ## Contributing
 
@@ -110,3 +110,5 @@ The commercial app supplied during development was a product reference only. No 
 ## License
 
 [GNU GPL version 3 or later](LICENSE).
+
+Debug native scan QA: build with `bash Scripts/build-app.sh debug`, then run `bash Scripts/check-scan-sessions.sh` in a logged-in desktop session. It checks light/dark native scan and inspection cancellation, read-only previews, scoped permission retry, navigation, Settings, window reopening and continued menu monitoring using 30 synthetic apps with 6,000 files. It never invokes cleanup. Timing measurements describe that fixture on the current machine, not a universal responsiveness guarantee.

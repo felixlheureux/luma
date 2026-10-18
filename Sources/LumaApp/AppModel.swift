@@ -55,20 +55,51 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var inspectedApp: ApplicationRecord?
     var selected: Set<String> = []
     var scanTask: Task<Void, Never>?
-    var busy = false
-    var status = "Ready when you are"
-    var lastScan: Date?
-    var notices: [String] = []
+    let scanSessions = ScanController()
+    @ObservationIgnored var scanRunner: @Sendable (ScanRequest, @escaping ScanEmitter) async throws -> ScanResult = {
+        try await ScanEngine.run($0, emit: $1)
+    }
+    private var operationBusy = false
+    var busy: Bool {
+        get { operationBusy || scanSessions.isBusy }
+        set { operationBusy = newValue }
+    }
+    private var operationStatus = "Ready when you are"
+    var status: String {
+        get { scanSessions.isBusy ? scanSessions.statusText : operationStatus }
+        set { operationStatus = newValue }
+    }
+    var completedSnapshots: [ScanTarget: ScanSnapshot] = [:]
+    var scanRequests: [ScanTarget: ScanRequest] = [:]
+    var canStartScan: Bool { !operationBusy }
+    var currentScanTarget: ScanTarget? {
+        switch destination ?? .overview {
+        case .overview: .overview
+        case .clean: .generatedData
+        case .applications: applicationTab == .leftovers ? .leftovers : .applications
+        case .storage: .storage
+        case .duplicates: .duplicates
+        default: nil
+        }
+    }
+    var currentNotices: [String] { currentScanTarget.flatMap { completedSnapshots[$0]?.result.report.notices } ?? [] }
+    var canCancel: Bool { scanSessions.isBusy || scanTask != nil }
+    var scanTarget: ScanTarget? { scanSessions.session?.request.target }
+    var visibleApplications: [ApplicationRecord] {
+        if scanSessions.isBusy, [.applications, .overview].contains(scanTarget) {
+            return scanSessions.session?.preview.applications.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending } ?? []
+        }
+        return applications
+    }
     var cleanupReport: ScanReport?
-    var scanProgress: ScanProgress?
     var recoveryNotices: [RecoveryNotice] = []
     var recoveryLoading = true
     var journalError: String?
     @ObservationIgnored private var journal: CleanupJournal?
     @ObservationIgnored private var recoveryStarted = false
-    @ObservationIgnored private var activeScanID: UUID?
     var error: String?
-    var reviewItems: [CleanupItem] = []
+    var reviewPlan: CleanupPlan?
+    var reviewItems: [CleanupItem] { reviewPlan?.items ?? [] }
     var showingReview = false
     var search = ""
     var showingSearch = false
@@ -89,6 +120,11 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         do { journal = try CleanupJournal() }
         catch { journalError = "Activity could not be loaded. Cleanup is paused to preserve its records: \(error.localizedDescription)" }
         ignored = Set(UserDefaults.standard.stringArray(forKey: ignoreKey) ?? [])
+        scanSessions.onChange = { [weak self] in
+            guard let self else { return }
+            self.operationStatus = self.scanSessions.statusText
+        }
+        scanSessions.onComplete = { [weak self] snapshot in self?.applyScan(snapshot) }
     }
 
     func startMonitoring() {
@@ -112,65 +148,73 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     }
 
     func runScan(_ target: Destination? = nil) {
-        guard !busy else { return }
+        guard !operationBusy else { return }
         let target = target ?? destination ?? .overview
-        let scanID = UUID(); activeScanID = scanID
-        busy = true; notices = []; selected = []; scanProgress = nil; status = "Scanning locally…"
-        scanTask = Task {
-            do {
-                switch target {
-                case .overview, .clean:
-                    let reportProgress: @Sendable (ScanProgress) -> Void = { [self] update in
-                        Task { @MainActor [self] in
-                            guard activeScanID == scanID else { return }
-                            scanProgress = update
-                        }
-                    }
-                    let result = try await offMain { try await GeneratedDataScanner(progress: reportProgress).scan() }
-                    try Task.checkCancellation()
-                    cleanup = result.items; cleanupReport = result; notices = result.notices; scanProgress = nil; completedScans.insert(.clean)
-                    if target == .overview {
-                        status = "Generated data checked · inventorying applications…"
-                        let inventory = try await offMain { try ApplicationScanner.scan() }
-                        try Task.checkCancellation()
-                        applications = inventory; completedScans.insert(.applications)
-                    }
-                case .applications:
-                    if applicationTab == .leftovers {
-                        status = "Checking installed apps, helpers, and potential leftovers…"
-                        let result = try await offMain { try await LeftoverScanner().scan() }
-                        try Task.checkCancellation()
-                        leftovers = result.items; notices = result.notices; didScanLeftovers = true
-                    } else {
-                        let result = try await offMain { try ApplicationScanner.scan() }
-                        try Task.checkCancellation()
-                        applications = result; completedScans.insert(.applications)
-                    }
-                case .storage:
-                    guard let root = storageRoot else { finish(); return }
-                    let result = try await offMain { try await FolderScanner(root: root).scan() }
-                    try Task.checkCancellation()
-                    storage = result.items; notices = result.notices; completedScans.insert(.storage)
-                case .duplicates:
-                    guard let root = duplicateRoot else { finish(); return }
-                    let result = try await offMain { try DuplicateScanner(root: root).scan() }
-                    try Task.checkCancellation()
-                    duplicates = result.0; notices = result.1; completedScans.insert(.duplicates)
-                default: break
-                }
-                lastScan = Date(); status = notices.isEmpty ? "Scan complete" : "Scan complete with exclusions · \(notices.count) locations skipped"
-            } catch is CancellationError { status = "Scan cancelled · no changes made" }
-            catch { self.error = error.localizedDescription; status = "Scan could not finish" }
-            finish()
+        let request: ScanRequest
+        switch target {
+        case .overview: request = .init(.overview)
+        case .clean: request = .init(.generatedData)
+        case .applications: request = .init(applicationTab == .leftovers ? .leftovers : .applications)
+        case .storage:
+            guard let root = storageRoot else { return }
+            request = .init(.storage, root: root)
+        case .duplicates:
+            guard let root = duplicateRoot else { return }
+            request = .init(.duplicates, root: root)
+        default: return
+        }
+        startScan(request)
+    }
+
+    func startScan(_ request: ScanRequest) {
+        guard !operationBusy else { return }
+        selected = []; reviewPlan = nil; showingReview = false
+        if request.target == .storage { storageRoot = request.root }
+        if request.target == .duplicates { duplicateRoot = request.root }
+        scanRequests[request.target] = request
+        let runner = scanRunner
+        scanSessions.start(request) { emit in try await runner(request, emit) }
+    }
+
+    func retryScan(_ target: ScanTarget) {
+        guard let request = scanRequests[target] else { return }
+        startScan(request)
+    }
+
+    private func applyScan(_ snapshot: ScanSnapshot) {
+        let result = snapshot.result
+        completedSnapshots[snapshot.request.target] = snapshot
+        switch snapshot.request.target {
+        case .generatedData, .overview:
+            cleanup = result.report.items; cleanupReport = result.report
+            completedSnapshots[.generatedData] = snapshot; completedScans.insert(.clean)
+            if snapshot.request.target == .overview {
+                applications = result.applications; completedScans.insert(.applications)
+                completedSnapshots[.applications] = snapshot
+            }
+        case .applications:
+            applications = result.applications; completedScans.insert(.applications)
+        case .leftovers:
+            leftovers = result.report.items; didScanLeftovers = true
+        case .storage:
+            storage = result.report.items; completedScans.insert(.storage)
+        case .duplicates:
+            duplicates = result.duplicates; completedScans.insert(.duplicates)
+        case .footprint:
+            if inspectedApp?.id == snapshot.request.application?.id { footprint = result.report.items }
         }
     }
+
+    func snapshot(for target: ScanTarget) -> ScanSnapshot? { completedSnapshots[target] }
 
     private func offMain<T: Sendable>(_ work: @escaping @Sendable () async throws -> T) async throws -> T {
         let child = Task.detached(priority: .utility, operation: work)
         return try await withTaskCancellationHandler(operation: { try await child.value }, onCancel: { child.cancel() })
     }
-    private func finish() { activeScanID = nil; scanProgress = nil; busy = false; scanTask = nil }
-    func cancel() { scanTask?.cancel() }
+    private func finish() { operationBusy = false; scanTask = nil }
+    func cancel() {
+        if scanSessions.isBusy { scanSessions.cancel() } else { scanTask?.cancel() }
+    }
 
     func chooseFolder(for target: Destination) {
         let panel = NSOpenPanel()
@@ -180,64 +224,83 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         guard panel.runModal() == .OK, let url = panel.url else { return }
         if target == .storage { storageRoot = url } else { duplicateRoot = url }
         authorizedRoots.append(url); destination = target
-        if target == .storage { storage = [] } else { duplicates = [] }
         runScan(target)
     }
 
     func inspect(_ app: ApplicationRecord) {
-        guard !busy else { return }
-        busy = true; status = "Finding exact app relationships…"
-        Task {
-            do {
-                let result = try await offMain { try ApplicationScanner.footprint(app) }
-                footprint = result; inspectedApp = app
-            } catch { self.error = error.localizedDescription }
-            status = "Ready when you are"; finish()
-        }
+        guard !operationBusy else { return }
+        footprint = []; inspectedApp = app
+        startScan(.init(.footprint, application: app))
     }
 
-    func review(_ items: [CleanupItem]) {
-        reviewItems = items.filter { selected.contains($0.id) && !isIgnored($0) }
-        if duplicates.contains(where: { group in group.items.allSatisfy { item in reviewItems.contains { $0.id == item.id } } }) {
-            error = "Keep at least one file in each duplicate group."
-            return
+    func review(_ items: [CleanupItem], source: CleanupSource? = nil) {
+        guard !busy else { return }
+        let items = items.filter { selected.contains($0.id) && !isIgnored($0) }
+        guard !items.isEmpty else { return }
+        let source = source ?? {
+            switch destination {
+            case .overview, .clean: CleanupSource.generatedData
+            case .applications: applicationTab == .leftovers ? .leftovers : .applications
+            case .duplicates: .duplicates
+            default: .storage
+            }
+        }()
+        let target: ScanTarget
+        switch source {
+        case .generatedData: target = .generatedData
+        case .applications: target = .footprint
+        case .leftovers: target = .leftovers
+        case .storage: target = .storage
+        case .duplicates: target = .duplicates
         }
-        guard !reviewItems.isEmpty else { return }
-        showingReview = true
+        guard let snapshot = completedSnapshots[target] else {
+            error = "Finish a scan before reviewing cleanup. Preview results cannot be selected."; return
+        }
+        let candidates = target == .duplicates ? snapshot.result.duplicates.flatMap(\.items) : snapshot.result.report.items
+        guard items.allSatisfy({ item in candidates.contains { $0 == item } }) else {
+            error = "This selection is not part of the completed scan. Scan again before reviewing."; return
+        }
+        let roots = authorizedRoots, exclusions = ignored
+        let groups = source == .duplicates ? duplicates : []
+        reviewPlan = nil; busy = true; status = "Verifying selection and logical size…"
+        scanTask = Task {
+            do {
+                let plan = try await offMain {
+                    try CleanupPlan(items: items, authorizedRoots: roots, ignoredPaths: exclusions, duplicateGroups: groups, source: source)
+                }
+                try Task.checkCancellation()
+                reviewPlan = plan; showingReview = true; status = "Review your selection"
+            } catch is CancellationError { status = "Review cancelled · no changes made" }
+            catch { self.error = error.localizedDescription; status = "Selection needs a new review" }
+            finish()
+        }
     }
 
     func moveToTrash() {
-        guard !busy, !reviewItems.isEmpty else { return }
+        guard !busy, let plan = reviewPlan else { return }
         guard let journal, !recoveryLoading, journalError == nil, recoveryNotices.isEmpty else {
             error = journalError ?? "Review interrupted operations in Activity before cleaning."; return
         }
-        let items = reviewItems
-        let roots = authorizedRoots
-        let exclusions = ignored
-        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         busy = true; showingReview = false; status = "Validating selected items…"
         Task {
             do {
-                // Preflight the whole plan before the first mutation. Each item is checked again immediately before Trash.
-                try await offMain {
-                    let engine = SafetyEngine(ignoredPaths: exclusions)
-                    for item in items { try engine.validate(item, authorizedRoots: roots, runningBundleIDs: running) }
-                }
-                for item in items {
-                    let currentRunning = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-                    let record = try await journal.trash(item, authorizedRoots: roots, ignoredPaths: exclusions, runningBundleIDs: currentRunning)
+                _ = try await journal.execute(plan, context: { @MainActor [self] in
+                    .current(ignoredPaths: ignored)
+                }, onRecord: { @MainActor [self] record in
                     history.insert(record, at: 0)
-                    cleanup.removeAll { $0.id == item.id }; storage.removeAll { $0.id == item.id }; footprint.removeAll { $0.id == item.id }
+                    cleanup.removeAll { $0.url == record.original }; storage.removeAll { $0.url == record.original }; footprint.removeAll { $0.url == record.original }
                     duplicates = [] // Content groups must be reverified after a move.
-                    applications.removeAll { $0.url == item.url }
-                    leftovers.removeAll { $0.id == item.id }
-                    if item.category == .applications { didScanLeftovers = false }
-                }
+                    applications.removeAll { $0.url == record.original }
+                    leftovers.removeAll { $0.url == record.original }
+                    if record.original.pathExtension == "app" { didScanLeftovers = false }
+                    status = "Moving reviewed items to Trash…"
+                })
                 selected = []; status = "Moved to Trash · restore from Activity"
             } catch {
                 self.error = error.localizedDescription; status = "Stopped · review Activity for completed moves"
                 do { apply(try await journal.reconcile()) } catch { journalError = error.localizedDescription }
             }
+            reviewPlan = nil
             finish()
         }
     }

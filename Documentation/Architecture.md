@@ -1,0 +1,91 @@
+# Code organization and maintenance
+
+Reviewed on 2026-10-17 against the working tree after tasks 001–003. This records the intended boundaries and incremental migration; the folder tree below is a target, not the current layout.
+
+## Current assessment
+
+The package already separates LumaCore from the executable UI, and filesystem mutation has one journal execution boundary. `DescriptorFilesystem.swift` owns pinned path traversal and exact-byte location evidence; `Filesystem.swift` owns bounded tree inspection and hashing. Object equality excludes location so journal recovery can identify a renamed item; cleanup separately requires its saved location, and Restore requires its original parent chain. Safety, ownership, hashing, memory accounting, and process grouping have useful fixture coverage. Build products and screenshots are ignored.
+
+The main growth risks are responsibility rather than file size: AppModel still composes feature results and cleanup operations, SystemSample combines collection with presentation, Scanners.swift still combines independent scanners, and some UI files group unrelated screens. Formatting is not automated. Task 028 now addresses these concerns early rather than waiting for community rules and a release.
+
+## Target layout
+
+Keep the current two Swift package targets initially. Introduce another target only when dependency direction or a practical testing requirement warrants it. Swift Package Manager can discover nested source folders; folder reorganization does not need a new framework per feature.
+
+```text
+Sources/
+  LumaApp/
+    App/                 entry point, composition, navigation, lifecycle
+    Features/
+      Clean/             feature state and views
+      Storage/
+      Applications/
+      Duplicates/
+      Optimizer/
+      System/
+      Activity/
+      Privacy/
+      Settings/
+    MenuBar/             status item, companion, window handoffs
+    SharedUI/            original design system and shared components
+    Diagnostics/         opt-in native QA and snapshot entry points
+  LumaCore/
+    Cleanup/             plans, execution, durable journal, recovery
+    Filesystem/          identity, traversal, hashing, provider policy
+    Scanning/            session lifecycle, coverage, progress
+    Applications/        relationship evidence, inventory, leftovers
+    Rules/               bounded rule definitions and future loader
+    Monitoring/          typed samples, accounting, grouping, trends
+    Platform/macOS/      narrow system API adapters
+Tests/
+  LumaCoreTests/          grouped by behavior, shared fixture support
+Scripts/                 reproducible build, test, formatting and release commands
+Resources/               original shipped assets and bundle metadata
+Documentation/           architecture, safety, distribution, roadmap and spec
+tasks/                  acceptance criteria, dependencies and evidence
+```
+
+Use folder names consistently when migration lands; do not add empty placeholders. A small private helper can stay beside its only caller. Split unrelated screens/scanners as their feature changes. Avoid generic Utils/Managers/Helpers dumping grounds and giant Models.swift files as new domains arrive.
+
+## Dependency and state boundaries
+
+- Views display state and dispatch explicit user actions. They do not traverse files, hash content, mutate the filesystem, or run subprocesses while rendering.
+- Keep an app-level composition/lifecycle/navigation owner. ScanController now owns scan lifecycle; ScanEngine dispatches requests and ScanReporting shares coverage. AppModel maps completed snapshots into feature state and gates review on their membership. Move cleanup/recovery, monitoring and further feature selection into focused owners as tasks 048/017 land. The menu and main window share services; they do not create duplicate polling loops.
+- Prefer explicit construction of dependencies at the composition root. Existing AppModel.shared is a migration boundary; new features must not reach into it for hidden dependencies. Do not replace one global object with a global service locator.
+- Core values do not depend on SwiftUI, colors, localized display strings for logic, or view models. Platform code may use AppKit/CoreServices where needed, isolated behind narrow adapters. The package is macOS-specific; making every file platform-neutral is not a goal.
+- Inject clocks, filesystem/provider inspection, process/system sampling and subprocess boundaries where deterministic tests or alternate real providers need them. Simple pure functions and values need no protocol/factory hierarchy.
+- Prefer enums and typed outcomes for operation/metric states. Unknown, unavailable, partial, cancelled and stale are different from zero, healthy or completed. Convert these into localized labels/colors in the UI.
+- Keep user intent and immutable reviewed plans distinct from live observations. Only CleanupJournal.execute may perform ordinary cleanup; Restore remains identity-verified and non-overwriting. Typed future provider/runtime operations must not pretend to have file Trash semantics.
+
+## Concurrency and errors
+
+Use MainActor for UI state. Keep expensive inspection, hashing and sampling off that actor using bounded workers with explicit cancellation and lifetime ownership. Detached work must have a documented reason and cancellation propagation; actor isolation is not permission to block cooperative executors with unbounded work.
+
+Every long job owns an ID and terminal state. Reject late events after cancellation/replacement, preserve valid completed outcomes, and keep monitoring independent of feature scans. Do not hold thread-local filesystem policies across suspension. Journal locking and reentrant actor calls need explicit invariants and regression fixtures.
+
+Surface meaningful operation errors and partial coverage. Avoid catch-and-empty results, indiscriminate try?, forced casts and force unwraps on external state. Best-effort cleanup/snapshot paths may intentionally tolerate errors if the reason and effect are clear. Bound subprocess runtime/output and use fixed argument arrays, not shell interpolation.
+
+## Style and documentation
+
+Use clear Swift names, explicit access control, focused methods and readable statements. Avoid packing unrelated mutations onto one line to save space. Document safety/concurrency/units invariants and the reasons for exceptions; routine syntax needs no narration. File length is a review signal, not an arbitrary hard limit.
+
+Task 028 pins a compatible SwiftFormat version and a small configuration shared by local and CI checks. Keep the first mechanical format commit separate from behavior changes. Do not introduce competing formatters or broad lint rule sets without demonstrated value. Follow [Swift API design guidance](https://www.swift.org/documentation/api-design-guidelines/) and [SwiftFormat's documented check mode](https://github.com/nicklockwood/SwiftFormat).
+
+## Tests and repository hygiene
+
+- Keep deterministic core tests around behavior and failure boundaries, especially changed paths, ignored/provider-owned files, duplicates, recovery and process identity. Share small fixture builders rather than duplicating fake filesystems throughout tests.
+- State/lifecycle tests cover replacement, cancellation and late events; native QA covers sheet/window/menu integration. Do not mirror implementation details or add screenshot snapshots for every cosmetic change.
+- Keep fixtures synthetic and temporary. Exclude personal reports, logs, extracted reference content, credentials, build products and distribution images from commits. Generated original assets already tracked are changed only through the documented asset workflow.
+- Make formatter/test/build/signature checks reproducible from a clean checkout. Introduce narrowly useful static boundary checks only where they protect a real invariant; avoid a fragile custom architecture-lint framework.
+- Reorganization, formatting and behavioral changes should be separate reviewable commits. Validate the supported behavior after meaningful moves, preserve public rule IDs/journal compatibility, and avoid unrelated churn.
+- The canonical spec, roadmap and tasks have distinct roles. Update status and evidence in their existing locations; do not create another competing feature inventory. Record architectural decisions here or in a focused decision note when a real tradeoff arises.
+
+## Migration order
+
+Task 028 phase A establishes the conventions and formatting baseline now. Task 003 delivered isolated scan ownership, immutable request scopes, bounded event mailboxes and explicit completed-snapshot boundaries. Task 048 extracts cleanup/recovery presentation state. Tasks 017/018 isolate typed samples and system adapters from colors/UI. Split and relocate feature files during these focused changes; retain the existing core execution guarantees throughout.
+
+## Scan execution boundary
+
+One ScanController worker owns expensive analysis. A stopped worker retains its slot until it exits; a single queued replacement cannot run alongside it. Main-actor polling coalesces synchronous scanner events, instead of spawning an unbounded Task per file. AppModel's scan busy state is composed with its separate review/mutation busy state; scan completion never calls the mutation finish helper. Monitoring has its independent lightweight sampling loop.
+
+The controller exposes read-only previews and completed snapshots separately. AppModel accepts cleanup review only from its completed feature snapshot. Generated data, inventory, leftovers, footprints, storage and duplicates share the same lifecycle. Overview commits its generated-data plus inventory result together. A native fixture runner is injected only by the debug QA entry point; production uses ScanEngine. The new files stay beside the existing core code for now; broader mechanical folder moves remain task 028.
