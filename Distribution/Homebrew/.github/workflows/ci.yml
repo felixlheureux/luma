@@ -1,0 +1,24 @@
+name: Validate cask
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_ANALYTICS: 1
+      HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Load only the Luma cask
+        run: |
+          brew tap felixlheureux/luma "$GITHUB_WORKSPACE"
+          brew trust --cask felixlheureux/luma/luma
+      - name: Style
+        run: brew style --cask felixlheureux/luma/luma
+      - name: Audit published artifact
+        run: brew audit --cask --online felixlheureux/luma/luma

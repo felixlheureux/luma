@@ -1,0 +1,31 @@
+name: Prepare Homebrew proposal
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Already-published Luma release tag
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test release verification gates
+        run: python3 -m unittest discover -s Scripts -p test_homebrew.py
+      - name: Verify public artifact and prepare cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 Scripts/prepare_homebrew.py --tag "$RELEASE_TAG" --output .build/homebrew-proposal/Casks/luma.rb
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: homebrew-cask-proposal
+          path: .build/homebrew-proposal/Casks/luma.rb
+          if-no-files-found: error
+          retention-days: 14

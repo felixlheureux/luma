@@ -34,7 +34,7 @@ Start [028 phase A](028-contributor-tooling.md) now: code ownership/layout conve
 | 006 | [Add explicit application reset](006-application-reset.md) | P1 | Done | 001, 002, 005 |
 | 007 | [Review native UX and ship 0.3.0](007-native-ux-and-release.md) | P1 | Closed by request; release checks deferred | 001–006, 047, 048, 050 |
 | 008 | [Move cleanup knowledge into validated rule files](008-community-rules.md) | P2 | Done | 001, 005 |
-| 009 | [Prepare a personal Homebrew tap](009-homebrew-distribution.md) | P2 | Backlog | 007; preparation can start earlier |
+| 009 | [Prepare a personal Homebrew tap](009-homebrew-distribution.md) | P2 | Prepared; publication awaits approval | 007; preparation can start earlier |
 
 The P0/P1 rows above define the 0.3.0 milestone. Near-term monitoring/optimization work below is a separate parallel track and does not silently expand those release gates. P2 does not block that milestone. The user brought 008 forward after explicitly closing 007 with its remaining release checks deferred. Dependency order wins over the numeric order; 003 can proceed independently of 001 and 002. Tasks 047–048 and 050 were added later but belong in this immediate milestone, before release task 007. Task 050 delivers useful cache coverage before task 031's full granular-selection UI and task 008's external catalog. Baseline UX inspection for 007 can begin immediately.
 

@@ -39,3 +39,24 @@ After a release build and packaging, run `bash Scripts/verify-dmg.sh dist/Luma-0
 The current development version remains 0.2.0 after task 007’s user-directed closure with manual release checks deferred. Passing automated checks and creating a local installer do not establish the pending manual keyboard/VoiceOver, system accommodation, composited-appearance or reference-interaction review. Update the version/build and installer heading together only after those gates are reviewed; then verify the tag-triggered public download against its published checksum.
 
 The app now includes `Luma_LumaCore.bundle/CleanupRules.yaml` (under the bundle's platform resource layout) and `Third-Party-Notices.txt`. The build copies both before signing. Installer verification compares the catalog and notices with source as well as the executable/icon/version. Do not distribute a bare executable without its package resource bundle; a missing or invalid catalog blocks scans and cleanup with an explicit error.
+
+## Personal Homebrew tap preparation (task 009)
+
+The prepared package token is `luma`; the app stays Luma. Source files are in `Distribution/Homebrew`, with a cask, a tap CI template and an exact prerelease-channel declaration. The proposed `felixlheureux/homebrew-luma` repository has not been published: automatic approval review requires explicit approval for creating that new public repository. Public installation instructions will follow its creation and a verified public-tap installation.
+
+The cask pins the published 0.2.0 arm64 DMG, not a local development rebuild with the same filename/version. That published build predates current main-branch safety/UI/catalog work. Its declared and Mach-O minimum is macOS 26.0. Local Homebrew 7.0.9 style and online audit pass with the exact 0.2.0 prerelease declaration. This is a personal development channel; no signing/security exceptions are configured and official homebrew/cask submission remains separate.
+
+A disposable app-directory test installs published 0.1.2 and upgrades to published 0.2.0. Activity/history, ignore list and appearance/menu preferences remain unchanged. The cask has a plain app artifact and `uninstall quit: "app.luma.mac"`, with no zap/data-removal script. A synthetic matching-ID menu process tests normal Quit separately because the real build’s first launch was not established. On the tested Apple Silicon Mac running macOS 27.0.1, quarantine is preserved and Gatekeeper assessment rejects this ad-hoc build. Launch Services accepting an open request does not establish successful launch. The tap does not change that decision or promise a notarized app.
+
+After a release is published, prepare a reviewed update from the repository root:
+
+```sh
+python3 Scripts/prepare_homebrew.py --tag v0.2.0 --output /path/to/homebrew-luma/Casks/luma.rb
+python3 -m unittest discover -s Scripts -p test_homebrew.py
+```
+
+Replace the example tag with the exact newly published release. The helper downloads its real DMG/checksum, verifies GitHub digests and size, mounts the image read-only, checks app identity/version/icon/signature and both architecture/deployment declarations, ejects it, and confirms the release assets did not change. Failure leaves the previous cask intact. It does not publish a release or update a remote tap. The supported minimum is currently 26.0; changed architectures/deployment requirements stop generation for explicit review.
+
+For a prerelease, review/update the tap’s exact version in `audit_exceptions/github_prerelease_allowlist.json`; remove that declaration when adopting a stable release. This declares the channel rather than bypassing signing checks. Run full Homebrew style/online audit and disposable install/upgrade/removal tests before committing/pushing the tap. The main Release workflow uploads a cask proposal only after publishing succeeds; the **Prepare Homebrew proposal** manual workflow can also verify any already-published tag. These create review artifacts without a cross-repository write token.
+
+Current Homebrew 6+ trust behavior supports trust scoped to one fully qualified cask; whole-tap trust is unnecessary. See [tap trust](https://docs.brew.sh/Tap-Trust), [tap maintenance](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap), [Cask Cookbook](https://docs.brew.sh/Cask-Cookbook), and [official cask eligibility](https://docs.brew.sh/Acceptable-Casks). Only the future public-route test will establish the final installation instructions.
