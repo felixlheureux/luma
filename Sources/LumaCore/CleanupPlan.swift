@@ -141,20 +141,29 @@ public struct CleanupPlan: Identifiable, Sendable {
     func accountedBytes(for item: CleanupItem) -> Int64 { contributions[Data(item.id.utf8)] ?? 0 }
 
     func preflight(home: URL, context: CleanupExecutionContext, onItem: (CleanupItem) -> Void = { _ in }) throws {
+        let owners = try preflightOwners(home: home)
         for item in items {
             onItem(item)
-            try validate(item, home: home, context: context)
+            try validate(item, home: home, context: context, preflightOwners: owners)
         }
     }
 
-    func validate(_ item: CleanupItem, home: URL, context: CleanupExecutionContext, checkDuplicateContent: Bool = true) throws {
+    func preflightOwners(home: URL, progress: @escaping @Sendable (ScanPulse) -> Void = { _ in }) throws -> Set<String>? {
+        guard items.contains(where: { $0.ruleID == "application.leftover.exact-identifier" }) else { return nil }
+        return try ApplicationPresence.bundleIdentifiers(home: home, emit: { event in
+            if case .progress(let pulse) = event { progress(pulse) }
+        })
+    }
+
+    func validate(_ item: CleanupItem, home: URL, context: CleanupExecutionContext, checkDuplicateContent: Bool = true,
+                  preflightOwners: Set<String>? = nil, progress: @escaping @Sendable (ScanPulse) -> Void = { _ in }) throws {
         try Task.checkCancellation()
         if let app = resetApplication {
             try ApplicationReset.validateSelection(items, app: app)
             try ApplicationReset.validateActivity(app: app, home: home, context: context)
         }
         let engine = SafetyEngine(home: home, ignoredPaths: ignoredPaths.union(context.ignoredPaths))
-        try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs, activity: ProjectRule(rawValue: item.ruleID) == nil ? nil : context.activity)
+        try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs, activity: ProjectRule(rawValue: item.ruleID) == nil ? nil : context.activity, preflightOwners: preflightOwners, progress: progress)
         guard item.ruleID == "duplicates.sha256", checkDuplicateContent else { return }
         guard let proof = duplicateProofs[Data(item.id.utf8)] else { throw LumaError.rejected("The duplicate group is missing. Scan again.") }
         try engine.validate(proof.keeper, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs)

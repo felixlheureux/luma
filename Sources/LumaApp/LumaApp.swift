@@ -72,6 +72,9 @@ struct LumaApp: App {
         }
         let arguments = CommandLine.arguments
         #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-cleanup-feedback"), arguments.indices.contains(flag + 1) {
+            checkCleanupFeedback(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-analysis-index"), arguments.indices.contains(flag + 1) {
             checkAnalysisIndex(output: arguments[flag + 1])
         }

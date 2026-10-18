@@ -3,7 +3,10 @@ import CoreServices
 
 /// Ownership discovery is metadata-only: no bundle sizing or file hashing.
 public enum ApplicationPresence {
+    // Test observation only; cannot change ownership results or runtime policy.
+    @TaskLocal static var inventoryObserver: (@Sendable (String?) -> Void)?
     public static func bundleIdentifiers(home: URL, roots: [URL]? = nil, matchingOwner: String? = nil, emit: ScanEmitter = { _ in }) throws -> Set<String> {
+        inventoryObserver?(matchingOwner)
         return try NonMaterializingIO.perform {
             let roots = roots ?? [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications"), URL(fileURLWithPath: "/System/Applications")]
             var identifiers: Set<String> = []

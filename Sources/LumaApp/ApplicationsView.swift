@@ -65,7 +65,7 @@ struct ApplicationsView: View {
     }
     private func applicationRow(_ app: ApplicationRecord) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: "macwindow").resizable().scaledToFit().foregroundStyle(.secondary).frame(width: 38, height: 38)
+            ApplicationIconView(app: app)
             VStack(alignment: .leading, spacing: 4) {
                 Text(app.name).font(.system(size: 12, weight: .semibold))
                 Text("\(app.version) · \(app.bundleID)").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
@@ -85,15 +85,10 @@ struct ApplicationsView: View {
 struct LeftoversView: View {
     @Environment(AppModel.self) private var model
     @ViewState private var ownerLimit = 100
-    private struct OwnerGroup: Identifiable {
-        let id: String
-        let items: [CleanupItem]
-        let bytes: Int64
-    }
-    private var groups: [OwnerGroup] {
-        Dictionary(grouping: model.leftovers, by: { $0.ownerBundleID ?? "Unknown owner" }).map { owner, items in
-            OwnerGroup(id: owner, items: items, bytes: items.reduce(0) { $0 + $1.bytes })
-        }.sorted { $0.bytes > $1.bytes }
+    @ViewState private var search = ""
+    @ViewState private var largestFirst = false
+    private var groups: [LeftoverGroup] {
+        LeftoverGroup.groups(for: model.leftovers.filter { !model.isIgnored($0) }, largestFirst: largestFirst, search: search)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -118,6 +113,11 @@ struct LeftoversView: View {
                 if model.leftovers.isEmpty {
                     ContentUnavailableView("No potential leftovers found", systemImage: "checkmark.circle", description: Text("Only exact identifiers in supported locations are checked. Read failures are listed under scan coverage."))
                 }
+                HStack {
+                    TextField("Filter leftover identifiers", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 280)
+                    Spacer()
+                    Toggle("Largest groups first", isOn: $largestFirst).toggleStyle(.checkbox).font(.system(size: 11))
+                }
                 ForEach(Array(groups.prefix(ownerLimit))) { group in
                     Surface(padding: 18) {
                         VStack(alignment: .leading, spacing: 10) {
@@ -126,6 +126,7 @@ struct LeftoversView: View {
                                 Spacer(); SafetyBadge(level: .review)
                             }
                             ItemList(items: group.items)
+                            Text("\(group.items.count) items · \(formatBytes(group.bytes))").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

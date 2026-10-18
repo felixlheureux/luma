@@ -4,8 +4,8 @@ import LumaCore
 extension CleanupPhase {
     var label: String {
         switch self {
-        case .validating: "Validating"
-        case .moving: "Moving current item"
+        case .validating: "Validating selection"
+        case .moving: "Checking and moving current item"
         case .stopping: "Stopping"
         case .completed: "Completed"
         case .stopped: "Stopped"
@@ -27,12 +27,27 @@ struct CleanupProgressPanel: View {
                         ProgressView().controlSize(.small)
                         Text(operation.stopping ? "Stopping after the current operation…" : operation.progress?.phase.label ?? "Preparing operation…").font(.headline)
                         Spacer()
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text("\(Int(max(0, context.date.timeIntervalSince(operation.startedAt ?? context.date))))s elapsed")
+                                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        }
                         Button("Stop") { operation.stop() }.buttonStyle(.glass).foregroundStyle(.primary).disabled(operation.stopping)
                     }
                     if let progress = operation.progress {
                         Text(progress.current?.lastPathComponent ?? "Checking the complete reviewed selection")
                         ProgressView(value: Double(progress.completed), total: Double(max(1, progress.total)))
-                        Text("\(progress.completed) of \(progress.total) finished before the current item").font(.caption).foregroundStyle(.secondary)
+                        Text(progress.phase == .validating
+                             ? "\(progress.completed) of \(progress.total) items validated · nothing moved yet"
+                             : "\(progress.completed) of \(progress.total) items moved")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let detail = operation.detail {
+                        Text(detail.phase).font(.caption)
+                        if !detail.current.isEmpty { Text(detail.current).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+                        if detail.entries > 0 {
+                            Text("\(detail.entries) entries checked · \(formatBytes(detail.bytes)) inspected")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     Text("An in-flight move finishes and is recorded before Stop takes effect. Review Activity for completed moves and any recovery needed.").font(.caption).foregroundStyle(.secondary)
                 }

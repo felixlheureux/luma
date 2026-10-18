@@ -231,6 +231,20 @@ private final class ScanMailbox: @unchecked Sendable {
         onChange?()
     }
 
+    /// Keep only unaffected observations from the original leftover scan. A new
+    /// evidence ID invalidates old recommendation references; timestamps stay old.
+    public func retainRemainingLeftovers(excluding changedPaths: [URL]) -> ScanSnapshot? {
+        guard let previous = snapshots[.leftovers] else { return nil }
+        var result = previous.result
+        result.report.items.removeAll { item in
+            changedPaths.contains { Filesystem.isWithin(item.url, root: $0) || Filesystem.isWithin($0, root: item.url) }
+        }
+        result.report.notices.append("Remaining results are from the original scan. Scan again to refresh ownership and sizes.")
+        let snapshot = ScanSnapshot(sessionID: UUID(), request: previous.request, finishedAt: previous.finishedAt, result: result)
+        snapshots[.leftovers] = snapshot
+        return snapshot
+    }
+
     public func cancel() {
         queued = nil; queuedRequest = nil
         stop(.cancelled)

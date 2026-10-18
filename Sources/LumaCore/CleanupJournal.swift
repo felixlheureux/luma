@@ -108,7 +108,8 @@ public actor CleanupJournal {
     public func execute(_ plan: CleanupPlan,
                         context: @Sendable () async throws -> CleanupExecutionContext = { await .current() },
                         onRecord: @Sendable (CleanupRecord) async -> Void = { _ in },
-                        onProgress: @Sendable (CleanupProgress) async -> Void = { _ in }) async throws -> [CleanupRecord] {
+                        onProgress: @Sendable (CleanupProgress) async -> Void = { _ in },
+                        onDetail: @escaping @Sendable (ScanPulse) -> Void = { _ in }) async throws -> [CleanupRecord] {
         try requireIdle()
         executingPlan = true; defer { executingPlan = false }
         let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
@@ -126,15 +127,25 @@ public actor CleanupJournal {
         do {
             await onProgress(CleanupProgress(sessionID: plan.id, phase: .validating, current: nil, completed: 0, total: plan.items.count))
             try Task.checkCancellation()
+            onDetail(.init("Checking running applications"))
             let initialContext = try await context()
-            try plan.preflight(home: home, context: initialContext, onItem: { currentPath = $0.url })
+            onDetail(.init("Checking installed owners and helpers"))
+            let owners = try plan.preflightOwners(home: home, progress: onDetail)
+            for (index, item) in plan.items.enumerated() {
+                currentPath = item.url
+                try Task.checkCancellation()
+                await onProgress(CleanupProgress(sessionID: plan.id, phase: .validating, current: item.url, completed: index, total: plan.items.count))
+                try plan.validate(item, home: home, context: initialContext, preflightOwners: owners, progress: onDetail)
+                await onProgress(CleanupProgress(sessionID: plan.id, phase: .validating, current: item.url, completed: index + 1, total: plan.items.count))
+            }
             for item in plan.items {
                 currentPath = item.url
                 try Task.checkCancellation()
                 await onProgress(CleanupProgress(sessionID: plan.id, phase: .moving, current: item.url, completed: completed.count, total: plan.items.count))
+                onDetail(.init("Checking running applications", current: item.name))
                 let currentContext = try await context()
                 try Task.checkCancellation()
-                let record = try trash(item, plan: plan, context: currentContext)
+                let record = try trash(item, plan: plan, context: currentContext, onDetail: onDetail)
                 completed.append(record)
                 // A native operation must commit its outcome before observing Stop.
                 await onRecord(record)
@@ -165,9 +176,13 @@ public actor CleanupJournal {
         guard !executingPlan else { throw LumaError.rejected("A cleanup plan is already running. Wait for it to finish before changing Activity.") }
     }
 
-    private func trash(_ item: CleanupItem, plan: CleanupPlan, context: CleanupExecutionContext) throws -> CleanupRecord {
+    private func trash(_ item: CleanupItem, plan: CleanupPlan, context: CleanupExecutionContext,
+                       onDetail: @escaping @Sendable (ScanPulse) -> Void) throws -> CleanupRecord {
         return try NonMaterializingIO.perform {
-            try plan.validate(item, home: home, context: context, checkDuplicateContent: false)
+            try Task.checkCancellation()
+            // Whole-plan preflight has already checked this immutable selection.
+            // Keep the durable intent before the final full validation and move,
+            // without doing the same expensive validation twice in this method.
             var intent = JournalIntent(id: UUID(), action: .trash, original: item.url, source: item.url, destination: nil,
                                        identity: item.identity, bytes: item.bytes, date: Date(), recordID: nil)
             intent.planID = plan.id; intent.planSource = plan.source; intent.accountedBytes = plan.accountedBytes(for: item)
@@ -176,9 +191,10 @@ public actor CleanupJournal {
             do {
                 let pinned = try PinnedPath(item.url)
                 try mutationCheckpoint?()
-                try plan.validate(item, home: home, context: context)
+                try plan.validate(item, home: home, context: context, progress: onDetail)
                 try pinned.revalidate(expected: item.identity.location)
                 try Task.checkCancellation()
+                onDetail(.init("Moving to macOS Trash", current: item.name))
                 moveStarted = true
                 let destination = try withExtendedLifetime(pinned) { try trashMover(item.url) }
                 return try MutationOutcome.$preserving.withValue(true) {
@@ -187,11 +203,14 @@ public actor CleanupJournal {
                     if let index = moved.pending.firstIndex(where: { $0.id == intent.id }) { moved.pending[index].destination = destination }
                     try commit(moved)
                     do {
+                        onDetail(.init("Verifying moved files", current: item.name))
                         let movedPin = try PinnedPath(destination)
                         guard UInt64(UInt32(bitPattern: movedPin.value.st_dev)) == item.identity.device,
                               movedPin.value.st_ino == item.identity.inode,
                               movedPin.value.st_uid == getuid(),
-                              try Filesystem.inspect(destination).1 == item.identity else {
+                              try Filesystem.inspect(destination, progress: { entries, bytes in
+                                  onDetail(.init("Verifying moved files", current: item.name, entries: entries, bytes: bytes))
+                              }).1 == item.identity else {
                             throw LumaError.rejected("The moved item could not be identified. Review the interrupted operation in Activity.")
                         }
                         try movedPin.revalidate()

@@ -174,7 +174,7 @@ public enum ApplicationScanner {
                             let metadata = try Filesystem.applicationMetadata(at: url)
                             let app = ApplicationRecord(url: url,
                                 name: metadata["CFBundleDisplayName"] as? String ?? url.deletingPathExtension().lastPathComponent,
-                                bundleID: identifier, version: metadata["CFBundleShortVersionString"] as? String ?? "Unknown", bytes: 0, sizeState: .pending)
+                                bundleID: identifier, version: metadata["CFBundleShortVersionString"] as? String ?? "Unknown", bytes: 0, sizeState: .pending, iconPNG: try ApplicationIcon.png(bundle: url, metadata: metadata))
                             apps.append(app); emit(.application(app))
                         } catch is CancellationError { throw CancellationError() }
                         catch { report.recordFailure(error, at: url, category: .applications, rule: "inventory", emit: emit) }
@@ -192,10 +192,10 @@ public enum ApplicationScanner {
                     let bytes = try Filesystem.inspect(app.url, progress: { entries, bytes in
                         emit(.progress(.init("Measuring application bundles", current: app.name, completed: index, total: appCount, entries: entries, bytes: bytes)))
                     }).0
-                    apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: bytes)
+                    apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: bytes, iconPNG: app.iconPNG)
                 } catch is CancellationError { throw CancellationError() }
                 catch {
-                    apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: 0, sizeState: .unavailable)
+                    apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: 0, sizeState: .unavailable, iconPNG: app.iconPNG)
                     report.recordFailure(error, at: app.url, category: .applications, rule: "inventory.size", emit: emit)
                 }
                 emit(.application(apps[index])); report.visited += 1

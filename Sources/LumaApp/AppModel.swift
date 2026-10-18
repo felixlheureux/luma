@@ -482,7 +482,17 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         }
         busy = true; showingReview = false; status = "Validating selected items…"
         cleanupSession.run { [self] in
-            defer { invalidateDownloads(); invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
+            defer {
+                invalidateDownloads(); invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint()
+                if plan.source == .leftovers {
+                    let changed = history.filter { $0.planID == plan.id }.map(\.original) + recoveryNotices.map(\.original)
+                    if let remaining = scanSessions.retainRemainingLeftovers(excluding: changed) {
+                        completedSnapshots[.leftovers] = remaining
+                        leftovers = remaining.result.report.items; didScanLeftovers = true
+                    } else { invalidateLeftovers() }
+                } else { invalidateLeftovers() }
+            }
+            let detailEmitter = cleanupSession.detailEmitter
             do {
                 _ = try await journal.execute(plan, context: { @MainActor [self] in
                     await .current(ignoredPaths: ignored)
@@ -496,7 +506,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                     status = "Moving reviewed items to Trash…"
                 }, onProgress: { @MainActor [self] progress in
                     cleanupSession.update(progress)
-                })
+                    status = progress.phase == .validating ? "Validating selected items…" : "Checking and moving reviewed items to Trash…"
+                }, onDetail: detailEmitter)
                 selected = []; status = "Moved to Trash · restore from Activity"
             } catch {
                 if !(error is CancellationError) { self.error = error.localizedDescription }

@@ -21,7 +21,15 @@ public struct SafetyEngine: Sendable {
             && authorizedRoots.contains { !Filesystem.samePath(url, $0) && Filesystem.isWithin(url, root: $0) }
     }
 
-    public func validate(_ item: CleanupItem, authorizedRoots: [URL] = [], runningBundleIDs: Set<String> = [], activity: CleanupActivity? = nil) throws {
+    public func validate(_ item: CleanupItem, authorizedRoots: [URL] = [], runningBundleIDs: Set<String> = [], activity: CleanupActivity? = nil,
+                         progress: @escaping @Sendable (ScanPulse) -> Void = { _ in }) throws {
+        try validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: runningBundleIDs, activity: activity, preflightOwners: nil, progress: progress)
+    }
+
+    // A shared inventory is allowed only for whole-plan preflight. The final
+    // per-move call always enters through fresh ownership discovery above.
+    func validate(_ item: CleanupItem, authorizedRoots: [URL], runningBundleIDs: Set<String>, activity: CleanupActivity?,
+                  preflightOwners: Set<String>?, progress: @escaping @Sendable (ScanPulse) -> Void) throws {
         _ = try Rules.catalog()
         let url = item.url.exactStandardizedFileURL
         try Filesystem.validatePath(item.url)
@@ -53,7 +61,10 @@ public struct SafetyEngine: Sendable {
                 throw LumaError.rejected("The leftover path does not match its ownership evidence.")
             }
             _ = try ApplicationRelationships.resolve(url: url, owner: owner, home: home)
-            let installed = try ApplicationPresence.bundleIdentifiers(home: home)
+            progress(.init("Checking installed owners", current: item.name))
+            let installed = try preflightOwners ?? ApplicationPresence.bundleIdentifiers(home: home, emit: { event in
+                if case .progress(let pulse) = event { progress(pulse) }
+            })
             guard !ApplicationPresence.hasOwner(owner, installed: installed) else {
                 throw LumaError.rejected("An owning app or helper is now installed. Scan again before reviewing this data.")
             }
@@ -87,7 +98,12 @@ public struct SafetyEngine: Sendable {
         }
         if ["application.exact-bundle", "application.exact-related", "application.leftover.exact-identifier"].contains(item.ruleID),
            let owner = item.ownerBundleID, !runningBundleIDs.isEmpty {
-            let helpers = try ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: owner)
+            // Absence above already searched all apps and embedded helpers.
+            // A second owner-specific walk cannot find an absent owner's helpers.
+            let helpers: Set<String> = item.ruleID == "application.leftover.exact-identifier" ? []
+                : try ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: owner, emit: { event in
+                    if case .progress(let pulse) = event { progress(pulse) }
+                })
             let running = Set(runningBundleIDs.map { $0.lowercased() })
             let normalized = owner.lowercased()
             guard helpers.isDisjoint(with: running), !running.contains(where: {
@@ -99,7 +115,10 @@ public struct SafetyEngine: Sendable {
         guard let location = item.identity.location else { throw LumaError.rejected("This scan uses older identity evidence. Scan again before cleanup.") }
         let pinned = try PinnedPath(url)
         try pinned.revalidate(expected: location)
-        let current = try Filesystem.inspect(url).1
+        progress(.init("Verifying current files", current: item.name))
+        let current = try Filesystem.inspect(url, progress: { entries, bytes in
+            progress(.init("Verifying current files", current: item.name, entries: entries, bytes: bytes))
+        }).1
         try pinned.revalidate(expected: location)
         guard current == item.identity else { throw LumaError.rejected("Files changed since scanning. Scan again to review their current contents.") }
         let homeDevice = (try Filesystem.attributes(home)[.systemNumber] as? NSNumber)?.uint64Value

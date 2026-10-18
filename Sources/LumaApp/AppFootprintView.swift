@@ -81,7 +81,7 @@ struct AppFootprintView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 16) {
-                Image(systemName: "macwindow").font(.system(size: 36)).foregroundStyle(.secondary)
+                ApplicationIconView(app: app, size: 48)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(resetMode ? "Reset \(app.name)" : app.name).font(.system(size: 24, weight: .semibold))
                     Text(app.bundleID).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
