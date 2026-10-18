@@ -24,24 +24,29 @@ enum Palette {
 }
 
 struct AmbientBackground: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         ZStack {
             Palette.canvas
-            RadialGradient(colors: [Palette.accent.opacity(scheme == .dark ? 0.11 : 0.065), .clear], center: .topTrailing, startRadius: 0, endRadius: 600)
-            RadialGradient(colors: [Palette.mint.opacity(0.055), .clear], center: .bottomLeading, startRadius: 0, endRadius: 500)
+            if !reduceTransparency {
+                RadialGradient(colors: [Palette.accent.opacity(scheme == .dark ? 0.11 : 0.065), .clear], center: .topTrailing, startRadius: 0, endRadius: 600)
+                RadialGradient(colors: [Palette.mint.opacity(0.055), .clear], center: .bottomLeading, startRadius: 0, endRadius: 500)
+            }
         }.ignoresSafeArea()
     }
 }
 
 struct Surface<Content: View>: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     var padding: CGFloat = 22
     @ViewBuilder var content: Content
     var body: some View {
         content.padding(padding).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.surface.opacity(scheme == .dark ? 0.88 : 0.78), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.primary.opacity(scheme == .dark ? 0.075 : 0.055)))
+            .background(Palette.surface.opacity(reduceTransparency || contrast == .increased ? 1 : scheme == .dark ? 0.88 : 0.78), in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.primary.opacity(contrast == .increased ? 0.5 : scheme == .dark ? 0.075 : 0.055)))
     }
 }
 
@@ -69,7 +74,7 @@ struct SectionHeading: View {
     var detail: String = ""
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).font(.system(size: 17, weight: .semibold))
+            Text(title).font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
             Spacer()
             if !detail.isEmpty { Text(detail).font(.system(size: 11)).foregroundStyle(.tertiary) }
         }

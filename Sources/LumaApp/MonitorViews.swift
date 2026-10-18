@@ -58,7 +58,7 @@ struct SystemView: View {
                 HStack { Text(title).font(.system(size: 13, weight: .semibold)); Spacer(); StatusPill(text: "Live", tint: tint) }
                 Text(value).font(.system(size: 34, weight: .semibold)).tracking(-1)
                 Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
-                Sparkline(values: values, tint: tint).frame(height: 90)
+                Sparkline(values: values, tint: tint).accessibilityLabel("\(title) history").frame(height: 90)
                 Text("Last \(values.count * 2) seconds · sampled every 2s").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
         }

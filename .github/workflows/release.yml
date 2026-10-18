@@ -46,7 +46,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           bash Scripts/package-dmg.sh
-          hdiutil verify "dist/Luma-$RELEASE_VERSION-arm64.dmg"
+          bash Scripts/verify-dmg.sh "dist/Luma-$RELEASE_VERSION-arm64.dmg"
           cd dist
           shasum -a 256 "Luma-$RELEASE_VERSION-arm64.dmg" > SHA256SUMS
           shasum -a 256 -c SHA256SUMS

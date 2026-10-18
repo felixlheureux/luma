@@ -31,3 +31,9 @@ Do not independently rotate an SF Symbol for the menu bar: the icon's filled seg
 - [pnpm: store pruning and referenced packages](https://pnpm.io/cli/store)
 
 The scanner uses supported default locations only. Custom browser profile paths and package-manager cache overrides are not followed automatically. Modern Yarn project caches, pnpm stores and global virtual stores, simulator devices, and installed runtimes are excluded. Simulator rules cover only user-owned cache and log locations and require idle tools before cleanup.
+
+## Installer payload verification
+
+After a release build and packaging, run `bash Scripts/verify-dmg.sh dist/Luma-0.2.0-arm64.dmg` using the actual version/architecture filename. This mounts the image read-only, checks its app metadata against source, compares the executable with the built app and the icon/license/readme with their source files, verifies the Applications shortcut and mounted signature, then ejects it. The Release workflow runs the same check before checksumming/uploading. Packaging uses a fresh temporary staging folder so files from earlier installers cannot survive into a new payload.
+
+The current development version remains 0.2.0 while task 007 is in progress. Passing automated checks and creating a local installer do not establish the pending manual keyboard/VoiceOver, system accommodation, composited-appearance or reference-interaction review. Update the version/build and installer heading together only after those gates are reviewed; then verify the tag-triggered public download against its published checksum.

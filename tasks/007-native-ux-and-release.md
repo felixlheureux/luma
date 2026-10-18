@@ -1,6 +1,6 @@
 # 007 — Review native UX and ship 0.3.0
 
-Status: Ready
+Status: In progress
 Priority: P1  
 Milestone: 0.3.0  
 Depends on: [001](001-cleanup-plans.md), [002](002-filesystem-identity.md), [003](003-scan-sessions.md), [004](004-storage-browser.md), [005](005-application-footprints.md), [006](006-application-reset.md), [047](047-provider-aware-filesystem.md), [048](048-cleanup-session-undo.md), [050](050-expanded-cache-discovery.md)
@@ -42,3 +42,24 @@ Spec: sections 70, 90, 94–100, and 106.6 in the [product specification](../Doc
 
 Reference checkpoints: repeat the relevant reference-DMG comparisons across the whole milestone, including details and recovery states. Inspect the final Luma DMG separately. Complete [reference-checks.md](reference-checks.md) before marking this task done.
 
+
+## 2026-10-18 implementation and review evidence
+
+Implemented the automated review/release-preparation slice against baseline `95ddb78`:
+
+- Custom surfaces use opaque fills for Reduce Transparency or increased contrast and stronger outlines for increased contrast. Ambient decorative gradients disappear with Reduce Transparency. Native materials keep their platform behavior.
+- Item detail expansion and storage detail scrolling honor Reduce Motion. Search, scan coverage and item-consequence buttons have explicit accessible names; icon detail controls have 28-point hit targets. Section/page headings expose heading traits and System graphs identify CPU versus memory history.
+- `bash Scripts/check-native-ux.sh` visits nine pages across Light/Dark/System and standard/high-contrast window appearances. All 54 layout samples pass with continued monitoring/menu and no selected files or mutations. The longest final sample is 0.084 seconds, **including** a requested 20 ms yield. This is a lightweight layout smoke measurement, not a frame trace or a large-result benchmark. Initial checker teardown trapped after writing its report; keeping the original scene content fixed the checker, and the final rerun exits normally.
+- 168 Swift tests in 16 suites and four Python release-validation tests pass. Shell syntax and CI/release YAML syntax checks pass. Full actionlint validation was unavailable locally.
+- Native light/dark scan, cleanup Stop/session Undo, storage and application footprint/reset regressions pass. Scan inventory: 6,000 files in 0.950/0.961 seconds; maximum sampled main-actor delay 0.072/0.085 seconds. Storage: 1,030 nodes in 1.639/1.620 seconds. Lifecycle verifies window closing/reopening, menu visibility, monitoring and explicit Quit.
+- Packaging uses fresh temporary staging. `Scripts/verify-dmg.sh`, also invoked by Release CI, mounts the installer read-only and checks app metadata, executable, shared icon, licenses, installer text, Applications shortcut and signature against the current build/source before ejecting it.
+
+Remaining release gates (task stays **In progress**, version stays **0.2.0**):
+
+- Perform a complete keyboard-only and VoiceOver session through scan/cancel, selection, confirmation, failure, partial cleanup, restart recovery and Restore/Undo. The fixture reset focus check is narrower than this gate.
+- Review Settings and the menu companion, all sheets and below-fold content in System/Light/Dark, with actual Increase Contrast, Reduce Transparency and Reduce Motion settings. The checker records the current system flags (both reduction flags were false); high-contrast window appearances do not prove system-preference behavior. Own-window fallback captures omit native/layer-backed button fills and toolbar content, so full glass composition/contrast remains unverified.
+- Record large-list, sidebar, storage and scan interaction traces with a suitable profiler and assess any stalls. Current sampled timings and cached-navigation fixtures are useful evidence but do not close that requirement.
+- Complete the interactive reference comparison. Available reference evidence remains metadata/localization only; no visual or end-to-end reference workflow is claimed.
+- After those reviews pass, update app version/build and installer heading together, publish the tag-triggered 0.3.0 prerelease, download its public DMG/checksum, and verify them. A locally verified 0.2.0 development installer does not satisfy the published 0.3.0 criterion.
+
+Final local packaging evidence: the release configuration builds and its strict signature passes. The generated 0.2.0 arm64 DMG passes image integrity, read-only mounted payload/signature verification and SHA-256 round-trip checking. Its reference image and installer mount are ejected. Generated installer/checksum files remain untracked under `dist/`.

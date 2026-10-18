@@ -97,6 +97,7 @@ Provider-aware access skips reported cloud/provider scopes, dataless content, ne
 bash Scripts/build-app.sh debug
 bash Scripts/test.sh
 bash Scripts/check-window-lifecycle.sh
+bash Scripts/check-native-ux.sh
 bash Scripts/preview.sh
 ```
 
@@ -123,3 +124,5 @@ Debug native scan QA: build with `bash Scripts/build-app.sh debug`, then run `ba
 Debug native cleanup QA: after a debug build, run `bash Scripts/check-cleanup-sessions.sh`. It checks safe Stop during an injected fixture move, durable partial Activity, the actual Undo sheet, restoration, and continued monitoring/menu operation in both appearances. All files live under a generated fixture home; it never calls real macOS Trash. `LUMA_CLEANUP_QA_OUTPUT_DIR` retains synthetic reports and own-window captures in a temporary directory.
 
 Debug native storage QA: after a debug build, run `bash Scripts/check-storage-browser.sh`. It checks cached three-level navigation, selection clearing, map remainder totals, partial/provider/empty states, actual review-sheet presentation and stale-selection rejection in both appearances using 1,030 generated nodes. It never executes cleanup. `LUMA_STORAGE_QA_OUTPUT_DIR` retains synthetic reports and own-window captures in a temporary directory.
+
+Task 007 is in progress. The debug native UX smoke review visits all nine pages in Light, Dark and System appearance with standard and high-contrast window appearances, retains optional own-window captures, and samples layout latency while monitoring continues. Set `LUMA_UX_QA_OUTPUT_DIR` to retain its temporary report. This does not verify VoiceOver, keyboard traversal, system accessibility preference changes or GPU frame performance. Manual accessibility and release review remain required before 0.3.0.

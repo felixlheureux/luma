@@ -2,6 +2,7 @@ import SwiftUI
 import LumaCore
 
 struct ItemList: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var model
     let items: [CleanupItem]
     @ViewState private var expanded: Set<String> = []
@@ -21,9 +22,12 @@ struct ItemList: View {
                                 Text(item.displayPath).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                         }.buttonStyle(.plain)
+                            .accessibilityLabel("Details for \(item.name)")
+                            .accessibilityValue(expanded.contains(item.id) ? "Expanded" : "Collapsed")
                         SafetyBadge(level: item.safety)
                         Text(formatBytes(item.bytes)).font(.system(size: 12, weight: .medium, design: .monospaced)).frame(width: 84, alignment: .trailing)
-                        Button { toggle(item.id) } label: { Image(systemName: expanded.contains(item.id) ? "chevron.up" : "info.circle").foregroundStyle(.secondary) }.buttonStyle(.plain).help("Inspect rule and removal consequences")
+                        Button { toggle(item.id) } label: { Image(systemName: expanded.contains(item.id) ? "chevron.up" : "info.circle").foregroundStyle(.secondary).frame(width: 28, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).help("Inspect rule and removal consequences")
+                            .accessibilityLabel("\(expanded.contains(item.id) ? "Hide" : "Show") removal consequences for \(item.name)")
                     }.padding(.vertical, 14)
                     if expanded.contains(item.id) {
                         VStack(alignment: .leading, spacing: 10) {
@@ -50,7 +54,7 @@ struct ItemList: View {
         }
     }
     private func toggle(_ id: String) {
-        withAnimation(.easeInOut(duration: 0.18)) { if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) } }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) } }
     }
 }
 

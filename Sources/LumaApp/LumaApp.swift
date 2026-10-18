@@ -69,6 +69,9 @@ struct LumaApp: App {
         }
         let arguments = CommandLine.arguments
         #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-native-ux"), arguments.indices.contains(flag + 1) {
+            checkNativeUX(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-application-footprint"), arguments.indices.contains(flag + 1) {
             checkApplicationFootprint(output: arguments[flag + 1])
         }

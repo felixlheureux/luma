@@ -2,6 +2,7 @@ import SwiftUI
 import LumaCore
 
 struct RootView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
@@ -42,7 +43,7 @@ struct RootView: View {
                         }
                         .onChange(of: model.storageFocus) { _, id in
                             if model.destination == .storage, id != nil {
-                                withAnimation { proxy.scrollTo("storage-details", anchor: .bottom) }
+                                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo("storage-details", anchor: .bottom) }
                             }
                         }
                     }
@@ -63,7 +64,7 @@ struct RootView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { model.showingSearch.toggle() } label: { Image(systemName: "magnifyingglass") }
-                        .help("Search tools and scanned files (⌘K)").keyboardShortcut("k", modifiers: .command)
+                        .accessibilityLabel("Search tools and scanned files").help("Search tools and scanned files (⌘K)").keyboardShortcut("k", modifiers: .command)
                         .popover(isPresented: $model.showingSearch, arrowEdge: .bottom) { SearchView() }
                 }
             }
@@ -88,7 +89,7 @@ struct RootView: View {
     private var pageHeader: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 7) {
-                Text((model.destination ?? .overview).rawValue).font(.system(size: 28, weight: .semibold)).tracking(-0.7)
+                Text((model.destination ?? .overview).rawValue).font(.system(size: 28, weight: .semibold)).tracking(-0.7).accessibilityAddTraits(.isHeader)
                 Text((model.destination ?? .overview).subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
             }
             Spacer()
@@ -204,7 +205,7 @@ struct WindowStatusBar: View {
             else { Circle().fill(Palette.mint).frame(width: 5, height: 5) }
             Text(model.status).lineLimit(1)
             if !model.currentNotices.isEmpty {
-                Button { showNotices.toggle() } label: { Image(systemName: "info.circle") }.buttonStyle(.plain)
+                Button { showNotices.toggle() } label: { Image(systemName: "info.circle").frame(width: 28, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).accessibilityLabel("Show scan coverage")
                     .popover(isPresented: $showNotices) {
                         ScrollView { VStack(alignment: .leading, spacing: 10) {
                             Text("Scan coverage").font(.headline)

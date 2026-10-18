@@ -2,8 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [ ! -d dist/Luma.app ]; then bash Scripts/build-app.sh release; fi
-stage=".build/DMG"
-mkdir -p "$stage"
+mkdir -p .build
+stage="$(mktemp -d .build/DMG.XXXXXX)"
+trap 'rm -rf "$stage"' EXIT
 ditto dist/Luma.app "$stage/Luma.app"
 if [ ! -L "$stage/Applications" ]; then ln -s /Applications "$stage/Applications"; fi
 cp LICENSE "$stage/License.txt"

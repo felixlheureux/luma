@@ -32,7 +32,7 @@ Start [028 phase A](028-contributor-tooling.md) now: code ownership/layout conve
 | 004 | [Build a hierarchical storage browser](004-storage-browser.md) | P1 | Done | 001, 002, 003, 047 |
 | 005 | [Unify app ownership and footprint review](005-application-footprints.md) | P1 | Done | 001, 003 |
 | 006 | [Add explicit application reset](006-application-reset.md) | P1 | Done | 001, 002, 005 |
-| 007 | [Review native UX and ship 0.3.0](007-native-ux-and-release.md) | P1 | Ready | 001–006, 047, 048, 050 |
+| 007 | [Review native UX and ship 0.3.0](007-native-ux-and-release.md) | P1 | In progress | 001–006, 047, 048, 050 |
 | 008 | [Move cleanup knowledge into validated rule files](008-community-rules.md) | P2 | Backlog | 001, 005 |
 | 009 | [Prepare a personal Homebrew tap](009-homebrew-distribution.md) | P2 | Backlog | 007; preparation can start earlier |
 
