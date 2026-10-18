@@ -149,13 +149,13 @@ extension LumaAppDelegate {
                 model.startScan(.init(.storage, root: data))
                 try await waitForScanCheck { !model.busy }
                 report["deniedCoverageReported"] = model.snapshot(for: .storage)?.result.report.coverage.contains { $0.state == .blocked } == true
-                report["readableResultsRetained"] = model.storage.count == 1
+                report["readableResultsRetained"] = model.storageIndex?.children(of: data.path).filter { $0.isComplete }.count == 1
                 let firstSnapshot = model.snapshot(for: .storage)?.finishedAt
                 try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: denied.path)
                 model.retryScan(.storage)
                 try await waitForScanCheck { !model.busy }
                 report["permissionRetrySameScope"] = model.snapshot(for: .storage)?.request.root == data && model.storageRoot == data
-                report["permissionRetrySucceeded"] = model.storage.count == 2 && model.snapshot(for: .storage)?.result.report.isComplete == true
+                report["permissionRetrySucceeded"] = model.storageIndex?.children(of: data.path).filter { $0.isComplete }.count == 2 && model.snapshot(for: .storage)?.result.report.isComplete == true
                 report["newSnapshotTimestamp"] = model.snapshot(for: .storage)?.finishedAt != firstSnapshot
                 report["nothingSelected"] = model.selected.isEmpty
 
@@ -169,7 +169,7 @@ extension LumaAppDelegate {
                 try await waitForScanCheck { !model.busy }
                 let coverage = model.snapshot(for: .storage)?.result.report.coverage ?? []
                 report["providerScopeExcluded"] = coverage.contains { $0.accessCapability == .providerManaged && $0.state == .skipped }
-                report["providerBytesNotCounted"] = model.storage.count == 2 && !model.storage.contains { $0.url.lastPathComponent == "Library" }
+                report["providerBytesNotCounted"] = model.storageIndex?.children(of: data.path).filter { $0.isComplete }.count == 2 && model.storageIndex?.nodes[provider.path]?.accessCapability == .providerManaged
                 report["providerSelectionEmpty"] = model.selected.isEmpty
                 if let window = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }) {
                     try await Task.sleep(for: .milliseconds(350))

@@ -30,7 +30,19 @@ public enum ScanEngine {
             return ScanResult(report: try ApplicationScanner.footprintReport(app, home: home, emit: emit))
         case .storage:
             guard let root = request.root else { throw LumaError.rejected("Choose a folder to analyze.") }
-            return ScanResult(report: try await FolderScanner(root: root, emit: emit).scan())
+            let index = try StorageIndex.scan(root: root, emit: emit)
+            var report = ScanReport()
+            for node in index.nodes.values where !node.isComplete {
+                var coverage = ScanCoverage(ruleID: "storage.index", title: node.url.lastPathComponent,
+                    path: node.url.path, category: .storage, state: node.coverageState ?? .skipped,
+                    bytes: node.bytes, detail: node.issue ?? "Incomplete inspection")
+                coverage.accessCapability = node.accessCapability
+                report.coverage.append(coverage); emit(.coverage(coverage))
+                report.isComplete = false
+            }
+            report.visited = index.nodes.count
+            report.duration = index.duration
+            return ScanResult(report: report, storageIndex: index)
         case .duplicates:
             guard let root = request.root else { throw LumaError.rejected("Choose a folder to compare.") }
             return try DuplicateScanner(root: root, emit: emit).scanResult()

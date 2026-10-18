@@ -46,6 +46,45 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var memoryHistory: [Double] = []
     var cleanup: [CleanupItem] = []
     var storage: [CleanupItem] = []
+    var storageIndex: StorageIndex?
+    var storageDirectory: String?
+    var storageFocus: String?
+
+    func navigateStorage(_ id: String) {
+        guard storageIndex?.nodes[id]?.canNavigate == true, !operationBusy else { return }
+        selected = []; storageFocus = nil; storageDirectory = id
+    }
+
+    func reviewStorage() {
+        guard !busy, let index = storageIndex, let directory = storageDirectory else { return }
+        let ids = selected
+        guard !ids.isEmpty else { return }
+        let roots = authorizedRoots, exclusions = ignored
+        reviewPlan = nil; busy = true; status = "Verifying selection and logical size…"
+        scanTask = Task {
+            do {
+                let plan = try await offMain {
+                    let items = try index.reviewItems(ids: ids, directory: directory)
+                    let scope = SafetyEngine(ignoredPaths: exclusions)
+                    guard items.allSatisfy({ scope.permitsManualSelection(at: $0.url, authorizedRoots: roots) }) else {
+                        throw LumaError.rejected("This selection is protected or outside your authorized home-folder scope.")
+                    }
+                    return try CleanupPlan(items: items, authorizedRoots: roots, ignoredPaths: exclusions, source: .storage)
+                }
+                try Task.checkCancellation()
+                reviewPlan = plan; showingReview = true; status = "Review your selection"
+            } catch is CancellationError { status = "Review cancelled · no changes made" }
+            catch { self.error = error.localizedDescription; status = "Selection needs a new review" }
+            finish()
+        }
+    }
+
+    func invalidateStorage() {
+        storageIndex = nil; storageDirectory = nil; storageFocus = nil
+        storage = []; selected = []
+        completedScans.remove(.storage); completedSnapshots.removeValue(forKey: .storage)
+        scanSessions.invalidateSnapshots(for: [.storage])
+    }
     var duplicates: [DuplicateGroup] = []
     var applications: [ApplicationRecord] = []
     var applicationTab: ApplicationTab = .installed
@@ -201,7 +240,11 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .leftovers:
             leftovers = result.report.items; didScanLeftovers = true
         case .storage:
-            storage = result.report.items; completedScans.insert(.storage)
+            storage = result.report.items
+            storageIndex = result.storageIndex
+            storageDirectory = result.storageIndex?.rootID
+            storageFocus = nil; selected = []
+            completedScans.insert(.storage)
         case .duplicates:
             duplicates = result.duplicates; completedScans.insert(.duplicates)
         case .footprint:
@@ -298,7 +341,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         }
         busy = true; showingReview = false; status = "Validating selected items…"
         cleanupSession.run { [self] in
-            defer { invalidateGeneratedFindings() }
+            defer { invalidateGeneratedFindings(); invalidateStorage() }
             do {
                 _ = try await journal.execute(plan, context: { @MainActor [self] in
                     .current(ignoredPaths: ignored)
@@ -391,7 +434,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         cleanupSession.undoReview = nil
         busy = true; status = "Restoring reviewed items…"
         cleanupSession.run { [self] in
-            defer { invalidateGeneratedFindings() }
+            defer { invalidateGeneratedFindings(); invalidateStorage() }
             do {
                 try await journal.undo(review, onProgress: { @MainActor [self] in cleanupSession.update($0) })
             } catch {
@@ -408,7 +451,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         guard !busy, !recoveryLoading, journalError == nil, let journal else { return }
         busy = true; status = "Checking the item in Trash…"
         Task {
-            defer { invalidateGeneratedFindings() }
+            defer { invalidateGeneratedFindings(); invalidateStorage() }
             do {
                 try await journal.restore(record)
                 apply(await journal.snapshot()); status = "Restored \(record.original.lastPathComponent)"

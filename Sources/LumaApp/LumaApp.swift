@@ -69,6 +69,9 @@ struct LumaApp: App {
         }
         let arguments = CommandLine.arguments
         #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-storage-browser"), arguments.indices.contains(flag + 1) {
+            checkStorageBrowser(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-scan-sessions"), arguments.indices.contains(flag + 1) {
             checkScanSessions(output: arguments[flag + 1])
         }

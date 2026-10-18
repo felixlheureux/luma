@@ -29,8 +29,8 @@ Start [028 phase A](028-contributor-tooling.md) now: code ownership/layout conve
 | 047 | [Centralize provider-aware filesystem policy](047-provider-aware-filesystem.md) | P0 | Done | 001, 002, 003 |
 | 050 | [Early expanded cache discovery](050-expanded-cache-discovery.md) | P1 | Done | 001, 002, 003, 047 |
 | 048 | [Cleanup progress, safe Stop, and session Undo](048-cleanup-session-undo.md) | P1 | Done | 001, 002, 003, 047 |
-| 004 | [Build a hierarchical storage browser](004-storage-browser.md) | P1 | Ready | 001, 002, 003, 047 |
-| 005 | [Unify app ownership and footprint review](005-application-footprints.md) | P1 | Planned | 001, 003 |
+| 004 | [Build a hierarchical storage browser](004-storage-browser.md) | P1 | Done | 001, 002, 003, 047 |
+| 005 | [Unify app ownership and footprint review](005-application-footprints.md) | P1 | Ready | 001, 003 |
 | 006 | [Add explicit application reset](006-application-reset.md) | P1 | Planned | 001, 002, 005 |
 | 007 | [Review native UX and ship 0.3.0](007-native-ux-and-release.md) | P1 | Planned | 001–006, 047, 048, 050 |
 | 008 | [Move cleanup knowledge into validated rule files](008-community-rules.md) | P2 | Backlog | 001, 005 |
@@ -51,7 +51,7 @@ Ready means the task can start. Planned means its dependencies must land first. 
 | 5 | [052 — Network quality diagnostics](052-network-diagnostics.md) | P2 | 003, 017 | User-started speed, latency and loaded-responsiveness tests plus native troubleshooting handoffs. |
 | 6 | [053 — Live disk activity](053-disk-activity.md) | P2 | 003 | Distinguish supported read/write activity from capacity, hardware health and CPU/memory load. |
 
-Tasks 001–003, 047, 048 and 050 are complete. Start the hierarchical storage browser in 004 next. Bring 017/018 forward as soon as scan lifecycle support is ready. Finish the remaining 0.3.0 storage/app/session gates before release; these parallel tasks ship only when complete and included in the release review. Task 051 does not introduce automatic app termination or a system-wide purge button. Task 052 does not turn passive monitoring into background speed testing.
+Tasks 001–004, 047, 048 and 050 are complete. Start shared application ownership and footprint review in 005 next. Bring 017/018 forward as soon as scan lifecycle support is ready. Finish the remaining 0.3.0 storage/app/session gates before release; these parallel tasks ship only when complete and included in the release review. Task 051 does not introduce automatic app termination or a system-wide purge button. Task 052 does not turn passive monitoring into background speed testing.
 
 ## Follow-up queues
 

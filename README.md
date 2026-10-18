@@ -14,7 +14,7 @@ Every proposed cleanup has a path, an explanation, an ownership rule, and a cons
 - **Review generated data.** Inspect Chrome, Safari, Firefox, Zen, Brave, and Edge caches; npm, Yarn Classic, and pnpm metadata caches; developer build files; simulator caches and logs; and verified VS Code 1.142.0 cache/log units. Cookies, sessions, project dependencies, shared stores, and device contents stay separate.
 - **Find app leftovers.** Review data whose exact bundle identifier has no installed owner. Luma checks application folders, embedded helpers, and macOS Launch Services. Exact identifiers and explicit rules cover supported named support folders. Ownership is checked again before Trash.
 - **Understand app footprints.** Inventory apps and inspect exact matches for caches, preferences, saved state, and application support. Uninstall selections are explicit.
-- **Explore storage.** Choose a folder, see a proportional map, and filter files by size, age, or installer type. Personal files are never classified as junk.
+- **Explore storage.** Choose a folder, drill into its hierarchy with breadcrumbs, compare a synchronized map and list, show hidden entries, sort by size/name, and filter the current folder by size, age, or installer type. Personal files are never classified as junk.
 - **Verify duplicates.** Compare sizes, partial hashes, and full SHA-256 content. Hard-linked copies count once, and at least one copy must remain per group.
 - **Read meaningful system metrics.** See CPU, memory pressure, app/wired/compressed memory, reusable file cache, swap, thermals, battery charge, and resource consumers grouped by app.
 - **Follow and cancel scans.** Application rows appear before bundle sizing finishes. Every scan and app inspection has tracked progress and cancellation; replacement scans queue until the old worker stops. Previews stay read-only, completed snapshots retain their timestamps, and permission retries keep the chosen scope.
@@ -29,7 +29,7 @@ The interface follows **System appearance by default**, with optional Light and 
 | --- | --- | --- |
 | Clean | 22 bounded rules; verified VS Code cache/log units, app/category grouping, unique logical totals, browser/package caches, simulator diagnostics and scan coverage | More cache versions and ecosystems, finer selection, device backups |
 | Applications | Inventory, exact footprints, reviewed uninstall, potential leftovers | App reset, broader ownership evidence, and update discovery |
-| Storage | Chosen-folder map and file filters | Nested browsing, volumes, developer projects, and incremental indexing |
+| Storage | Cached hierarchical browser, breadcrumbs, map/list details, current-folder filters and explicit manual review | Volumes, developer projects, and persistent incremental indexing |
 | Duplicates | Exact content verification | Similar-photo analysis and comparison |
 | Optimizer | Grouped resource consumers and normal quit requests | Measured recommendations and audited maintenance |
 | Privacy | macOS permission shortcuts; separation from cache cleanup | Browser privacy workflows and a permissions overview |
@@ -119,3 +119,5 @@ The commercial app supplied during development was a product reference only. No 
 Debug native scan QA: build with `bash Scripts/build-app.sh debug`, then run `bash Scripts/check-scan-sessions.sh` in a logged-in desktop session. It checks light/dark native scan and inspection cancellation, read-only previews, scoped permission retry, provider exclusions and totals, navigation, Settings, window reopening and continued menu monitoring using 30 synthetic apps with 6,000 files. It never invokes cleanup. Timing measurements describe that fixture on the current machine, not a universal responsiveness guarantee.
 
 Debug native cleanup QA: after a debug build, run `bash Scripts/check-cleanup-sessions.sh`. It checks safe Stop during an injected fixture move, durable partial Activity, the actual Undo sheet, restoration, and continued monitoring/menu operation in both appearances. All files live under a generated fixture home; it never calls real macOS Trash. `LUMA_CLEANUP_QA_OUTPUT_DIR` retains synthetic reports and own-window captures in a temporary directory.
+
+Debug native storage QA: after a debug build, run `bash Scripts/check-storage-browser.sh`. It checks cached three-level navigation, selection clearing, map remainder totals, partial/provider/empty states, actual review-sheet presentation and stale-selection rejection in both appearances using 1,030 generated nodes. It never executes cleanup. `LUMA_STORAGE_QA_OUTPUT_DIR` retains synthetic reports and own-window captures in a temporary directory.

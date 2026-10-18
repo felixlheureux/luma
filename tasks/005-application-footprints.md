@@ -1,6 +1,6 @@
 # 005 — Unify app ownership and footprint review
 
-Status: Planned  
+Status: Ready
 Priority: P1  
 Milestone: 0.3.0  
 Depends on: [001](001-cleanup-plans.md), [003](003-scan-sessions.md)

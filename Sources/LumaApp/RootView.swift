@@ -14,27 +14,37 @@ struct RootView: View {
             ZStack {
                 AmbientBackground()
                 VStack(spacing: 0) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 28) {
-                            pageHeader
-                            CleanupProgressPanel()
-                            ScanSessionPanel()
-                            if let target = model.currentScanTarget { CompletedScanCaption(target: target) }
-                            Group {
-                                switch model.destination ?? .overview {
-                                case .overview: OverviewView()
-                                case .clean: CleanView()
-                                case .storage: StorageView()
-                                case .applications: ApplicationsView()
-                                case .duplicates: DuplicatesView()
-                                case .optimizer: OptimizerView()
-                                case .system: SystemView()
-                                case .privacy: PrivacyView()
-                                case .history: HistoryView()
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 28) {
+                                pageHeader.id("page-top")
+                                CleanupProgressPanel()
+                                ScanSessionPanel()
+                                if let target = model.currentScanTarget { CompletedScanCaption(target: target) }
+                                Group {
+                                    switch model.destination ?? .overview {
+                                    case .overview: OverviewView()
+                                    case .clean: CleanView()
+                                    case .storage: StorageView()
+                                    case .applications: ApplicationsView()
+                                    case .duplicates: DuplicatesView()
+                                    case .optimizer: OptimizerView()
+                                    case .system: SystemView()
+                                    case .privacy: PrivacyView()
+                                    case .history: HistoryView()
+                                    }
                                 }
+                            }.padding(.horizontal, 36).padding(.top, 22).padding(.bottom, 30).frame(maxWidth: 1160)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .onChange(of: model.storageDirectory) { _, _ in
+                            if model.destination == .storage { proxy.scrollTo("page-top", anchor: .top) }
+                        }
+                        .onChange(of: model.storageFocus) { _, id in
+                            if model.destination == .storage, id != nil {
+                                withAnimation { proxy.scrollTo("storage-details", anchor: .bottom) }
                             }
-                        }.padding(.horizontal, 36).padding(.top, 22).padding(.bottom, 30).frame(maxWidth: 1160)
-                            .frame(maxWidth: .infinity)
+                        }
                     }
                     WindowStatusBar()
                 }
@@ -115,6 +125,20 @@ struct SearchView: View {
                         Button { model.destination = item; model.showingSearch = false } label: { Label(item.rawValue, systemImage: item.symbol).frame(maxWidth: .infinity, alignment: .leading).padding(8) }.buttonStyle(.plain)
                     }
                     if !model.search.isEmpty {
+                        if let index = model.storageIndex, let directory = model.storageDirectory {
+                            ForEach(index.children(of: directory).filter { $0.url.lastPathComponent.localizedCaseInsensitiveContains(model.search) }.prefix(20)) { node in
+                                Button {
+                                    model.destination = .storage
+                                    model.storageFocus = node.id
+                                    model.showingSearch = false
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(node.url.lastPathComponent)
+                                        Text(node.url.path).font(.caption).foregroundStyle(.secondary)
+                                    }.padding(8)
+                                }.buttonStyle(.plain)
+                            }
+                        }
                         ForEach((model.cleanup + model.storage).filter { $0.name.localizedCaseInsensitiveContains(model.search) }.prefix(20)) { item in
                             Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: {
                                 VStack(alignment: .leading, spacing: 3) { Text(item.name); Text(item.displayPath).font(.caption).foregroundStyle(.secondary) }.padding(8)

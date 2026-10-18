@@ -53,8 +53,9 @@ public struct ScanResult: Sendable {
     public var report: ScanReport
     public var applications: [ApplicationRecord]
     public var duplicates: [DuplicateGroup]
-    public init(report: ScanReport = ScanReport(), applications: [ApplicationRecord] = [], duplicates: [DuplicateGroup] = []) {
-        self.report = report; self.applications = applications; self.duplicates = duplicates
+    public var storageIndex: StorageIndex?
+    public init(report: ScanReport = ScanReport(), applications: [ApplicationRecord] = [], duplicates: [DuplicateGroup] = [], storageIndex: StorageIndex? = nil) {
+        self.report = report; self.applications = applications; self.duplicates = duplicates; self.storageIndex = storageIndex
     }
 }
 

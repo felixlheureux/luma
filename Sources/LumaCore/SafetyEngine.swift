@@ -8,6 +8,19 @@ public struct SafetyEngine: Sendable {
         self.home = home; self.ignoredPaths = ignoredPaths
     }
 
+    /// Metadata-free scope check for enabling explicit manual selections. Full
+    /// filesystem, ownership and identity validation still happens in validate.
+    public func permitsManualSelection(at url: URL, authorizedRoots: [URL]) -> Bool {
+        let protected = [home] + ["Documents", "Desktop", "Pictures", "Movies", "Music", "Downloads", "Library", "Applications", ".Trash"].map { home.appendingPathComponent($0) }
+        return Filesystem.isWithin(url, root: home)
+            && !["/System", "/Library", "/usr", "/bin", "/sbin", "/private", "/dev", "/Volumes"].contains { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }
+            && !protected.contains { Filesystem.samePath($0, url) }
+            && !Filesystem.isWithin(url, root: home.appendingPathComponent("Library"))
+            && !Filesystem.isWithin(url, root: home.appendingPathComponent(".Trash"))
+            && !ignoredPaths.contains { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }
+            && authorizedRoots.contains { !Filesystem.samePath(url, $0) && Filesystem.isWithin(url, root: $0) }
+    }
+
     public func validate(_ item: CleanupItem, authorizedRoots: [URL] = [], runningBundleIDs: Set<String> = [], activity: CleanupActivity? = nil) throws {
         let url = item.url.exactStandardizedFileURL
         try Filesystem.validatePath(item.url)
@@ -69,9 +82,7 @@ public struct SafetyEngine: Sendable {
             }
         } else {
             guard ["manual.folder-review", "duplicates.sha256"].contains(item.ruleID), item.safety == .userData,
-                  Filesystem.isWithin(url, root: home), !Filesystem.isWithin(url, root: home.appendingPathComponent("Library")),
-                  !Filesystem.isWithin(url, root: home.appendingPathComponent(".Trash")),
-                  authorizedRoots.contains(where: { !Filesystem.samePath(url, $0) && Filesystem.isWithin(url, root: $0) }) else {
+                  permitsManualSelection(at: url, authorizedRoots: authorizedRoots) else {
                 throw LumaError.rejected("This item requires an explicitly chosen folder inside your home directory.")
             }
         }
