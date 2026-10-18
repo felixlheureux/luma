@@ -49,6 +49,12 @@ public enum ScanEngine {
             var result = ScanResult(report: inventory.report)
             result.projectInventory = inventory
             return result
+        case .downloads:
+            guard let root = request.root else { throw LumaError.rejected("Choose a Downloads folder to review.") }
+            let inventory = try DownloadsScanner.scan(root: root, ignoredPaths: request.ignoredPaths, emit: emit)
+            var result = ScanResult(report: inventory.report, duplicates: inventory.duplicates)
+            result.downloadsInventory = inventory
+            return result
         case .duplicates:
             guard let root = request.root else { throw LumaError.rejected("Choose a folder to compare.") }
             return try DuplicateScanner(root: root, emit: emit).scanResult()

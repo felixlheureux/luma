@@ -26,6 +26,7 @@ struct RootView: View {
                                     switch model.destination ?? .overview {
                                     case .overview: OverviewView()
                                     case .clean: CleanView()
+                                    case .downloads: DownloadsView()
                                     case .projects: ProjectsView()
                                     case .storage: StorageView()
                                     case .applications: ApplicationsView()
@@ -38,6 +39,14 @@ struct RootView: View {
                                 }
                             }.padding(.horizontal, 36).padding(.top, 22).padding(.bottom, 30).frame(maxWidth: 1160)
                                 .frame(maxWidth: .infinity)
+                        }
+                        .onChange(of: model.downloadsTab) { _, _ in
+                            if model.destination == .downloads { proxy.scrollTo("page-top", anchor: .top) }
+                        }
+                        .onChange(of: model.downloadFocus) { _, id in
+                            if model.destination == .downloads, id != nil {
+                                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo("downloads-details", anchor: .bottom) }
+                            }
                         }
                         .onChange(of: model.storageDirectory) { _, _ in
                             if model.destination == .storage { proxy.scrollTo("page-top", anchor: .top) }

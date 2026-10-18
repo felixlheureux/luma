@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public protocol Scanner: Sendable {
     var id: String { get }
@@ -271,38 +272,80 @@ public struct DuplicateScanner: Sendable {
                 catch { walker.skipDescendants(); report.recordFailure(error, at: url, category: .storage, rule: "duplicates.scan", emit: emit) }
             }
             for (url, error) in walkErrors { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.walk", emit: emit) }
-            var groups: [DuplicateGroup] = []
-            for candidates in files.values where candidates.count > 1 {
-                emit(.progress(.init("Checking partial content", current: candidates.first?.lastPathComponent ?? "", entries: visited)))
-                var partials: [String: [URL]] = [:]
-                for url in candidates {
+            var candidates: [CleanupItem] = []
+            for urls in files.values where urls.count > 1 {
+                for url in urls {
                     try Task.checkCancellation()
-                    do { partials[try Filesystem.hash(url, partial: true, progress: { bytes in emit(.progress(.init("Checking partial content", current: url.lastPathComponent, bytes: bytes))) }), default: []].append(url) }
-                    catch is CancellationError { throw CancellationError() }
-                    catch { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.hash", emit: emit) }
+                    do {
+                        candidates.append(try Filesystem.item(url, category: .storage, safety: .userData,
+                            explanation: "A file in your chosen folder.", consequence: "This is your data.", rule: "manual.folder-review"))
+                    } catch is CancellationError { throw CancellationError() }
+                    catch { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.scan", emit: emit) }
                 }
-                for partial in partials.values where partial.count > 1 {
+            }
+            let verified = try Self.verify(candidates, emit: emit)
+            report.notices += verified.report.notices; report.coverage += verified.report.coverage
+            report.isComplete = report.isComplete && verified.report.isComplete
+            report.visited = visited; report.duration = Date().timeIntervalSince(started)
+            return ScanResult(report: report, duplicates: verified.duplicates)
+        }
+    }
+
+
+    /// Shared size/partial/full-SHA256 pipeline for an already bounded inventory.
+    /// Hashes are tied to the original scan's identities, never filenames.
+    public static func verify(_ candidates: [CleanupItem], emit: @escaping ScanEmitter = { _ in }) throws -> ScanResult {
+        try NonMaterializingIO.perform {
+            var report = ScanReport()
+            var seen: Set<FileObjectID> = []
+            let unique = candidates.sorted { Data($0.url.path.utf8).lexicographicallyPrecedes(Data($1.url.path.utf8)) }
+                .filter { $0.bytes > 0 && seen.insert(FileObjectID($0.identity)).inserted }
+            let sizes = Dictionary(grouping: unique, by: \.bytes)
+            var groups: [DuplicateGroup] = []
+            func current(_ item: CleanupItem) throws {
+                let pin = try PinnedPath(item.url)
+                guard pin.value.st_mode & S_IFMT == S_IFREG, item.safety == .userData,
+                      try Filesystem.inspect(item.url).1 == item.identity else { throw LumaError.rejected("File changed while verifying duplicate content.") }
+                try pin.revalidate(expected: item.identity.location)
+            }
+            for files in sizes.values where files.count > 1 {
+                var partials: [String: [CleanupItem]] = [:]
+                for item in files {
+                    try Task.checkCancellation()
+                    do {
+                        try current(item)
+                        let hash = try Filesystem.hash(item.url, partial: true, progress: { bytes in
+                            emit(.progress(.init("Checking partial content", current: item.name, bytes: bytes)))
+                        })
+                        partials[hash, default: []].append(item)
+                    } catch is CancellationError { throw CancellationError() }
+                    catch { report.recordFailure(error, at: item.url, category: item.category, rule: "duplicates.hash", emit: emit) }
+                }
+                for matches in partials.values where matches.count > 1 {
                     var hashes: [String: [CleanupItem]] = [:]
-                    for url in partial {
+                    for original in matches {
                         try Task.checkCancellation()
                         do {
-                            let item = try Filesystem.item(url, category: .storage, safety: .userData,
-                                explanation: "Identical SHA-256 content verified against another file. Hard links are counted once.",
-                                consequence: "Keep at least one copy. Each location may be referenced by a different project.", rule: "duplicates.sha256")
-                            let hash = try Filesystem.hash(url, progress: { bytes in emit(.progress(.init("Verifying full content", current: url.lastPathComponent, bytes: bytes))) })
-                            guard try Filesystem.inspect(url).1 == item.identity else { throw LumaError.rejected("File changed while hashing.") }
+                            try current(original)
+                            let hash = try Filesystem.hash(original.url, progress: { bytes in
+                                emit(.progress(.init("Verifying full content", current: original.name, bytes: bytes)))
+                            })
+                            try current(original)
+                            let item = CleanupItem(url: original.url, bytes: original.bytes, category: original.category, safety: .userData,
+                                explanation: "Identical SHA-256 content verified against another independent file. Names, extensions and source URLs do not establish duplicates.",
+                                consequence: "Keep at least one independent copy. Each location may still be needed. Restore from Activity never overwrites a recreated file.",
+                                ruleID: "duplicates.sha256", ownerBundleID: nil, identity: original.identity, scannedAt: original.scannedAt)
                             hashes[hash, default: []].append(item)
                         } catch is CancellationError { throw CancellationError() }
-                        catch { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.hash", emit: emit) }
+                        catch { report.recordFailure(error, at: original.url, category: original.category, rule: "duplicates.hash", emit: emit) }
                     }
                     for (hash, items) in hashes where items.count > 1 {
-                        let group = DuplicateGroup(id: hash, items: items.sorted { $0.url.path < $1.url.path })
+                        let group = DuplicateGroup(id: hash, items: items.sorted { Data($0.id.utf8).lexicographicallyPrecedes(Data($1.id.utf8)) })
                         groups.append(group); emit(.duplicate(group))
                     }
                 }
             }
-            report.visited = visited; report.duration = Date().timeIntervalSince(started)
-            return ScanResult(report: report, duplicates: groups.sorted { $0.recoverable > $1.recoverable })
+            return ScanResult(report: report, duplicates: groups.sorted { $0.recoverable == $1.recoverable ? $0.id < $1.id : $0.recoverable > $1.recoverable })
         }
     }
 }

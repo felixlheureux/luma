@@ -96,6 +96,7 @@ extension CleanupSource {
         case .storage: "Storage cleanup"
         case .duplicates: "Duplicate cleanup"
         case .developerProjects: "Project cleanup"
+        case .downloads: "Downloads review"
         }
     }
 }

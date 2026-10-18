@@ -13,6 +13,7 @@ Every proposed cleanup has a path, an explanation, an ownership rule, and a cons
 
 - **Review generated data.** Inspect Chrome, Safari, Firefox, Zen, Brave, and Edge caches; npm, Yarn Classic, and pnpm metadata caches; developer build files; simulator caches and logs; and verified VS Code 1.142.0 cache/log units. Cookies, sessions, project dependencies, shared stores, and device contents stay separate.
 - **Review developer projects.** Choose a project/workspace folder and inspect bounded Node dependencies, Rust build output and Swift build products. Source, lockfiles, linked/shared stores and Swift checkouts stay protected. [Supported paths and limits](Documentation/Developer-Projects.md).
+- **Review Downloads.** Explicitly choose a folder, filter disk images/packages/archives by size and modification age, inspect local text/image previews and optional source metadata, and deliberately keep a copy of exact duplicate downloads. Partial-download names stay excluded; files remain Your files. [Coverage and limits](Documentation/Downloads.md).
 - **Find app leftovers.** Review data whose exact bundle identifier has no installed owner. Luma checks application folders, embedded helpers, and macOS Launch Services. Exact identifiers and explicit rules cover supported named support folders. Ownership is checked again before Trash.
 - **Understand app footprints.** Inventory apps, then inspect exact identifiers, explicit named ownership mappings and metadata-verified containers. Bundle, generated data, settings/state and potential user data have separate totals. Unreadable paths retain unknown sizes; bundle uninstall and related-data selections are separate and explicit.
 - **Explore storage.** Choose a folder, drill into its hierarchy with breadcrumbs, compare a synchronized map and list, show hidden entries, sort by size/name, and filter the current folder by size, age, or installer type. Personal files are never classified as junk.
@@ -32,7 +33,7 @@ The interface follows **System appearance by default**, with optional Light and 
 | --- | --- | --- |
 | Clean | 22 validated catalog rules; verified VS Code cache/log units, app/category grouping, unique logical totals, browser/package caches, simulator diagnostics and scan coverage | More cache versions and ecosystems, finer selection, device backups |
 | Applications | Inventory, categorized footprints, shared ownership evidence, reviewed uninstall/reset, potential leftovers | Update discovery |
-| Storage | Cached hierarchical browser, breadcrumbs, map/list details, current-folder filters and explicit manual review | Volumes, developer projects, and persistent incremental indexing |
+| Storage | Cached hierarchical browser, breadcrumbs, map/list details, current-folder filters and explicit manual review | Volumes and persistent incremental indexing |
 | Duplicates | Exact content verification | Similar-photo analysis and comparison |
 | Optimizer | Grouped resource consumers and normal quit requests | Measured recommendations and audited maintenance |
 | Privacy | macOS permission shortcuts; separation from cache cleanup | Browser privacy workflows and a permissions overview |

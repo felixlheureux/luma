@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 public enum ScanTarget: String, Sendable, Hashable, CaseIterable {
-    case overview, generatedData, applications, leftovers, footprint, storage, duplicates, developerProjects
+    case overview, generatedData, applications, leftovers, footprint, storage, duplicates, developerProjects, downloads
     public var title: String {
         switch self {
         case .overview: "Local check"
@@ -13,6 +13,7 @@ public enum ScanTarget: String, Sendable, Hashable, CaseIterable {
         case .storage: "Folder analysis"
         case .duplicates: "Duplicate analysis"
         case .developerProjects: "Developer projects"
+        case .downloads: "Downloads review"
         }
     }
 }
@@ -56,6 +57,7 @@ public struct ScanResult: Sendable {
     public var applications: [ApplicationRecord]
     public var duplicates: [DuplicateGroup]
     public var applicationFootprint: ApplicationFootprint?
+    public var downloadsInventory: DownloadsInventory? = nil
     public var projectInventory: ProjectInventory? = nil
     public var storageIndex: StorageIndex?
     public init(report: ScanReport = ScanReport(), applications: [ApplicationRecord] = [], duplicates: [DuplicateGroup] = [], storageIndex: StorageIndex? = nil, applicationFootprint: ApplicationFootprint? = nil) {

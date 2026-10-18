@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 public enum CleanupSource: String, Codable, Sendable {
-    case generatedData, applications, applicationReset, leftovers, storage, duplicates, developerProjects
+    case generatedData, applications, applicationReset, leftovers, storage, duplicates, developerProjects, downloads
 }
 
 public struct CleanupExecutionContext: Sendable {

@@ -95,7 +95,7 @@ struct ReviewSheet: View {
             }
             Text("Logical size counts hard-linked content once across this selection.").font(.system(size: 10)).foregroundStyle(.secondary)
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(model.reviewItems) { item in
                         VStack(alignment: .leading, spacing: 7) {
                             HStack { Text(item.name).fontWeight(.semibold); Spacer(); SafetyBadge(level: item.safety); Text(formatBytes(item.bytes)).monospacedDigit() }

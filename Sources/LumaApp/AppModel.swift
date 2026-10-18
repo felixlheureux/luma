@@ -3,7 +3,7 @@ import LumaCore
 
 enum Destination: String, CaseIterable, Identifiable {
     case overview = "Overview", clean = "Clean", optimizer = "Optimizer", applications = "Applications"
-    case projects = "Projects", storage = "Storage", duplicates = "Duplicates", privacy = "Privacy", system = "System", history = "Activity"
+    case downloads = "Downloads", projects = "Projects", storage = "Storage", duplicates = "Duplicates", privacy = "Privacy", system = "System", history = "Activity"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -11,6 +11,7 @@ enum Destination: String, CaseIterable, Identifiable {
         case .clean: "sparkles"
         case .optimizer: "slider.horizontal.3"
         case .applications: "square.stack.3d.up"
+        case .downloads: "arrow.down.circle"
         case .projects: "curlybraces"
         case .storage: "internaldrive"
         case .duplicates: "square.on.square"
@@ -25,6 +26,7 @@ enum Destination: String, CaseIterable, Identifiable {
         case .clean: "Generated data, with every decision explained."
         case .optimizer: "Understand what’s running. Change what matters."
         case .applications: "See what’s installed and what it leaves behind."
+        case .downloads: "Your downloads. Keep what you still need."
         case .projects: "Build output and dependencies, reviewed project by project."
         case .storage: "Find your space. Decide what stays."
         case .duplicates: "Identical content. Verified locally."
@@ -120,6 +122,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .overview: .overview
         case .clean: .generatedData
         case .applications: applicationTab == .leftovers ? .leftovers : .applications
+        case .downloads: .downloads
         case .projects: .developerProjects
         case .storage: .storage
         case .duplicates: .duplicates
@@ -148,6 +151,12 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var showingReview = false
     var search = ""
     var showingSearch = false
+    var downloadsTab = DownloadsTab.files
+    var downloadsRoot: URL?
+    var downloadsInventory: DownloadsInventory?
+    var downloadFocus: String?
+    var downloadPreview: DownloadPreview?
+    @ObservationIgnored var downloadPreviewTask: Task<Void, Never>?
     var projectRoot: URL?
     var projectInventory: ProjectInventory?
     var storageRoot: URL?
@@ -208,6 +217,9 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .storage:
             guard let root = storageRoot else { return }
             request = .init(.storage, root: root)
+        case .downloads:
+            guard let root = downloadsRoot else { return }
+            request = .init(.downloads, root: root, ignoredPaths: ignored)
         case .projects:
             guard let root = projectRoot else { return }
             request = .init(.developerProjects, root: root, ignoredPaths: ignored)
@@ -219,8 +231,11 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         startScan(request)
     }
 
-    func startScan(_ request: ScanRequest) {
+    func startScan(_ input: ScanRequest) {
         guard !operationBusy else { return }
+        let request = [.downloads, .developerProjects].contains(input.target)
+            ? ScanRequest(input.target, root: input.root, ignoredPaths: ignored) : input
+        if request.target == .downloads { downloadsRoot = request.root; clearDownloadPreview() }
         selected = []; reviewPlan = nil; showingReview = false
         if request.target == .developerProjects { projectRoot = request.root }
         if request.target == .storage { storageRoot = request.root }
@@ -248,6 +263,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             }
         case .applications:
             applications = result.applications; completedScans.insert(.applications)
+        case .downloads:
+            downloadsInventory = result.downloadsInventory; completedScans.insert(.downloads); clearDownloadPreview()
         case .developerProjects:
             projectInventory = result.projectInventory; completedScans.insert(.projects)
         case .leftovers:
@@ -285,7 +302,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         panel.prompt = "Analyze folder"; panel.message = "Luma scans this folder locally. Nothing is selected for removal."
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        if target == .projects { projectRoot = url } else if target == .storage { storageRoot = url } else { duplicateRoot = url }
+        if target == .downloads { downloadsRoot = url } else if target == .projects { projectRoot = url } else if target == .storage { storageRoot = url } else { duplicateRoot = url }
         authorizedRoots.append(url); destination = target
         runScan(target)
     }
@@ -305,6 +322,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             switch destination {
             case .overview, .clean: CleanupSource.generatedData
             case .applications: applicationTab == .leftovers ? .leftovers : .applications
+            case .downloads: .downloads
             case .projects: .developerProjects
             case .duplicates: .duplicates
             default: .storage
@@ -318,6 +336,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .storage: target = .storage
         case .duplicates: target = .duplicates
         case .developerProjects: target = .developerProjects
+        case .downloads: target = .downloads
         }
         guard let snapshot = completedSnapshots[target] else {
             error = "Finish a scan before reviewing cleanup. Preview results cannot be selected."; return
@@ -327,12 +346,17 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             error = "This selection is not part of the completed scan. Scan again before reviewing."; return
         }
         let roots = authorizedRoots, exclusions = ignored
-        let groups = source == .duplicates ? duplicates : []
+        let downloadSnapshot = downloadsInventory
+        let groups = source == .duplicates ? duplicates : source == .downloads ? (downloadsInventory?.duplicates ?? []) : []
         reviewPlan = nil; busy = true; status = "Verifying selection and logical size…"
         scanTask = Task {
             do {
                 let plan = try await offMain {
-                    try CleanupPlan(items: items, authorizedRoots: roots, ignoredPaths: exclusions, duplicateGroups: groups, source: source, resetApplication: resetApplication)
+                    if source == .downloads {
+                        guard let downloadSnapshot else { throw LumaError.rejected("Finish a Downloads scan before review.") }
+                        return try downloadSnapshot.reviewPlan(ids: Set(items.map(\.id)), authorizedRoots: roots, ignoredPaths: exclusions)
+                    }
+                    return try CleanupPlan(items: items, authorizedRoots: roots, ignoredPaths: exclusions, duplicateGroups: groups, source: source, resetApplication: resetApplication)
                 }
                 try Task.checkCancellation()
                 reviewPlan = plan; showingReview = true; status = "Review your selection"
@@ -351,6 +375,41 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         completedSnapshots.removeValue(forKey: .generatedData)
         completedSnapshots.removeValue(forKey: .overview)
         scanSessions.invalidateSnapshots(for: [.generatedData, .overview])
+    }
+
+    func clearDownloadPreview() {
+        downloadPreviewTask?.cancel(); downloadPreviewTask = nil
+        downloadFocus = nil; downloadPreview = nil
+    }
+
+    func previewDownload(_ file: DownloadFile) {
+        guard downloadsInventory?.files.contains(where: { $0.id == file.id }) == true,
+              !ignored.contains(where: { Filesystem.isWithin(file.url, root: URL(fileURLWithPath: $0)) }) else { return }
+        clearDownloadPreview(); downloadFocus = file.id
+        downloadPreviewTask = Task { @MainActor [weak self] in
+            do {
+                let preview = try await self?.offMain { try DownloadPreviewReader.read(file) }
+                try Task.checkCancellation()
+                guard self?.downloadFocus == file.id, self?.ignored.contains(where: { Filesystem.isWithin(file.url, root: URL(fileURLWithPath: $0)) }) == false else { return }
+                self?.downloadPreview = preview
+            } catch is CancellationError { }
+            catch { if self?.downloadFocus == file.id { self?.downloadPreview = .unavailable(error.localizedDescription) } }
+        }
+    }
+
+    func selectDownloadKeeper(group: DuplicateGroup, keeper: CleanupItem) {
+        guard !busy, let inventory = downloadsInventory else { return }
+        do {
+            let otherCopies = try inventory.keeperSelection(groupID: group.id, keeperID: keeper.id, ignoredPaths: ignored)
+            selected.subtract(group.items.map(\.id)); selected.formUnion(otherCopies)
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func invalidateDownloads() {
+        selected.subtract(downloadsInventory?.report.items.map(\.id) ?? [])
+        downloadsInventory = nil; completedScans.remove(.downloads); clearDownloadPreview()
+        completedSnapshots.removeValue(forKey: .downloads)
+        scanSessions.invalidateSnapshots(for: [.downloads])
     }
 
     func invalidateProjects() {
@@ -381,7 +440,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         }
         busy = true; showingReview = false; status = "Validating selected items…"
         cleanupSession.run { [self] in
-            defer { invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
+            defer { invalidateDownloads(); invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 _ = try await journal.execute(plan, context: { @MainActor [self] in
                     await .current(ignoredPaths: ignored)
@@ -474,7 +533,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         cleanupSession.undoReview = nil
         busy = true; status = "Restoring reviewed items…"
         cleanupSession.run { [self] in
-            defer { invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
+            defer { invalidateDownloads(); invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 try await journal.undo(review, onProgress: { @MainActor [self] in cleanupSession.update($0) })
             } catch {
@@ -491,7 +550,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         guard !busy, !recoveryLoading, journalError == nil, let journal else { return }
         busy = true; status = "Checking the item in Trash…"
         Task {
-            defer { invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
+            defer { invalidateDownloads(); invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 try await journal.restore(record)
                 apply(await journal.snapshot()); status = "Restored \(record.original.lastPathComponent)"
@@ -504,6 +563,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     }
 
     func ignore(_ item: CleanupItem) {
+        clearDownloadPreview()
         ignored.insert(item.id); selected.remove(item.id)
         UserDefaults.standard.set(Array(ignored), forKey: ignoreKey)
     }
