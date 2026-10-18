@@ -93,6 +93,9 @@ struct CompletedScanCaption: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Completed snapshot · \(snapshot.finishedAt.formatted(date: .abbreviated, time: .standard)) · \(snapshot.request.scope)")
                     .font(.system(size: 10)).foregroundStyle(.secondary).textSelection(.enabled)
+                if let cache = snapshot.result.analysisCache {
+                    Text(cacheCaption(cache)).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
                 if !snapshot.result.report.notices.isEmpty || !snapshot.result.report.isComplete {
                     HStack {
                         Label(target == .deviceBackups ? "Limited inspection · some metadata or sizes are unavailable" : "Limited coverage · excluded locations are absent from totals", systemImage: "info.circle")
@@ -114,6 +117,17 @@ struct CompletedScanCaption: View {
             }
         }
     }
+    private func cacheCaption(_ cache: AnalysisCacheSummary) -> String {
+        switch cache.state {
+        case .updated: cache.reusedMetadata == 0 && cache.reusedHashes == 0
+            ? "Fresh analysis saved locally for repeat scans."
+            : "Saved analysis revalidated against current paths and access."
+        case .changed: "The folder changed during analysis. Scan again for current results."
+        case .unavailable: "Saved analysis unavailable · completed a fresh scan."
+        case .notSaved: "Fresh analysis completed; results could not be saved locally."
+        }
+    }
+
 }
 
 struct ScanPermissionGuidance: View {

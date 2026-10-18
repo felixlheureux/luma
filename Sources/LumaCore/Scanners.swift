@@ -223,7 +223,9 @@ public struct DuplicateScanner: Sendable {
         let result = try scanResult()
         return (result.duplicates, result.report.notices)
     }
-    public func scanResult() throws -> ScanResult {
+    public func scanResult() throws -> ScanResult { try scanResult(cache: nil) }
+
+    func scanResult(cache: AnalysisIndexSession?) throws -> ScanResult {
         return try NonMaterializingIO.perform {
             let started = Date()
             try Task.checkCancellation()
@@ -283,7 +285,7 @@ public struct DuplicateScanner: Sendable {
                     catch { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.scan", emit: emit) }
                 }
             }
-            let verified = try Self.verify(candidates, emit: emit)
+            let verified = try Self.verify(candidates, cache: cache, emit: emit)
             report.notices += verified.report.notices; report.coverage += verified.report.coverage
             report.isComplete = report.isComplete && verified.report.isComplete
             report.visited = visited; report.duration = Date().timeIntervalSince(started)
@@ -295,6 +297,10 @@ public struct DuplicateScanner: Sendable {
     /// Shared size/partial/full-SHA256 pipeline for an already bounded inventory.
     /// Hashes are tied to the original scan's identities, never filenames.
     public static func verify(_ candidates: [CleanupItem], emit: @escaping ScanEmitter = { _ in }) throws -> ScanResult {
+        try verify(candidates, cache: nil, emit: emit)
+    }
+
+    static func verify(_ candidates: [CleanupItem], cache: AnalysisIndexSession?, emit: @escaping ScanEmitter = { _ in }) throws -> ScanResult {
         try NonMaterializingIO.perform {
             var report = ScanReport()
             var seen: Set<FileObjectID> = []
@@ -302,21 +308,38 @@ public struct DuplicateScanner: Sendable {
                 .filter { $0.bytes > 0 && seen.insert(FileObjectID($0.identity)).inserted }
             let sizes = Dictionary(grouping: unique, by: \.bytes)
             var groups: [DuplicateGroup] = []
-            func current(_ item: CleanupItem) throws {
+            func current(_ item: CleanupItem) throws -> Data {
                 let pin = try PinnedPath(item.url)
                 guard pin.value.st_mode & S_IFMT == S_IFREG, item.safety == .userData,
                       try Filesystem.inspect(item.url).1 == item.identity else { throw LumaError.rejected("File changed while verifying duplicate content.") }
                 try pin.revalidate(expected: item.identity.location)
+                var after = stat()
+                let fingerprint = AnalysisIndexSession.fingerprint(pin.value)
+                guard fstat(pin.descriptor, &after) == 0, AnalysisIndexSession.fingerprint(after) == fingerprint else {
+                    throw LumaError.rejected("File changed while verifying duplicate content.")
+                }
+                return fingerprint
             }
             for files in sizes.values where files.count > 1 {
                 var partials: [String: [CleanupItem]] = [:]
                 for item in files {
                     try Task.checkCancellation()
                     do {
-                        try current(item)
-                        let hash = try Filesystem.hash(item.url, partial: true, progress: { bytes in
-                            emit(.progress(.init("Checking partial content", current: item.name, bytes: bytes)))
-                        })
+                        let hash: String
+                        if let saved = try cache?.cachedHash(item, partial: true) {
+                            hash = saved
+                            emit(.progress(.init("Revalidating saved content evidence", current: item.name)))
+                        }
+                        else {
+                            let before = try current(item)
+                            hash = try Filesystem.hash(item.url, partial: true, progress: { bytes in
+                                emit(.progress(.init("Checking partial content", current: item.name, bytes: bytes)))
+                            })
+                            if let cache {
+                                let after = AnalysisIndexSession.fingerprint(try PinnedPath(item.url).value)
+                                cache.recordHash(hash, item: item, partial: true, before: before, after: after)
+                            }
+                        }
                         partials[hash, default: []].append(item)
                     } catch is CancellationError { throw CancellationError() }
                     catch { report.recordFailure(error, at: item.url, category: item.category, rule: "duplicates.hash", emit: emit) }
@@ -326,13 +349,23 @@ public struct DuplicateScanner: Sendable {
                     for original in matches {
                         try Task.checkCancellation()
                         do {
-                            try current(original)
-                            let hash = try Filesystem.hash(original.url, progress: { bytes in
-                                emit(.progress(.init("Verifying full content", current: original.name, bytes: bytes)))
-                            })
-                            try current(original)
+                            let hash: String
+                            if let saved = try cache?.cachedHash(original, partial: false) {
+                                hash = saved
+                                emit(.progress(.init("Revalidating saved content evidence", current: original.name)))
+                            }
+                            else {
+                                let before = try current(original)
+                                hash = try Filesystem.hash(original.url, progress: { bytes in
+                                    emit(.progress(.init("Verifying full content", current: original.name, bytes: bytes)))
+                                })
+                                let after = try current(original)
+                                cache?.recordHash(hash, item: original, partial: false, before: before, after: after)
+                            }
                             let item = CleanupItem(url: original.url, bytes: original.bytes, category: original.category, safety: .userData,
-                                explanation: "Identical SHA-256 content verified against another independent file. Names, extensions and source URLs do not establish duplicates.",
+                                explanation: cache == nil
+                                    ? "Identical SHA-256 content verified against another independent file. Names, extensions and source URLs do not establish duplicates."
+                                    : "Matching SHA-256 evidence with current file metadata and access checks. Saved hashes may be reused; content is checked again before cleanup.",
                                 consequence: "Keep at least one independent copy. Each location may still be needed. Restore from Activity never overwrites a recreated file.",
                                 ruleID: "duplicates.sha256", ownerBundleID: nil, identity: original.identity, scannedAt: original.scannedAt)
                             hashes[hash, default: []].append(item)

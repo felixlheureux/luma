@@ -11,6 +11,7 @@ cp Resources/Info.plist "$bundle/Contents/Info.plist"
 if [ -f Resources/Luma.icns ]; then cp Resources/Luma.icns "$bundle/Contents/Resources/Luma.icns"; fi
 cp LICENSE "$bundle/Contents/Resources/LICENSE"
 ditto "$binary_directory/Luma_LumaCore.bundle" "$bundle/Contents/Resources/Luma_LumaCore.bundle"
+ditto "$binary_directory/GRDB_GRDB.bundle" "$bundle/Contents/Resources/GRDB_GRDB.bundle"
 cp Resources/Third-Party-Notices.txt "$bundle/Contents/Resources/Third-Party-Notices.txt"
 luma_sign_identity="${LUMA_SIGN_IDENTITY:--}"
 if [ "$luma_sign_identity" = "-" ]; then

@@ -66,6 +66,7 @@ public enum ScanEvent: Sendable {
 public typealias ScanEmitter = @Sendable (ScanEvent) -> Void
 
 public struct ScanResult: Sendable {
+    public var analysisCache: AnalysisCacheSummary? = nil
     public var smartCheckFailure: String? = nil
     public var report: ScanReport
     public var applications: [ApplicationRecord]

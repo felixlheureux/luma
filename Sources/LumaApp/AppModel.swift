@@ -108,6 +108,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var selected: Set<String> = []
     var scanTask: Task<Void, Never>?
     let scanSessions = ScanController()
+    @ObservationIgnored var analysisIndex = AnalysisIndex()
+    var analysisCacheStatus: String?
     @ObservationIgnored var scanRunner: @Sendable (ScanRequest, @escaping ScanEmitter) async throws -> ScanResult = {
         try await ScanEngine.run($0, emit: $1)
     }
@@ -185,6 +187,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     }
 
     init() {
+        let index = analysisIndex
+        scanRunner = { request, emit in try await ScanEngine.run(request, analysisIndex: index, emit: emit) }
         do { journal = try CleanupJournal() }
         catch { journalError = "Activity could not be loaded. Cleanup is paused to preserve its records: \(error.localizedDescription)" }
         ignored = Set(UserDefaults.standard.stringArray(forKey: ignoreKey) ?? [])
@@ -259,6 +263,20 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         scanSessions.start(request) { emit in try await runner(request, emit) }
     }
 
+    func clearAnalysisCache() {
+        guard !busy else { return }
+        let index = analysisIndex
+        busy = true
+        analysisCacheStatus = "Clearing saved analysis…"
+        scanTask = Task {
+            do {
+                try await offMain { try index.clear() }
+                analysisCacheStatus = "Saved analysis cleared. Activity and ignored paths are preserved."
+            } catch { analysisCacheStatus = "Analysis cache could not be cleared: \(error.localizedDescription)" }
+            finish()
+        }
+    }
+
     func retryScan(_ target: ScanTarget) {
         guard let request = scanRequests[target] else { return }
         startScan(request)
@@ -292,8 +310,11 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             leftovers = result.report.items; didScanLeftovers = true
         case .storage:
             storage = result.report.items
+            let previousDirectory = storageIndex?.rootID == result.storageIndex?.rootID ? storageDirectory : nil
             storageIndex = result.storageIndex
-            storageDirectory = result.storageIndex?.rootID
+            if let previousDirectory, result.storageIndex?.nodes[previousDirectory]?.canNavigate == true {
+                storageDirectory = previousDirectory
+            } else { storageDirectory = result.storageIndex?.rootID }
             storageFocus = nil; selected = []
             completedScans.insert(.storage)
         case .duplicates:

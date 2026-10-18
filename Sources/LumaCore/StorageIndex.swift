@@ -74,6 +74,10 @@ public struct StorageIndex: Sendable {
     }
 
     public static func scan(root: URL, limit: Int = 100_000, emit: @escaping ScanEmitter = { _ in }) throws -> Self {
+        try scan(root: root, limit: limit, cache: nil, emit: emit)
+    }
+
+    static func scan(root: URL, limit: Int = 100_000, cache: AnalysisIndexSession?, emit: @escaping ScanEmitter = { _ in }) throws -> Self {
         try NonMaterializingIO.perform {
             let started = Date()
             let root = root.exactStandardizedFileURL
@@ -107,12 +111,24 @@ public struct StorageIndex: Sendable {
                     directory = info.st_mode & S_IFMT == S_IFDIR
                     guard directory || info.st_mode & S_IFMT == S_IFREG else { throw LumaError.rejected("Unsupported filesystem object.") }
                     guard UInt64(UInt32(bitPattern: info.st_dev)) == device else { throw LumaError.rejected("A different volume was excluded.") }
-                    let values = try url.resourceValues(forKeys: [.isPackageKey, .isHiddenKey, .creationDateKey, .isAliasFileKey])
-                    guard values.isAliasFile != true else { throw LumaError.rejected("Finder aliases are excluded.") }
-                    package = values.isPackage == true
-                    hidden = hidden || values.isHidden == true
+                    let metadata: IndexedStorageMetadata
+                    if let saved = cache?.metadata(url: url, info: info) {
+                        // Package/visibility policy can change independently of
+                        // leaf timestamps (for example, system type registration).
+                        // Recheck boundaries even when ordinary metadata matches.
+                        let values = try url.resourceValues(forKeys: [.isPackageKey, .isHiddenKey])
+                        metadata = IndexedStorageMetadata(package: values.isPackage == true, hidden: values.isHidden == true, created: saved.created)
+                        cache?.recordMetadata(metadata, url: url, info: info)
+                    } else {
+                        let values = try url.resourceValues(forKeys: [.isPackageKey, .isHiddenKey, .creationDateKey, .isAliasFileKey])
+                        guard values.isAliasFile != true else { throw LumaError.rejected("Finder aliases are excluded.") }
+                        metadata = IndexedStorageMetadata(package: values.isPackage == true, hidden: values.isHidden == true, created: values.creationDate)
+                        cache?.recordMetadata(metadata, url: url, info: info)
+                    }
+                    package = metadata.package
+                    hidden = hidden || metadata.hidden
                     modified = Self.modified(info)
-                    created = values.creationDate
+                    created = metadata.created
                     nodeDevice = device
                     inode = info.st_ino
                     if directory && !package {

@@ -147,6 +147,12 @@ struct SettingsView: View {
                     }.pickerStyle(.segmented)
                     Toggle("Show Luma in the menu bar", isOn: $menuBar)
                 }
+                Section("Saved analysis") {
+                    Text("Storage metadata and duplicate hashes from folders you explicitly scan are stored locally. Every scan checks current paths and access. Cleanup always verifies current data.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Clear analysis cache") { model.clearAnalysisCache() }.disabled(model.busy)
+                    if let status = model.analysisCacheStatus { Text(status).font(.caption).foregroundStyle(.secondary) }
+                }
                 Section("Privacy & safety") {
                     LabeledContent("Telemetry", value: "None")
                     LabeledContent("Cleanup method", value: "macOS Trash")

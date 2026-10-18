@@ -35,7 +35,7 @@ The interface follows **System appearance by default**, with optional Light and 
 | --- | --- | --- |
 | Clean | 22 validated catalog rules; verified VS Code cache/log units, app/category grouping, unique logical totals, browser/package caches, simulator diagnostics and scan coverage | More cache versions and ecosystems, finer selection |
 | Applications | Inventory, categorized footprints, shared ownership evidence, reviewed uninstall/reset, potential leftovers | Update discovery |
-| Storage | Cached hierarchical browser, breadcrumbs, map/list details, current-folder filters and explicit manual review | Volumes and persistent incremental indexing |
+| Storage | Cached hierarchical browser, breadcrumbs, map/list details, current-folder filters and explicit manual review | Volumes and finer incremental subtree reuse |
 | Duplicates | Exact content verification | Similar-photo analysis and comparison |
 | Optimizer | Grouped resource consumers and normal quit requests | Measured recommendations and audited maintenance |
 | Privacy | macOS permission shortcuts; separation from cache cleanup | Browser privacy workflows and a permissions overview |
@@ -54,7 +54,7 @@ bash Scripts/build-app.sh
 open dist/Luma.app
 ```
 
-Open `Package.swift` in Xcode for development. The bundled YAML catalog uses the MIT-licensed Yams/libyaml parser, pinned through Swift Package Manager; scanning and mutation policy remain project-owned. Third-party notices ship with the app.
+Open `Package.swift` in Xcode for development. The bundled YAML catalog uses the MIT-licensed Yams/libyaml parser, and the disposable local analysis cache uses MIT-licensed GRDB with system SQLite, both pinned through Swift Package Manager; scanning and mutation policy remain project-owned. Third-party notices ship with the app.
 
 Builds target the local architecture, and the DMG filename includes its version and architecture. Automated releases currently target Apple Silicon. See [build and distribution details](Documentation/Distribution.md) for signing options. The personal [Luma Homebrew tap](https://github.com/felixlheureux/homebrew-luma) is available for Apple Silicon/macOS 26 or later:
 
@@ -141,3 +141,7 @@ Task 007 was closed at the user’s request with manual release checks deferred.
 Cleanup knowledge and named ownership mappings ship in a versioned YAML catalog. Invalid catalogs fail as a whole, and current filesystem/ownership/provider/activity checks remain in Swift. Contributors can validate catalog edits with `bash Scripts/validate-rules.sh`; see [CONTRIBUTING.md](CONTRIBUTING.md#contributing-cleanup-catalog-entries). No rule downloads or runtime catalog overrides are enabled.
 
 Debug native Smart Check QA: after a debug build, run `bash Scripts/check-smart-check.sh`. Generated fixtures exercise progressive completion, a failed category followed by successful checks, exact scoped navigation, the ordinary confirmation sheet, invalidation, unavailable measurements and continued monitoring in both appearances. No cleanup or personal-folder scan is invoked. `LUMA_SMART_QA_OUTPUT_DIR` retains temporary reports/captures. A basic Tab event check does not establish full keyboard traversal or VoiceOver coverage.
+
+Repeated Storage/Duplicates scans reuse validated display metadata and duplicate hashes on supported local APFS volumes. Current discovery, access/provider checks and coverage still run; cleanup always verifies current content. Settings → General → Saved analysis offers **Clear analysis cache**, preserving Activity and ignored paths. Other filesystems and unavailable/corrupt caches use fresh analysis. FSEvents supplies bounded invalidation hints without starting background scans.
+
+Debug native index QA: after a debug build, run `bash Scripts/check-analysis-index.sh`. Disposable light/dark fixtures cover warm metadata/hash reuse, native event invalidation, navigation continuity, cache clearing, preserved Activity/ignores and monitoring. It never invokes cleanup or scans personal folders. `LUMA_INDEX_QA_OUTPUT_DIR` retains temporary reports/captures. Run `LUMA_INDEX_BENCHMARK=1 bash Scripts/test.sh --filter AnalysisIndexTests.benchmark` for the fixed benchmark; conditions/results are recorded in task 014.
