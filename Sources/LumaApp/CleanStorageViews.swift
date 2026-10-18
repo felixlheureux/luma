@@ -40,8 +40,8 @@ struct CleanView: View {
                 }
                 if visible.isEmpty {
                     ContentUnavailableView("No matching data", systemImage: "checkmark.circle", description: Text("No supported generated data was found in this category. See scan coverage for skipped items."))
-                } else { Surface(padding: 18) { ItemList(items: visible) } }
-                SelectionBar(items: visible)
+                } else { GeneratedDataGroupsView(items: visible) }
+                SelectionBar(items: visible, logicalBytes: model.generatedBytes)
                 Label("Close the owning app before cleaning. Caches may improve performance and will grow back naturally.", systemImage: "info.circle").font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }

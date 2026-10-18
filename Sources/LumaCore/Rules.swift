@@ -13,6 +13,8 @@ public struct CleanupRule: Sendable {
     public var chromiumProfiles = false
     public var safety: SafetyLevel = .safe
     public var tools: Set<CleanupTool> = []
+    public var appName: String? = nil
+    public var requiredApplication: GeneratedOwnerRequirement? = nil
 
     public func matches(_ url: URL, home: URL) -> Bool {
         let root = home.appendingPathComponent(relativePath).exactStandardizedFileURL
@@ -48,7 +50,7 @@ public enum Rules {
         .init(id: "developer.homebrew.cache", relativePath: "Library/Caches/Homebrew", category: .developer,
               explanation: "Downloaded Homebrew package artifacts, separate from installed packages.",
               consequence: "Future installs may download packages again. Do not clean during a Homebrew operation.", owner: nil, name: "Homebrew downloads")
-    ] + expanded
+    ] + expanded + earlyAppCaches
 
     private static let expanded: [CleanupRule] = [
         browser("firefox", name: "Firefox", path: "Firefox/Profiles", owner: "org.mozilla.firefox"),
@@ -78,6 +80,30 @@ public enum Rules {
         .init(id: "developer.simulator.logs", relativePath: "Library/Logs/CoreSimulator", category: .logs,
               explanation: "CoreSimulator diagnostic logs. Device contents and runtimes are excluded.",
               consequence: "Previous Simulator diagnostics will no longer be available here. Stop simulators before cleaning.", owner: "com.apple.iphonesimulator", name: "Simulator logs", tools: [.simulator, .xcode])
+    ]
+
+    // Provenance and unsupported families: Documentation/Cache-Support.md.
+    // Exact released product metadata bounds this first batch; no session root
+    // or arbitrary descendant can inherit authority from these rule IDs.
+    private static let vscode = GeneratedOwnerRequirement(bundleName: "Visual Studio Code.app", bundleID: "com.microsoft.VSCode",
+        productName: "Code", version: "1.142.0", commit: "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1")
+    private static let earlyAppCaches: [CleanupRule] = [
+        .init(id: "app.vscode.http-cache", relativePath: "Library/Application Support/Code/Cache", category: .caches,
+              explanation: "Electron's HTTP cache in VS Code's verified default data layout. Cookies, session storage, service workers and offline application data are excluded.",
+              consequence: "Network resources may need downloading again, and offline access to cached resources may be unavailable. Quit VS Code and its helpers first.",
+              owner: "com.microsoft.VSCode", name: "Network cache", tools: [.visualStudioCode], appName: "Visual Studio Code", requiredApplication: vscode),
+        .init(id: "app.vscode.gpu-cache", relativePath: "Library/Application Support/Code/GPUCache", category: .caches,
+              explanation: "Electron's generated GPU shader cache in VS Code's verified default data layout. Editor state, credentials and extensions are excluded.",
+              consequence: "Graphics caches will rebuild; initial rendering may take longer. Quit VS Code and its helpers first.",
+              owner: "com.microsoft.VSCode", name: "Graphics cache", tools: [.visualStudioCode], appName: "Visual Studio Code", requiredApplication: vscode),
+        .init(id: "app.vscode.bytecode", relativePath: "Library/Application Support/Code/CachedData", category: .caches,
+              explanation: "VS Code's generated compiled-code cache in its verified default data layout. Settings, credentials, extensions, backups and session storage are excluded.",
+              consequence: "VS Code will compile this cache again. The next launch may be slower. Quit the app and its helpers first.",
+              owner: "com.microsoft.VSCode", name: "Compiled code cache", tools: [.visualStudioCode], appName: "Visual Studio Code", requiredApplication: vscode),
+        .init(id: "app.vscode.logs", relativePath: "Library/Application Support/Code/logs", category: .logs,
+              explanation: "VS Code's diagnostic session logs in its verified default data layout. Workspace files, local history and editor backups are excluded.",
+              consequence: "Previous app and extension diagnostics will be unavailable unless restored. New sessions create new logs. Logs may contain private paths or diagnostic content.",
+              owner: "com.microsoft.VSCode", name: "Diagnostic logs", safety: .review, tools: [.visualStudioCode], appName: "Visual Studio Code", requiredApplication: vscode)
     ]
 
     private static func browser(_ id: String, name: String, path: String, owner: String, chromium: Bool = false) -> CleanupRule {

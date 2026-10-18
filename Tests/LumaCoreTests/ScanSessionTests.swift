@@ -31,6 +31,23 @@ private final class ScanEventLog: @unchecked Sendable {
 }
 
 @Suite("Isolated scan sessions") @MainActor struct ScanSessionTests {
+    @Test func mutationInvalidationDropsGeneratedEvidenceAndRetainsOtherFeatures() async throws {
+        let controller = ScanController()
+        controller.start(.init(.applications)) { _ in ScanResult() }
+        await settle { !controller.isBusy }
+        controller.start(.init(.generatedData)) { _ in ScanResult() }
+        await settle { !controller.isBusy }
+        #expect(controller.snapshots[.generatedData] != nil)
+        controller.invalidateSnapshots(for: [.generatedData, .overview])
+        #expect(controller.snapshots[.generatedData] == nil)
+        #expect(controller.snapshots[.applications] != nil)
+        #expect(controller.session == nil)
+        controller.start(.init(.generatedData)) { _ in throw CancellationError() }
+        await settle { !controller.isBusy }
+        #expect(controller.snapshots[.generatedData] == nil)
+        #expect(controller.snapshots[.applications] != nil)
+    }
+
     @Test func cancelledWorkerCannotPublishEvenWhenItReturnsSuccess() async throws {
         let controller = ScanController(), started = ScanGate(), release = ScanGate(), log = ScanEventLog()
         controller.start(.init(.storage, root: URL(fileURLWithPath: "/fixture"))) { emit in

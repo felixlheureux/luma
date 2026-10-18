@@ -65,7 +65,7 @@ struct ApplicationsView: View {
     }
     private func applicationRow(_ app: ApplicationRecord) -> some View {
         HStack(spacing: 14) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 38, height: 38)
+            Image(systemName: "macwindow").resizable().scaledToFit().foregroundStyle(.secondary).frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 4) {
                 Text(app.name).font(.system(size: 12, weight: .semibold))
                 Text("\(app.version) · \(app.bundleID)").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
@@ -145,7 +145,7 @@ struct AppFootprintView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 16) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 58, height: 58)
+                Image(systemName: "macwindow").resizable().scaledToFit().foregroundStyle(.secondary).frame(width: 58, height: 58)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(app.name).font(.system(size: 24, weight: .semibold))
                     Text(app.bundleID).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)

@@ -104,8 +104,8 @@ struct ProcessList: View {
                             }
                         } label: {
                             HStack(spacing: 10) {
-                                if let bundle = group.bundleURL {
-                                    Image(nsImage: NSWorkspace.shared.icon(forFile: bundle.path)).resizable().frame(width: 28, height: 28)
+                                if group.bundleURL != nil {
+                                    Image(systemName: "macwindow").resizable().scaledToFit().foregroundStyle(.secondary).frame(width: 28, height: 28)
                                 } else { Image(systemName: "gearshape.2").frame(width: 28).foregroundStyle(.secondary) }
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(group.name).font(.system(size: 12, weight: .medium))

@@ -86,8 +86,9 @@ struct FilesystemEdgeFixture {
         try FileManager.default.linkItem(at: path, to: alias)
         #expect(throws: (any Error).self) { try PinnedPath(alias).revalidate(expected: pin.location) }
         var chain = pin.location.chain
-        let foreign = FileLocation.Component(try PinnedPath(URL(fileURLWithPath: "/dev")).value)
-        chain[chain.count - 1] = foreign
+        var foreign = pin.value
+        foreign.st_dev = foreign.st_dev &+ 1
+        chain[chain.count - 1] = FileLocation.Component(foreign)
         let forged = FileLocation(path: pin.location.path, chain: chain)
         #expect(throws: (any Error).self) { try pin.revalidate(expected: forged) }
         try FileManager.default.moveItem(at: path, to: path.appendingPathExtension("saved"))

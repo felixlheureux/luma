@@ -102,6 +102,11 @@ struct CompletedScanCaption: View {
                         ForEach(Array(snapshot.result.report.notices.prefix(50).enumerated()), id: \.offset) { _, notice in
                             Text(notice).font(.system(size: 10)).foregroundStyle(.secondary).textSelection(.enabled)
                         }
+                        ForEach(snapshot.result.report.coverage.filter { $0.accessCapability != nil }.prefix(50)) { row in
+                            Button("Reveal \(row.title) in Finder") {
+                                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: (row.path as NSString).expandingTildeInPath)])
+                            }.buttonStyle(.glass)
+                        }
                     }.font(.system(size: 11))
                 }
                 ScanPermissionGuidance(target: target, blocked: snapshot.result.report.coverage.contains { $0.state == .blocked })

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import LumaCore
 
@@ -18,14 +19,14 @@ struct ScanSummaryCard: View {
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Scan coverage") { showingCoverage = true }.buttonStyle(.glass)
+                    Button("Scan coverage") { showingCoverage = true }.buttonStyle(.glass).foregroundStyle(.primary)
                 }
                 HStack(spacing: 18) {
                     ForEach([ItemCategory.caches, .developer, .logs]) { category in
                         let items = report.items.filter { $0.category == category }
                         VStack(alignment: .leading, spacing: 6) {
                             Label(category.rawValue, systemImage: category.symbol).font(.system(size: 11)).foregroundStyle(.secondary)
-                            Text(formatBytes(items.reduce(0) { $0 + $1.bytes })).font(.system(size: 19, weight: .semibold)).monospacedDigit()
+                            Text(formatBytes(report.generatedAccounting.bytes(for: items))).font(.system(size: 19, weight: .semibold)).monospacedDigit()
                             Text("\(items.count) locations found").font(.system(size: 10)).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -34,7 +35,7 @@ struct ScanSummaryCard: View {
                     Label("\(exclusions) locations were skipped. Their contents are not included in these totals.", systemImage: "info.circle")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                Text("Sizes reflect this scan. Actual savings can differ, and disk space is recovered after Trash is emptied.")
+                Text("Category totals can share hard-linked content and may not add up to the unique overall total. Physical savings can differ; space is recovered after Trash is emptied.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             }
         }.sheet(isPresented: $showingCoverage) { ScanCoverageView(report: report, request: model.snapshot(for: .generatedData)?.request ?? .init(.generatedData)) }
@@ -81,6 +82,11 @@ private struct ScanCoverageView: View {
                             }
                             Text(row.path).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
                             Text(row.detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            if row.accessCapability != nil {
+                                Button("Reveal in Finder") {
+                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: (row.path as NSString).expandingTildeInPath)])
+                                }.buttonStyle(.glass).accessibilityLabel("Reveal \(row.title) in Finder")
+                            }
                         }.padding(.vertical, 14)
                         Divider()
                     }

@@ -55,7 +55,7 @@ public enum ProcessGrouping {
         }
         return groups.map { key, processes in
             let bundle = bundles[key]
-            let name = bundle.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String }
+            let name = bundle.flatMap { (try? Filesystem.applicationMetadata(at: $0)["CFBundleDisplayName"]) as? String }
                 ?? bundle?.deletingPathExtension().lastPathComponent ?? processes[0].name
             // The owning main process has no parent inside this application's group.
             let pids = Set(processes.map(\.pid))

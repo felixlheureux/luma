@@ -195,6 +195,14 @@ private final class ScanMailbox: @unchecked Sendable {
         } else { launch(job) }
     }
 
+    /// Drop completed evidence after a mutation. A worker that is already
+    /// scanning remains tracked and must finish normally before replacement.
+    public func invalidateSnapshots(for targets: Set<ScanTarget>) {
+        for target in targets { snapshots.removeValue(forKey: target) }
+        if !isBusy, let current = session, targets.contains(current.request.target) { session = nil }
+        onChange?()
+    }
+
     public func cancel() {
         queued = nil; queuedRequest = nil
         stop(.cancelled)

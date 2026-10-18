@@ -16,6 +16,10 @@ public struct GeneratedDataScanner: Scanner {
     }
 
     public func scan() async throws -> ScanReport {
+        try NonMaterializingIO.perform { try scanLocal() }
+    }
+
+    private func scanLocal() throws -> ScanReport {
         let started = Date()
         var report = ScanReport()
         for (index, rule) in Rules.generated.enumerated() {
@@ -23,8 +27,9 @@ public struct GeneratedDataScanner: Scanner {
             let root = home.appendingPathComponent(rule.relativePath)
             progress(.init(completedRules: index, totalRules: Rules.generated.count, current: rule.title, entries: 0, bytes: report.items.reduce(0) { $0 + $1.bytes }))
             do {
-                _ = try FileManager.default.attributesOfItem(atPath: root.path)
+                _ = try Filesystem.attributes(root)
                 try Filesystem.validatePath(root)
+                try VerifiedGeneratedOwner.validate(rule, home: home)
                 let candidates: [URL]
                 if rule.profileLeaves.isEmpty { candidates = [root] }
                 else {
@@ -48,9 +53,8 @@ public struct GeneratedDataScanner: Scanner {
                     try Task.checkCancellation()
                     let previousBytes = report.items.reduce(0) { $0 + $1.bytes }
                     do {
-                        _ = try FileManager.default.attributesOfItem(atPath: url.path)
-                        let item = try Filesystem.item(url, category: rule.category, safety: rule.safety,
-                            explanation: rule.explanation, consequence: rule.consequence, rule: rule.id, owner: rule.owner,
+                        _ = try Filesystem.attributes(url)
+                        let item = try report.generatedAccounting.inspect(url, rule: rule,
                             progress: { entries, bytes in
                                 progress(.init(completedRules: index, totalRules: Rules.generated.count, current: rule.title, entries: entries, bytes: previousBytes + bytes))
                             })
@@ -71,15 +75,16 @@ public struct GeneratedDataScanner: Scanner {
     }
 
     private func coverage(_ rule: CleanupRule, url: URL, state: CoverageState, bytes: Int64 = 0, detail: String) -> ScanCoverage {
-        ScanCoverage(ruleID: rule.id, title: rule.title, path: url.path.replacingOccurrences(of: home.path, with: "~", options: .anchored), category: rule.category, state: state, bytes: bytes, detail: detail)
+        ScanCoverage(ruleID: rule.id, title: rule.appName.map { "\($0) · \(rule.title)" } ?? rule.title, path: url.path.replacingOccurrences(of: home.path, with: "~", options: .anchored), category: rule.category, state: state, bytes: bytes, detail: detail)
     }
 
     private func appendFailure(_ error: Error, rule: CleanupRule, url: URL, report: inout ScanReport) {
         let failure = Self.failureState(error)
-        let changedDuringInspection = failure == .missing && (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
+        let changedDuringInspection = failure == .missing && (try? Filesystem.attributes(url)) != nil
         let state: CoverageState = changedDuringInspection ? .skipped : failure
         let detail = state == .missing ? "This supported location is not present on this Mac." : changedDuringInspection ? "This location changed during inspection. Close its owning app and scan again." : error.localizedDescription
-        let row = coverage(rule, url: url, state: state, detail: detail)
+        var row = coverage(rule, url: url, state: state, detail: detail)
+        row.accessCapability = (error as? FilesystemAccessError)?.capability
         report.coverage.append(row); emit(.coverage(row))
         if state != .missing {
             report.isComplete = false
@@ -112,6 +117,10 @@ public struct FolderScanner: Scanner {
         self.root = root; self.category = category; self.emit = emit
     }
     public func scan() async throws -> ScanReport {
+        try NonMaterializingIO.perform { try scanLocal() }
+    }
+
+    private func scanLocal() throws -> ScanReport {
         let started = Date()
         try Task.checkCancellation()
         try Filesystem.validatePath(root)
@@ -144,52 +153,54 @@ public enum ApplicationScanner {
 
     public static func inventory(home: URL = FileManager.default.homeDirectoryForCurrentUser, roots: [URL]? = nil,
                                  emit: @escaping ScanEmitter = { _ in }) throws -> ScanResult {
-        let started = Date()
-        var apps: [ApplicationRecord] = []
-        var report = ScanReport()
-        for root in roots ?? [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications")] {
-            try Task.checkCancellation()
-            emit(.progress(.init("Discovering application metadata", current: root.lastPathComponent)))
-            do {
-                try Filesystem.validatePath(root)
-                let children = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-                guard children.count <= 10_000 else { throw LumaError.rejected("This Applications folder exceeds the inventory limit.") }
-                for url in children where url.pathExtension == "app" {
-                    try Task.checkCancellation()
-                    do {
-                        try Filesystem.validatePath(url)
-                        let identifier = try Filesystem.applicationIdentifier(at: url)
-                        let bundle = Bundle(url: url)
-                        let app = ApplicationRecord(url: url,
-                            name: bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? url.deletingPathExtension().lastPathComponent,
-                            bundleID: identifier, version: bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown", bytes: 0, sizeState: .pending)
-                        apps.append(app); emit(.application(app))
-                    } catch is CancellationError { throw CancellationError() }
-                    catch { report.recordFailure(error, at: url, category: .applications, rule: "inventory", emit: emit) }
-                }
-            } catch is CancellationError { throw CancellationError() }
-            catch { report.recordFailure(error, at: root, category: .applications, rule: "inventory", emit: emit, missingIsExpected: true) }
-        }
-        // All metadata rows are visible before the first recursive size operation.
-        let appCount = apps.count
-        for index in apps.indices {
-            try Task.checkCancellation()
-            let app = apps[index]
-            emit(.progress(.init("Measuring application bundles", current: app.name, completed: index, total: apps.count)))
-            do {
-                let bytes = try Filesystem.inspect(app.url, progress: { entries, bytes in
-                    emit(.progress(.init("Measuring application bundles", current: app.name, completed: index, total: appCount, entries: entries, bytes: bytes)))
-                }).0
-                apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: bytes)
-            } catch is CancellationError { throw CancellationError() }
-            catch {
-                apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: 0, sizeState: .unavailable)
-                report.recordFailure(error, at: app.url, category: .applications, rule: "inventory.size", emit: emit)
+        return try NonMaterializingIO.perform {
+            let started = Date()
+            var apps: [ApplicationRecord] = []
+            var report = ScanReport()
+            for root in roots ?? [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications")] {
+                try Task.checkCancellation()
+                emit(.progress(.init("Discovering application metadata", current: root.lastPathComponent)))
+                do {
+                    try Filesystem.validatePath(root)
+                    let children = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                    guard children.count <= 10_000 else { throw LumaError.rejected("This Applications folder exceeds the inventory limit.") }
+                    for url in children where url.pathExtension == "app" {
+                        try Task.checkCancellation()
+                        do {
+                            try Filesystem.validatePath(url)
+                            let identifier = try Filesystem.applicationIdentifier(at: url)
+                            let metadata = try Filesystem.applicationMetadata(at: url)
+                            let app = ApplicationRecord(url: url,
+                                name: metadata["CFBundleDisplayName"] as? String ?? url.deletingPathExtension().lastPathComponent,
+                                bundleID: identifier, version: metadata["CFBundleShortVersionString"] as? String ?? "Unknown", bytes: 0, sizeState: .pending)
+                            apps.append(app); emit(.application(app))
+                        } catch is CancellationError { throw CancellationError() }
+                        catch { report.recordFailure(error, at: url, category: .applications, rule: "inventory", emit: emit) }
+                    }
+                } catch is CancellationError { throw CancellationError() }
+                catch { report.recordFailure(error, at: root, category: .applications, rule: "inventory", emit: emit, missingIsExpected: true) }
             }
-            emit(.application(apps[index])); report.visited += 1
+            // All metadata rows are visible before the first recursive size operation.
+            let appCount = apps.count
+            for index in apps.indices {
+                try Task.checkCancellation()
+                let app = apps[index]
+                emit(.progress(.init("Measuring application bundles", current: app.name, completed: index, total: apps.count)))
+                do {
+                    let bytes = try Filesystem.inspect(app.url, progress: { entries, bytes in
+                        emit(.progress(.init("Measuring application bundles", current: app.name, completed: index, total: appCount, entries: entries, bytes: bytes)))
+                    }).0
+                    apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: bytes)
+                } catch is CancellationError { throw CancellationError() }
+                catch {
+                    apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: 0, sizeState: .unavailable)
+                    report.recordFailure(error, at: app.url, category: .applications, rule: "inventory.size", emit: emit)
+                }
+                emit(.application(apps[index])); report.visited += 1
+            }
+            report.duration = Date().timeIntervalSince(started)
+            return ScanResult(report: report, applications: apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
         }
-        report.duration = Date().timeIntervalSince(started)
-        return ScanResult(report: report, applications: apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
     }
 
     public static func footprint(_ app: ApplicationRecord, home: URL = FileManager.default.homeDirectoryForCurrentUser) throws -> [CleanupItem] {
@@ -198,30 +209,32 @@ public enum ApplicationScanner {
 
     public static func footprintReport(_ app: ApplicationRecord, home: URL = FileManager.default.homeDirectoryForCurrentUser,
                                        emit: @escaping ScanEmitter = { _ in }) throws -> ScanReport {
-        let started = Date()
-        var report = ScanReport()
-        let paths: [(URL, Bool, Bool)] = [(app.url, false, true)] + [
-            ("Library/Caches/\(app.bundleID)", true), ("Library/Preferences/\(app.bundleID).plist", false),
-            ("Library/Saved Application State/\(app.bundleID).savedState", false), ("Library/Application Support/\(app.bundleID)", false)
-        ].map { (home.appendingPathComponent($0.0), $0.1, false) }
-        for (index, entry) in paths.enumerated() {
-            try Task.checkCancellation()
-            let (url, generated, isBundle) = entry
-            let rule = isBundle ? "application.exact-bundle" : "application.exact-related"
-            emit(.progress(.init("Inspecting exact app relationships", current: url.lastPathComponent, completed: index, total: paths.count)))
-            do {
-                let item = try Filesystem.item(url, category: isBundle ? .applications : .related, safety: generated ? .safe : .review,
-                    explanation: isBundle ? "Application bundle matched by its exact installation path and bundle identifier: \(app.bundleID)." : "Exact bundle identifier match to \(app.bundleID). No fuzzy name matching was used.",
-                    consequence: isBundle ? "The application will be uninstalled. Its documents remain in place." : generated ? "Generated data can be recreated." : "May contain preferences or app-owned documents. Review before selecting.",
-                    rule: rule, owner: app.bundleID,
-                    progress: { entries, bytes in emit(.progress(.init("Inspecting exact app relationships", current: url.lastPathComponent, completed: index, total: paths.count, entries: entries, bytes: bytes))) })
-                report.recordItem(item, emit: emit)
-            } catch is CancellationError { throw CancellationError() }
-            catch { report.recordFailure(error, at: url, category: .related, rule: rule, emit: emit, missingIsExpected: !isBundle) }
-            report.visited += 1
+        return try NonMaterializingIO.perform {
+            let started = Date()
+            var report = ScanReport()
+            let paths: [(URL, Bool, Bool)] = [(app.url, false, true)] + [
+                ("Library/Caches/\(app.bundleID)", true), ("Library/Preferences/\(app.bundleID).plist", false),
+                ("Library/Saved Application State/\(app.bundleID).savedState", false), ("Library/Application Support/\(app.bundleID)", false)
+            ].map { (home.appendingPathComponent($0.0), $0.1, false) }
+            for (index, entry) in paths.enumerated() {
+                try Task.checkCancellation()
+                let (url, generated, isBundle) = entry
+                let rule = isBundle ? "application.exact-bundle" : "application.exact-related"
+                emit(.progress(.init("Inspecting exact app relationships", current: url.lastPathComponent, completed: index, total: paths.count)))
+                do {
+                    let item = try Filesystem.item(url, category: isBundle ? .applications : .related, safety: generated ? .safe : .review,
+                        explanation: isBundle ? "Application bundle matched by its exact installation path and bundle identifier: \(app.bundleID)." : "Exact bundle identifier match to \(app.bundleID). No fuzzy name matching was used.",
+                        consequence: isBundle ? "The application will be uninstalled. Its documents remain in place." : generated ? "Generated data can be recreated." : "May contain preferences or app-owned documents. Review before selecting.",
+                        rule: rule, owner: app.bundleID,
+                        progress: { entries, bytes in emit(.progress(.init("Inspecting exact app relationships", current: url.lastPathComponent, completed: index, total: paths.count, entries: entries, bytes: bytes))) })
+                    report.recordItem(item, emit: emit)
+                } catch is CancellationError { throw CancellationError() }
+                catch { report.recordFailure(error, at: url, category: .related, rule: rule, emit: emit, missingIsExpected: !isBundle) }
+                report.visited += 1
+            }
+            report.duration = Date().timeIntervalSince(started)
+            return report
         }
-        report.duration = Date().timeIntervalSince(started)
-        return report
     }
 }
 
@@ -234,83 +247,86 @@ public struct DuplicateScanner: Sendable {
         return (result.duplicates, result.report.notices)
     }
     public func scanResult() throws -> ScanResult {
-        let started = Date()
-        try Task.checkCancellation()
-        try Filesystem.validatePath(root)
-        var report = ScanReport()
-        var files: [Int64: [URL]] = [:]
-        var identities: Set<String> = []
-        let rootDevice = (try Filesystem.attributes(root)[.systemNumber] as? NSNumber)?.uint64Value
-        var walkErrors: [(URL, Error)] = []
-        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isUbiquitousItemKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants], errorHandler: { url, error in walkErrors.append((url, error)); return true }) else {
-            throw LumaError.rejected("The selected folder could not be opened.")
-        }
-        var visited = 0
-        emit(.progress(.init("Discovering candidate files", current: root.lastPathComponent)))
-        for case let url as URL in walker {
+        return try NonMaterializingIO.perform {
+            let started = Date()
             try Task.checkCancellation()
-            visited += 1
-            if visited % 128 == 0 { emit(.progress(.init("Discovering candidate files", current: url.lastPathComponent, entries: visited))) }
-            guard visited <= 100_000 else { throw LumaError.rejected("More than 100,000 entries. Choose a smaller folder.") }
-            do {
-                let v = try url.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isUbiquitousItemKey])
-                if v.isSymbolicLink == true || v.isUbiquitousItem == true || v.isPackage == true {
-                    walker.skipDescendants()
-                    report.recordFailure(LumaError.rejected("Packages, links and cloud-managed items are excluded from duplicate analysis."), at: url, category: .storage, rule: "duplicates.scope", emit: emit)
-                    continue
-                }
-                let a = try Filesystem.attributes(url)
-                guard (a[.systemNumber] as? NSNumber)?.uint64Value == rootDevice else {
-                    walker.skipDescendants()
-                    report.recordFailure(LumaError.rejected("A different volume was excluded."), at: url, category: .storage, rule: "duplicates.volume", emit: emit)
-                    continue
-                }
-                guard v.isRegularFile == true else {
-                    if v.isDirectory != true {
-                        report.recordFailure(LumaError.rejected("Unsupported filesystem object excluded."), at: url, category: .storage, rule: "duplicates.type", emit: emit)
-                    }
-                    continue
-                }
-                let size = (a[.size] as? NSNumber)?.int64Value ?? 0
-                let identity = "\(a[.systemNumber] ?? ""):\(a[.systemFileNumber] ?? "")"
-                guard size > 0, identities.insert(identity).inserted else { continue }
-                files[size, default: []].append(url)
-            } catch is CancellationError { throw CancellationError() }
-            catch { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.scan", emit: emit) }
-        }
-        for (url, error) in walkErrors { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.walk", emit: emit) }
-        var groups: [DuplicateGroup] = []
-        for candidates in files.values where candidates.count > 1 {
-            emit(.progress(.init("Checking partial content", current: candidates.first?.lastPathComponent ?? "", entries: visited)))
-            var partials: [String: [URL]] = [:]
-            for url in candidates {
-                try Task.checkCancellation()
-                do { partials[try Filesystem.hash(url, partial: true, progress: { bytes in emit(.progress(.init("Checking partial content", current: url.lastPathComponent, bytes: bytes))) }), default: []].append(url) }
-                catch is CancellationError { throw CancellationError() }
-                catch { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.hash", emit: emit) }
+            try Filesystem.validatePath(root)
+            var report = ScanReport()
+            var files: [Int64: [URL]] = [:]
+            var identities: Set<String> = []
+            let rootDevice = (try Filesystem.attributes(root)[.systemNumber] as? NSNumber)?.uint64Value
+            var walkErrors: [(URL, Error)] = []
+            guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isUbiquitousItemKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants], errorHandler: { url, error in walkErrors.append((url, error)); return true }) else {
+                throw LumaError.rejected("The selected folder could not be opened.")
             }
-            for partial in partials.values where partial.count > 1 {
-                var hashes: [String: [CleanupItem]] = [:]
-                for url in partial {
+            var visited = 0
+            emit(.progress(.init("Discovering candidate files", current: root.lastPathComponent)))
+            for case let url as URL in walker {
+                try Task.checkCancellation()
+                visited += 1
+                if visited % 128 == 0 { emit(.progress(.init("Discovering candidate files", current: url.lastPathComponent, entries: visited))) }
+                guard visited <= 100_000 else { throw LumaError.rejected("More than 100,000 entries. Choose a smaller folder.") }
+                do {
+                    try FilesystemAccess.requireLocal(url)
+                    let v = try url.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isUbiquitousItemKey])
+                    if v.isSymbolicLink == true || v.isUbiquitousItem == true || v.isPackage == true {
+                        walker.skipDescendants()
+                        report.recordFailure(LumaError.rejected("Packages, links and cloud-managed items are excluded from duplicate analysis."), at: url, category: .storage, rule: "duplicates.scope", emit: emit)
+                        continue
+                    }
+                    let a = try Filesystem.attributes(url)
+                    guard (a[.systemNumber] as? NSNumber)?.uint64Value == rootDevice else {
+                        walker.skipDescendants()
+                        report.recordFailure(LumaError.rejected("A different volume was excluded."), at: url, category: .storage, rule: "duplicates.volume", emit: emit)
+                        continue
+                    }
+                    guard v.isRegularFile == true else {
+                        if v.isDirectory != true {
+                            report.recordFailure(LumaError.rejected("Unsupported filesystem object excluded."), at: url, category: .storage, rule: "duplicates.type", emit: emit)
+                        }
+                        continue
+                    }
+                    let size = (a[.size] as? NSNumber)?.int64Value ?? 0
+                    let identity = "\(a[.systemNumber] ?? ""):\(a[.systemFileNumber] ?? "")"
+                    guard size > 0, identities.insert(identity).inserted else { continue }
+                    files[size, default: []].append(url)
+                } catch is CancellationError { throw CancellationError() }
+                catch { walker.skipDescendants(); report.recordFailure(error, at: url, category: .storage, rule: "duplicates.scan", emit: emit) }
+            }
+            for (url, error) in walkErrors { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.walk", emit: emit) }
+            var groups: [DuplicateGroup] = []
+            for candidates in files.values where candidates.count > 1 {
+                emit(.progress(.init("Checking partial content", current: candidates.first?.lastPathComponent ?? "", entries: visited)))
+                var partials: [String: [URL]] = [:]
+                for url in candidates {
                     try Task.checkCancellation()
-                    do {
-                        let item = try Filesystem.item(url, category: .storage, safety: .userData,
-                            explanation: "Identical SHA-256 content verified against another file. Hard links are counted once.",
-                            consequence: "Keep at least one copy. Each location may be referenced by a different project.", rule: "duplicates.sha256")
-                        let hash = try Filesystem.hash(url, progress: { bytes in emit(.progress(.init("Verifying full content", current: url.lastPathComponent, bytes: bytes))) })
-                        guard try Filesystem.inspect(url).1 == item.identity else { throw LumaError.rejected("File changed while hashing.") }
-                        hashes[hash, default: []].append(item)
-                    } catch is CancellationError { throw CancellationError() }
+                    do { partials[try Filesystem.hash(url, partial: true, progress: { bytes in emit(.progress(.init("Checking partial content", current: url.lastPathComponent, bytes: bytes))) }), default: []].append(url) }
+                    catch is CancellationError { throw CancellationError() }
                     catch { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.hash", emit: emit) }
                 }
-                for (hash, items) in hashes where items.count > 1 {
-                    let group = DuplicateGroup(id: hash, items: items.sorted { $0.url.path < $1.url.path })
-                    groups.append(group); emit(.duplicate(group))
+                for partial in partials.values where partial.count > 1 {
+                    var hashes: [String: [CleanupItem]] = [:]
+                    for url in partial {
+                        try Task.checkCancellation()
+                        do {
+                            let item = try Filesystem.item(url, category: .storage, safety: .userData,
+                                explanation: "Identical SHA-256 content verified against another file. Hard links are counted once.",
+                                consequence: "Keep at least one copy. Each location may be referenced by a different project.", rule: "duplicates.sha256")
+                            let hash = try Filesystem.hash(url, progress: { bytes in emit(.progress(.init("Verifying full content", current: url.lastPathComponent, bytes: bytes))) })
+                            guard try Filesystem.inspect(url).1 == item.identity else { throw LumaError.rejected("File changed while hashing.") }
+                            hashes[hash, default: []].append(item)
+                        } catch is CancellationError { throw CancellationError() }
+                        catch { report.recordFailure(error, at: url, category: .storage, rule: "duplicates.hash", emit: emit) }
+                    }
+                    for (hash, items) in hashes where items.count > 1 {
+                        let group = DuplicateGroup(id: hash, items: items.sorted { $0.url.path < $1.url.path })
+                        groups.append(group); emit(.duplicate(group))
+                    }
                 }
             }
+            report.visited = visited; report.duration = Date().timeIntervalSince(started)
+            return ScanResult(report: report, duplicates: groups.sorted { $0.recoverable > $1.recoverable })
         }
-        report.visited = visited; report.duration = Date().timeIntervalSince(started)
-        return ScanResult(report: report, duplicates: groups.sorted { $0.recoverable > $1.recoverable })
     }
 }

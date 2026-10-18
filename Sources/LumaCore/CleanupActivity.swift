@@ -1,10 +1,12 @@
 import Foundation
 
 public enum CleanupTool: String, Sendable, Codable {
-    case packageManager, simulator, xcode
+    case packageManager, simulator, xcode, visualStudioCode
 }
 
 public struct CleanupActivity: Sendable {
+    @TaskLocal static var collectionOverride: CleanupActivity?
+
     public let tools: Set<CleanupTool>?
     public let simulatorsBooted: Bool?
     public init(tools: Set<CleanupTool>?, simulatorsBooted: Bool? = nil) {
@@ -18,12 +20,14 @@ public struct CleanupActivity: Sendable {
             let names = tokens.map { URL(fileURLWithPath: $0).lastPathComponent.lowercased() }
             if names.contains(where: { ["npm", "npx", "pnpm", "yarn", "corepack", "brew", "brew.rb", "npm-cli.js", "npx-cli.js", "pnpm.cjs", "pnpm.mjs", "yarn.js", "yarn.cjs"].contains($0) || $0.range(of: "^yarn-[0-9.]+\\.c?js$", options: .regularExpression) != nil }) { result.insert(.packageManager) }
             if names.contains(where: { ["xcode", "xcodebuild", "swift-build", "swift-package", "swift-test"].contains($0) }) { result.insert(.xcode) }
+            if line.contains("/Visual Studio Code.app/Contents/") { result.insert(.visualStudioCode) }
             if names.contains(where: { ["simulator", "simctl"].contains($0) }) { result.insert(.simulator) }
         }
         return result
     }
 
     public static func collect(checkSimulators: Bool = false) -> CleanupActivity {
+        if let override = collectionOverride { return override }
         let tools = output("/bin/ps", ["-axo", "comm=,args="]).map(classify)
         var booted: Bool?
         if checkSimulators, let data = output("/usr/bin/xcrun", ["simctl", "list", "devices", "booted", "--json"])?.data(using: .utf8),

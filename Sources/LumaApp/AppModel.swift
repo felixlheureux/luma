@@ -111,7 +111,10 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var completedScans: Set<Destination> = []
     private var monitorTask: Task<Void, Never>?
     private let ignoreKey = "luma.ignoredPaths"
-    var cleanupBytes: Int64 { cleanup.filter { !isIgnored($0) }.reduce(0) { $0 + $1.bytes } }
+    var cleanupBytes: Int64 { generatedBytes(cleanup.filter { !isIgnored($0) }) }
+    func generatedBytes(_ items: [CleanupItem]) -> Int64 {
+        cleanupReport?.generatedAccounting.bytes(for: items) ?? items.reduce(0) { $0 + $1.bytes }
+    }
     func isIgnored(_ item: CleanupItem) -> Bool {
         ignored.contains { Filesystem.isWithin(item.url, root: URL(fileURLWithPath: $0)) }
     }
@@ -276,6 +279,17 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         }
     }
 
+    /// Mutation outcomes invalidate the completed generated-data snapshot, even
+    /// when only part of a plan moved. No stale category totals enter review.
+    func invalidateGeneratedFindings() {
+        selected.subtract((cleanupReport?.items ?? cleanup).map(\.id))
+        cleanup = []; cleanupReport = nil
+        completedScans.remove(.clean)
+        completedSnapshots.removeValue(forKey: .generatedData)
+        completedSnapshots.removeValue(forKey: .overview)
+        scanSessions.invalidateSnapshots(for: [.generatedData, .overview])
+    }
+
     func moveToTrash() {
         guard !busy, let plan = reviewPlan else { return }
         guard let journal, !recoveryLoading, journalError == nil, recoveryNotices.isEmpty else {
@@ -283,6 +297,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         }
         busy = true; showingReview = false; status = "Validating selected items…"
         Task {
+            defer { invalidateGeneratedFindings() }
             do {
                 _ = try await journal.execute(plan, context: { @MainActor [self] in
                     .current(ignoredPaths: ignored)
@@ -345,6 +360,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         guard !busy, !recoveryLoading, journalError == nil, let journal else { return }
         busy = true; status = "Checking the item in Trash…"
         Task {
+            defer { invalidateGeneratedFindings() }
             do {
                 try await journal.restore(record)
                 apply(await journal.snapshot()); status = "Restored \(record.original.lastPathComponent)"

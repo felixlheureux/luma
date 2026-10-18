@@ -4,8 +4,9 @@ extension ScanReport {
     mutating func recordFailure(_ error: Error, at url: URL, category: ItemCategory, rule: String,
                                 emit: ScanEmitter, missingIsExpected: Bool = false) {
         let state = GeneratedDataScanner.failureState(error)
-        let coverage = ScanCoverage(ruleID: rule, title: url.lastPathComponent, path: url.path,
+        var coverage = ScanCoverage(ruleID: rule, title: url.lastPathComponent, path: url.path,
                                     category: category, state: state, bytes: 0, detail: error.localizedDescription)
+        coverage.accessCapability = (error as? FilesystemAccessError)?.capability
         self.coverage.append(coverage); emit(.coverage(coverage))
         if !missingIsExpected || state != .missing {
             isComplete = false

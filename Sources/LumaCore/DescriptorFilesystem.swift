@@ -27,7 +27,12 @@ final class PinnedPath {
     var descriptor: Int32 { descriptors[descriptors.count - 1] }
     let value: stat
 
-    init(_ input: URL) throws {
+    init(_ input: URL, rejectAliases: Bool = true) throws {
+        let result = try NonMaterializingIO.perform { try Self.pin(input, rejectAliases: rejectAliases) }
+        url = result.0; descriptors = result.1; value = result.2; location = result.3
+    }
+
+    private static func pin(_ input: URL, rejectAliases: Bool) throws -> (URL, [Int32], stat, FileLocation) {
         guard input.isFileURL else { throw LumaError.rejected("Only local filesystem paths are supported.") }
         let url = input.exactStandardizedFileURL
         guard input.host?.isEmpty != false, input.query == nil, input.fragment == nil, !input.path.utf8.contains(0),
@@ -53,15 +58,18 @@ final class PinnedPath {
                 let (fd, info) = try Self.openChild(parent, name: name, directory: isParent)
                 opened.append(fd)
                 cursor = cursor.exactAppendingPathComponent(name)
+                try FilesystemAccess.check(cursor, metadata: info, descriptor: fd)
                 // Finder aliases are regular files; they must be excluded too.
-                guard try cursor.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile != true else {
-                    throw LumaError.rejected("Finder aliases are excluded from cleanup.")
+                if rejectAliases {
+                    guard try cursor.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile != true else {
+                        throw LumaError.rejected("Finder aliases are excluded from cleanup.")
+                    }
                 }
                 chain.append(FileLocation.Component(info)); last = info
             }
-            self.url = url; self.descriptors = opened; self.value = last
-            self.location = FileLocation(path: Data(url.path.utf8), chain: chain)
+            return (url, opened, last, FileLocation(path: Data(url.path.utf8), chain: chain))
         } catch { for fd in opened.reversed() { close(fd) }; throw error }
+
     }
 
     deinit { for fd in descriptors.reversed() { close(fd) } }
@@ -69,36 +77,42 @@ final class PinnedPath {
     static func posixError() -> POSIXError { POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
 
     static func openChild(_ parent: Int32, name: String, directory: Bool = false) throws -> (Int32, stat) {
-        var before = stat()
-        guard fstatat(parent, name, &before, AT_SYMLINK_NOFOLLOW) == 0 else { throw posixError() }
-        let kind = before.st_mode & S_IFMT
-        guard kind == S_IFREG || kind == S_IFDIR, !directory || kind == S_IFDIR else {
-            throw LumaError.rejected("Links and unsupported filesystem objects are excluded.")
+        return try NonMaterializingIO.perform {
+            var before = stat()
+            guard fstatat(parent, name, &before, AT_SYMLINK_NOFOLLOW) == 0 else { throw posixError() }
+            guard before.st_flags & UInt32(SF_DATALESS) == 0 else { throw FilesystemAccessError(capability: .dataless) }
+            let kind = before.st_mode & S_IFMT
+            guard kind == S_IFREG || kind == S_IFDIR, !directory || kind == S_IFDIR else {
+                throw LumaError.rejected("Links and unsupported filesystem objects are excluded.")
+            }
+            // Event-only descriptors avoid opening special-device data streams if a
+            // regular file is replaced after fstatat. Search-only directory handles
+            // preserve access to known children without requiring directory listing.
+            let fd = openat(parent, name, O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (kind == S_IFDIR ? O_SEARCH : O_EVTONLY))
+            guard fd >= 0 else { throw posixError() }
+            var after = stat()
+            guard fstat(fd, &after) == 0 else { let error = posixError(); close(fd); throw error }
+            guard FileLocation.Component(before) == FileLocation.Component(after) else {
+                close(fd); throw LumaError.rejected("A filesystem object changed while it was being opened. Scan again.")
+            }
+            return (fd, after)
         }
-        // Event-only descriptors avoid opening special-device data streams if a
-        // regular file is replaced after fstatat. Search-only directory handles
-        // preserve access to known children without requiring directory listing.
-        let fd = openat(parent, name, O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (kind == S_IFDIR ? O_SEARCH : O_EVTONLY))
-        guard fd >= 0 else { throw posixError() }
-        var after = stat()
-        guard fstat(fd, &after) == 0 else { let error = posixError(); close(fd); throw error }
-        guard FileLocation.Component(before) == FileLocation.Component(after) else {
-            close(fd); throw LumaError.rejected("A filesystem object changed while it was being opened. Scan again.")
-        }
-        return (fd, after)
     }
 
     func openReadableRegularFile() throws -> Int32 {
-        guard value.st_mode & S_IFMT == S_IFREG else { throw LumaError.rejected("Only regular files may be read.") }
-        let parent = descriptors[descriptors.count - 2]
-        let readable = openat(parent, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard readable >= 0 else { throw Self.posixError() }
-        var opened = stat()
-        guard fstat(readable, &opened) == 0,
-              FileLocation.Component(opened) == FileLocation.Component(value) else {
-            close(readable); throw LumaError.rejected("The file was replaced before reading.")
+        return try NonMaterializingIO.perform {
+            guard value.st_mode & S_IFMT == S_IFREG else { throw LumaError.rejected("Only regular files may be read.") }
+            try revalidate()
+            let parent = descriptors[descriptors.count - 2]
+            let readable = openat(parent, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            guard readable >= 0 else { throw Self.posixError() }
+            var opened = stat()
+            guard fstat(readable, &opened) == 0,
+                  FileLocation.Component(opened) == FileLocation.Component(value) else {
+                close(readable); throw LumaError.rejected("The file was replaced before reading.")
+            }
+            return readable
         }
-        return readable
     }
 
     func revalidate(expected: FileLocation? = nil) throws {
@@ -120,27 +134,29 @@ final class PinnedPath {
     }
 
     static func names(in descriptor: Int32, limit: Int = 250_000) throws -> [String] {
-        // openat creates an independent directory stream (dup shares offsets).
-        let copy = openat(descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-        guard copy >= 0 else { throw posixError() }
-        guard let stream = fdopendir(copy) else { let error = posixError(); close(copy); throw error }
-        defer { closedir(stream) }
-        var result: [String] = []
-        while true {
-            try Task.checkCancellation()
-            guard result.count <= limit else { throw LumaError.rejected("This directory exceeds the current inspection limit; narrow your selection.") }
-            errno = 0
-            guard let entry = readdir(stream) else {
-                if errno != 0 { throw posixError() }; break
+        return try NonMaterializingIO.perform {
+            // openat creates an independent directory stream (dup shares offsets).
+            let copy = openat(descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard copy >= 0 else { throw posixError() }
+            guard let stream = fdopendir(copy) else { let error = posixError(); close(copy); throw error }
+            defer { closedir(stream) }
+            var result: [String] = []
+            while true {
+                try Task.checkCancellation()
+                guard result.count <= limit else { throw LumaError.rejected("This directory exceeds the current inspection limit; narrow your selection.") }
+                errno = 0
+                guard let entry = readdir(stream) else {
+                    if errno != 0 { throw posixError() }; break
+                }
+                let length = Int(entry.pointee.d_namlen)
+                let bytes = withUnsafeBytes(of: entry.pointee.d_name) { Data($0.prefix(length)) }
+                guard let name = String(data: bytes, encoding: .utf8) else {
+                    throw LumaError.rejected("A filename cannot be represented safely. Review this folder in Finder.")
+                }
+                if bytes != Data(".".utf8), bytes != Data("..".utf8) { result.append(name) }
             }
-            let length = Int(entry.pointee.d_namlen)
-            let bytes = withUnsafeBytes(of: entry.pointee.d_name) { Data($0.prefix(length)) }
-            guard let name = String(data: bytes, encoding: .utf8) else {
-                throw LumaError.rejected("A filename cannot be represented safely. Review this folder in Finder.")
-            }
-            if bytes != Data(".".utf8), bytes != Data("..".utf8) { result.append(name) }
+            return result.sorted { Data($0.utf8).lexicographicallyPrecedes(Data($1.utf8)) }
         }
-        return result.sorted { Data($0.utf8).lexicographicallyPrecedes(Data($1.utf8)) }
     }
 }
 

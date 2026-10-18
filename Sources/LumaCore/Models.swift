@@ -71,6 +71,7 @@ public struct ScanReport: Sendable {
     public var isComplete = true
     public var coverage: [ScanCoverage] = []
     public var duration: TimeInterval = 0
+    public var generatedAccounting = GeneratedDataAccounting()
     public init() {}
 }
 
@@ -88,6 +89,7 @@ public struct ScanCoverage: Identifiable, Sendable {
     public let state: CoverageState
     public let bytes: Int64
     public let detail: String
+    public var accessCapability: FilesystemCapability? = nil
 }
 
 public struct ScanProgress: Sendable {

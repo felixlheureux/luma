@@ -1,6 +1,7 @@
 # 004 — Build a hierarchical storage browser
 
-Status: Planned  
+Status: Ready
+
 Priority: P1  
 Milestone: 0.3.0  
 Depends on: [001](001-cleanup-plans.md), [002](002-filesystem-identity.md), [003](003-scan-sessions.md), [047](047-provider-aware-filesystem.md)

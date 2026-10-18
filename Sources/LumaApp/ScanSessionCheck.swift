@@ -158,10 +158,72 @@ extension LumaAppDelegate {
                 report["permissionRetrySucceeded"] = model.storage.count == 2 && model.snapshot(for: .storage)?.result.report.isComplete == true
                 report["newSnapshotTimestamp"] = model.snapshot(for: .storage)?.finishedAt != firstSnapshot
                 report["nothingSelected"] = model.selected.isEmpty
+
+                // Real platform-policy exclusion on generated local data. No
+                // account, provider content, download or Finder launch is used.
+                model.destination = .storage
+                let provider = data.appendingPathComponent("Library/CloudStorage")
+                try FileManager.default.createDirectory(at: provider, withIntermediateDirectories: true)
+                try Data("synthetic downloaded provider bytes".utf8).write(to: provider.appendingPathComponent("Downloaded"))
+                model.retryScan(.storage)
+                try await waitForScanCheck { !model.busy }
+                let coverage = model.snapshot(for: .storage)?.result.report.coverage ?? []
+                report["providerScopeExcluded"] = coverage.contains { $0.accessCapability == .providerManaged && $0.state == .skipped }
+                report["providerBytesNotCounted"] = model.storage.count == 2 && !model.storage.contains { $0.url.lastPathComponent == "Library" }
+                report["providerSelectionEmpty"] = model.selected.isEmpty
+                if let window = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }) {
+                    try await Task.sleep(for: .milliseconds(350))
+                    try self.saveScanCheckWindow(window, path: URL(fileURLWithPath: output).deletingPathExtension().path + "-provider.png")
+                }
+
+                // Current supported app layout, in a fixture home; no real app
+                // data, package manager or cleanup executor is invoked.
+                let support = try self.prepareCacheDiscoveryFixture(home: root)
+                model.destination = .clean
+                model.startScan(.init(.generatedData))
+                try await waitForScanCheck { !model.busy }
+                report["expandedCacheUnits"] = model.cleanup.count == 4
+                report["cacheGroups"] = GeneratedDataGroup.groups(for: model.cleanup).count == 2
+                report["cacheUniqueBytes"] = model.cleanupBytes == 39
+                report["cacheAdjacentDataPreserved"] = FileManager.default.fileExists(atPath: support.appendingPathComponent("Backups/unsaved").path)
+                report["cacheNothingSelected"] = model.selected.isEmpty
+                if let window = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }) {
+                    try await Task.sleep(for: .milliseconds(350))
+                    try self.saveScanCheckWindow(window, path: URL(fileURLWithPath: output).deletingPathExtension().path + "-caches.png")
+                }
+                model.selected = Set(model.cleanup.map(\.id))
+                model.review(model.cleanup, source: .generatedData)
+                try await waitForScanCheck { !model.busy }
+                try await Task.sleep(for: .milliseconds(350))
+                report["cacheReviewTotalMatches"] = model.reviewPlan?.logicalBytes == 39
+                report["cacheReviewPresented"] = NSApp.windows.contains { $0.attachedSheet != nil }
+                model.showingReview = false; model.reviewPlan = nil
+                model.invalidateGeneratedFindings()
+                report["cacheSnapshotInvalidated"] = model.cleanupReport == nil && model.cleanup.isEmpty && !model.completedScans.contains(.clean) && model.snapshot(for: .generatedData) == nil && model.scanSessions.snapshots[.generatedData] == nil && model.scanSessions.session == nil && model.selected.isEmpty
             } catch { report["error"] = error.localizedDescription }
             do { try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output)) }
             catch { FileHandle.standardError.write(Data("Scan QA report failed: \(error.localizedDescription)\n".utf8)) }
         }
+    }
+
+    private func prepareCacheDiscoveryFixture(home: URL) throws -> URL {
+        guard let required = Rules.generated.first(where: { $0.id == "app.vscode.bytecode" })?.requiredApplication else {
+            throw LumaError.rejected("The cache fixture has no supported owner definition.")
+        }
+        let bundle = home.appendingPathComponent("Applications/Visual Studio Code.app/Contents")
+        try FileManager.default.createDirectory(at: bundle.appendingPathComponent("Resources/app"), withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": required.bundleID, "CFBundleShortVersionString": required.version], format: .xml, options: 0).write(to: bundle.appendingPathComponent("Info.plist"))
+        try JSONSerialization.data(withJSONObject: ["darwinBundleIdentifier": required.bundleID, "nameShort": required.productName, "commit": required.commit]).write(to: bundle.appendingPathComponent("Resources/app/product.json"))
+        try JSONSerialization.data(withJSONObject: ["version": required.version]).write(to: bundle.appendingPathComponent("Resources/app/package.json"))
+        let root = home.appendingPathComponent("Library/Application Support/Code")
+        for leaf in ["Cache", "GPUCache", "CachedData", "logs", "User", "Backups"] {
+            let directory = root.appendingPathComponent(leaf)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data("cache fixture".utf8).write(to: directory.appendingPathComponent(leaf == "Backups" ? "unsaved" : "entry"))
+        }
+        try FileManager.default.removeItem(at: root.appendingPathComponent("logs/entry"))
+        try FileManager.default.linkItem(at: root.appendingPathComponent("CachedData/entry"), to: root.appendingPathComponent("logs/entry"))
+        return root
     }
 
     private func waitForScanCheck(_ condition: @MainActor () -> Bool) async throws {

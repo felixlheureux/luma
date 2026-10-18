@@ -29,6 +29,9 @@ struct ItemList: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(item.explanation).font(.system(size: 12)).lineSpacing(3)
                             Label(item.consequence, systemImage: "arrow.uturn.backward").font(.system(size: 11)).foregroundStyle(.secondary)
+                            if let owner = item.ownerBundleID {
+                                Text("Owner: \(owner)").font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled)
+                            }
                             Text("Rule: \(item.ruleID)\nPath: \(item.url.path)\nMatched: \(item.scannedAt.formatted())\nIdentity: \(item.identity.device):\(item.identity.inode)")
                                 .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
                             HStack {
@@ -54,12 +57,13 @@ struct ItemList: View {
 struct SelectionBar: View {
     @Environment(AppModel.self) private var model
     let items: [CleanupItem]
+    var logicalBytes: (([CleanupItem]) -> Int64)? = nil
     private var selected: [CleanupItem] { items.filter { model.selected.contains($0.id) && !model.isIgnored($0) } }
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.circle").foregroundStyle(Palette.accent)
             Text("\(selected.count) selected").font(.system(size: 12, weight: .medium))
-            Text("Up to \(formatBytes(selected.reduce(0) { $0 + $1.bytes }))").font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
+            Text("Up to \(formatBytes(logicalBytes?(selected) ?? selected.reduce(0) { $0 + $1.bytes }))").font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
                 .help("The final logical size is verified in review, counting shared hard-linked content once.")
             Spacer()
             if !selected.isEmpty { Button("Deselect all") { model.selected = [] }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary) }

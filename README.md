@@ -11,7 +11,7 @@ Every proposed cleanup has a path, an explanation, an ownership rule, and a cons
 
 ## What you can do
 
-- **Review generated data.** Inspect Chrome, Safari, Firefox, Zen, Brave, and Edge caches; npm, Yarn Classic, and pnpm metadata caches; developer build files; and simulator caches and logs. Cookies, sessions, project dependencies, shared stores, and device contents stay separate.
+- **Review generated data.** Inspect Chrome, Safari, Firefox, Zen, Brave, and Edge caches; npm, Yarn Classic, and pnpm metadata caches; developer build files; simulator caches and logs; and verified VS Code 1.142.0 cache/log units. Cookies, sessions, project dependencies, shared stores, and device contents stay separate.
 - **Find app leftovers.** Review data whose exact bundle identifier has no installed owner. Luma checks application folders, embedded helpers, and macOS Launch Services. Exact identifiers and explicit rules cover supported named support folders. Ownership is checked again before Trash.
 - **Understand app footprints.** Inventory apps and inspect exact matches for caches, preferences, saved state, and application support. Uninstall selections are explicit.
 - **Explore storage.** Choose a folder, see a proportional map, and filter files by size, age, or installer type. Personal files are never classified as junk.
@@ -27,7 +27,7 @@ The interface follows **System appearance by default**, with optional Light and 
 
 | Area | Current scope | Remaining work |
 | --- | --- | --- |
-| Clean | 18 audited rules; browser profile caches, package caches, simulator diagnostics, cancellable progress, and scan coverage | More cache versions and ecosystems, finer selection, device backups |
+| Clean | 22 bounded rules; verified VS Code cache/log units, app/category grouping, unique logical totals, browser/package caches, simulator diagnostics and scan coverage | More cache versions and ecosystems, finer selection, device backups |
 | Applications | Inventory, exact footprints, reviewed uninstall, potential leftovers | App reset, broader ownership evidence, and update discovery |
 | Storage | Chosen-folder map and file filters | Nested browsing, volumes, developer projects, and incremental indexing |
 | Duplicates | Exact content verification | Similar-photo analysis and comparison |
@@ -86,6 +86,9 @@ Luma analyzes files locally. It has no telemetry, account system, root helper, o
 
 This is an early development build. Cleanup and Restore use a durable journal, with file identity checks and recovery review in Activity. Descriptor checks strengthen identity validation; the final native Trash pathname race remains documented. Read the [safety model](Documentation/Safety.md) before cleanup of important data.
 
+
+Provider-aware access skips reported cloud/provider scopes, dataless content, network storage and unavailable metadata before ordinary inspection or cleanup. Downloaded provider files remain excluded. Coverage explains skipped locations and offers Finder handoffs; app views use generic icons to avoid implicit file previews. See [the safety model](Documentation/Safety.md#provider-aware-access-task-047) for detection limits and supported local behavior.
+
 ## Development
 
 ```sh
@@ -95,7 +98,9 @@ bash Scripts/check-window-lifecycle.sh
 bash Scripts/preview.sh
 ```
 
-The tests cover scan replacement, late events, stopping/timeouts, progressive inventory, scoped permission retry, protected paths, symlink escapes, stale scans, ownership, reinstalled apps, browser and package cache boundaries, permission exclusions, active tools, interrupted cleanup and restore, hard links, hashing, memory accounting, and process grouping. Fixtures are disposable and project-local. After building the app, the lifecycle smoke check requires a logged-in desktop session and verifies that closing the window preserves monitoring, reopening works, and explicit Quit exits.
+See the [cache support matrix](Documentation/Cache-Support.md) for supported builds, provenance, consequences and explicitly unavailable families. Generated findings require a fresh scan after cleanup or Restore.
+
+The tests cover verified app layouts, adjacent-data exclusions, hard-link-aware group/selection totals, provider/dataless access, thread-policy restoration, provider-state changes before mutations, scan replacement, late events, stopping/timeouts, progressive inventory, scoped permission retry, protected paths, symlink escapes, stale scans, ownership, reinstalled apps, browser and package cache boundaries, permission exclusions, active tools, interrupted cleanup and restore, hard links, hashing, memory accounting, and process grouping. Fixtures are disposable and project-local. After building the app, the lifecycle smoke check requires a logged-in desktop session and verifies that closing the window preserves monitoring, reopening works, and explicit Quit exits.
 
 The preview script captures light and dark app windows without cleaning files. Its fallback cannot reproduce every native composited glass layer when window capture is unavailable. Generated screenshots and local diagnostics are excluded from the repository.
 
@@ -111,4 +116,4 @@ The commercial app supplied during development was a product reference only. No 
 
 [GNU GPL version 3 or later](LICENSE).
 
-Debug native scan QA: build with `bash Scripts/build-app.sh debug`, then run `bash Scripts/check-scan-sessions.sh` in a logged-in desktop session. It checks light/dark native scan and inspection cancellation, read-only previews, scoped permission retry, navigation, Settings, window reopening and continued menu monitoring using 30 synthetic apps with 6,000 files. It never invokes cleanup. Timing measurements describe that fixture on the current machine, not a universal responsiveness guarantee.
+Debug native scan QA: build with `bash Scripts/build-app.sh debug`, then run `bash Scripts/check-scan-sessions.sh` in a logged-in desktop session. It checks light/dark native scan and inspection cancellation, read-only previews, scoped permission retry, provider exclusions and totals, navigation, Settings, window reopening and continued menu monitoring using 30 synthetic apps with 6,000 files. It never invokes cleanup. Timing measurements describe that fixture on the current machine, not a universal responsiveness guarantee.

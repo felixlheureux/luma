@@ -11,9 +11,12 @@ import sys
 import tempfile
 
 required = [
+    "expandedCacheUnits", "cacheGroups", "cacheUniqueBytes", "cacheAdjacentDataPreserved",
+    "cacheNothingSelected", "cacheReviewTotalMatches", "cacheReviewPresented", "cacheSnapshotInvalidated",
     "metadataVisibleBeforeSizing", "previewCannotInspect", "navigationWhileScanning",
     "settingsWhileScanning", "windowClosedDuringScan", "windowReopenedDuringScan",
     "monitoringContinued", "menuStayedVisible", "stoppingUntilWorkerReturns",
+    "providerScopeExcluded", "providerBytesNotCounted", "providerSelectionEmpty",
     "cancelledInventoryNotCommitted", "allSizesResolved", "partialReviewRejected",
     "deniedCoverageReported", "readableResultsRetained", "permissionRetrySameScope",
     "permissionRetrySucceeded", "newSnapshotTimestamp", "nothingSelected",

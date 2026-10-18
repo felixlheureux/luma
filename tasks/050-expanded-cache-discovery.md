@@ -1,6 +1,7 @@
 # 050 — Ship an early batch of broader cache discovery
 
-Status: Planned  
+Status: Done
+
 Priority: P1  
 Milestone: 0.3.0  
 Depends on: [001](001-cleanup-plans.md), [002](002-filesystem-identity.md), [003](003-scan-sessions.md), [047](047-provider-aware-filesystem.md)
@@ -21,11 +22,11 @@ The compiled reference exposes more cache families than Luma's 18 current rules.
 
 ## Acceptance criteria
 
-- [ ] Each evaluated family has a supported/unsupported decision; every enabled rule has provenance, consequences and positive/negative fixtures.
-- [ ] Synthetic installed apps expose supported cache leaves while adjacent settings, session state, personal data and shared containers remain untouched.
-- [ ] Running owners/tools, changed identities, links, forged descendants, protected paths and provider-managed ancestors fail core validation.
-- [ ] Category/app totals agree with non-overlapping accepted plans and don't imply guaranteed physical savings.
-- [ ] Reference comparison documents actual coverage differences, not just numbers of rules. No personal data is moved for validation.
+- [x] Each evaluated family has a supported/unsupported decision; every enabled rule has provenance, consequences and positive/negative fixtures.
+- [x] Synthetic installed apps expose supported cache leaves while adjacent settings, session state, personal data and shared containers remain untouched.
+- [x] Running owners/tools, changed identities, links, forged descendants, protected paths and provider-managed ancestors fail core validation.
+- [x] Category/app totals agree with non-overlapping accepted plans and don't imply guaranteed physical savings.
+- [x] Reference comparison documents actual coverage differences, not just numbers of rules. No personal data is moved for validation.
 
 ## Validation
 
@@ -36,3 +37,15 @@ Use realistic synthetic app/container layouts, absent/denied roots, changed owne
 [Rules.swift](../Sources/LumaCore/Rules.swift), [Scanners.swift](../Sources/LumaCore/Scanners.swift), [SafetyEngine.swift](../Sources/LumaCore/SafetyEngine.swift), task 005's ownership work where available, and the [compiled audit](compiled-reference-audit.md). Primary lead: [Electron app paths](https://www.electronjs.org/docs/latest/api/app). Spec: sections 8–13, 15, 80–86 and 96–97.
 
 Reference checkpoints: compare category coverage, per-app grouping, details, active-owner messaging and partial coverage before/during/completion. Record evidence in [reference-checks.md](reference-checks.md).
+
+## Implementation evidence — 2026-10-17
+
+- [Cache-Support.md](../Documentation/Cache-Support.md) records the supported/unsupported matrix, exact primary provenance, ownership/layout checks, regeneration/diagnostic consequences and limits for every evaluated family. This batch enables four fixed units for VS Code stable 1.142.0, commit `6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1`: Cache, GPUCache, CachedData and logs. It does not infer that other Electron apps, sandbox containers or additional Xcode data have a verified policy. Existing 18 rules retain their scope; 22 bounded rules are now enabled in total.
+- Installation metadata must agree on identifier, version, product name and released commit. Unsupported versions or absent/unreadable/changed owners produce skipped coverage when the target exists. Only complete directory units match. Sensitive siblings, parents, descendants, group containers, alias/link substitutions and provider-managed ancestors remain outside authority. The new rules are not automatically promoted into leftover-owner mappings.
+- Core validation checks owners/helpers and process evidence again before each move. Unknown process collection blocks cleanup. VS Code/background-helper failures give a relevant quit instruction. Installed-product validation uses the same provider and pinned metadata boundaries as inspection.
+- Clean groups results by app/category, offers read-only item details with path/consequence/owner and periodic app-activity hints, and keeps explicit whole-unit selection. Coverage names the app and distinguishes readable/empty/absent/blocked/skipped states. Tool/process evidence is authoritative only when checked at execution.
+- Transient inode accounting produces unique logical totals for each category/group/subset and agrees with accepted plans. Cross-group hard links need not make category sums additive; the UI explains this beside both summary and groups. Final review revalidates selected totals. No physical savings guarantee is made.
+- Cleanup attempts, partial outcomes and Restore invalidate generated arrays, coverage, selected generated IDs and completed app/controller snapshots, requiring a new scan. An unrelated completed feature remains available. Regression fixtures verify that a cancelled refresh cannot resurrect invalidated evidence.
+- All **130 tests in 13 suites pass**. New tests cover synthetic installed metadata, four positive units, adjacent personal/session/offline data, shared/ambiguous containers, mismatched/linked owners, running owners/helpers/tools, stale content, denied/empty/missing/non-directory roots, forged paths, provider ancestors, cross-category hard links, pre-move owner changes and fixture-only journal Trash/Restore. Test-local app roots/activity snapshots avoid dependence on real installed/running apps. No personal data was moved.
+- The final debug build succeeds. Native light/dark scan QA passes four-unit/two-group discovery, no default selection, 39 unique fixture bytes, matching review-plan size, actual review-sheet presentation and complete generated-snapshot invalidation, plus existing scan/permission/provider/navigation/window/menu checks. Only generated data is used; native QA does not execute cleanup. Final inventory timings were approximately 1.12/1.05 seconds for 6,000 files, with sampled main-actor delays approximately 0.09/0.07 seconds.
+- [reference-checks.md](reference-checks.md) records all reference checkpoints, scope differences and static-only/visual-capture limitations. Real Electron cache regeneration, other product releases, arbitrary sandbox ownership and additional Xcode targets remain explicitly unsupported/unverified; they are not silently marked scanned or eligible. Broader selectable descendants and external rules remain tasks 031/008.

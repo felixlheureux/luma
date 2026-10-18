@@ -199,7 +199,7 @@ private extension CleanupJournal {
         await #expect(throws: (any Error).self) { try await journal.restore(record) }
     }
 
-    @Test func knownTrashDestinationRecoversWithoutListingTrash() async throws {
+    @Test func knownTrashDestinationWaitsForUnavailableProviderMetadata() async throws {
         let f = try JournalFixture(); defer { f.remove() }
         let item = try f.item()
         let destination = f.trash.appendingPathComponent("example.txt")
@@ -210,7 +210,11 @@ private extension CleanupJournal {
         try FileManager.default.setAttributes([.posixPermissions: 0o100], ofItemAtPath: f.trash.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: f.trash.path) }
         let snapshot = try await f.journal().reconcile()
-        #expect(snapshot.records.count == 1)
-        #expect(snapshot.unresolved.isEmpty)
+        #expect(snapshot.records.isEmpty)
+        #expect(snapshot.unresolved.count == 1)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: f.trash.path)
+        let recovered = try await f.journal().reconcile()
+        #expect(recovered.records.count == 1)
+        #expect(recovered.unresolved.isEmpty)
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Runs only in a controller-owned worker. Traversal scopes remain the existing
-/// bounded scanners; provider/access expansion is gated by task 047.
+/// bounded scanners. All filesystem access uses the shared provider policy.
 public enum ScanEngine {
     public static func run(_ request: ScanRequest, home: URL = FileManager.default.homeDirectoryForCurrentUser,
                            applicationRoots: [URL]? = nil, emit: @escaping ScanEmitter = { _ in }) async throws -> ScanResult {

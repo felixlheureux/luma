@@ -30,6 +30,7 @@ private struct LeftoverFixture {
         _ = try f.file("Library/Preferences/org.lumatest.removed.plist")
         let report = try await f.scanner().scan()
         #expect(report.items.count == 2)
+        #expect(report.isComplete)
         #expect(report.items.allSatisfy { $0.safety == .review && $0.ownerBundleID == "org.lumatest.removed" })
         #expect(report.items.allSatisfy { LeftoverScanner.matches($0, home: f.home) })
     }
@@ -115,6 +116,7 @@ private struct LeftoverFixture {
         _ = try f.file("Library/Application Support/obsidian/settings")
         let report = try await f.scanner().scan()
         #expect(report.items.count == 2)
+        #expect(report.isComplete)
         #expect(report.items.allSatisfy { $0.safety == .review && LeftoverScanner.matches($0, home: f.home) })
         #expect(report.items.contains { $0.ownerBundleID == "md.obsidian" })
         #expect(!report.items.contains { $0.name == "Spotify Backup" })
