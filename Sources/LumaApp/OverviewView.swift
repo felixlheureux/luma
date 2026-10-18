@@ -6,9 +6,9 @@ struct OverviewView: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         VStack(alignment: .leading, spacing: 25) {
-            hero
+            if model.smartStartedAt == nil { hero }
             LiveOverviewMetrics()
-            if let report = model.cleanupReport { ScanSummaryCard(report: report) }
+            SmartCheckView()
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeading(title: "A good place to start", detail: "You’re in control")
                 Surface(padding: 10) {
@@ -47,9 +47,8 @@ struct OverviewView: View {
                 Text("More space.\nLess guesswork.").font(.system(size: 35, weight: .semibold)).tracking(-1.3).lineSpacing(0)
                 Text("Understand what’s taking up space.\nMake changes with a little more confidence.")
                     .font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
-                PrimaryButton(title: model.completedScans.contains(.clean) ? "Review \(formatBytes(model.cleanupBytes))" : "Find reclaimable space", symbol: "arrow.right") {
-                    model.destination = .clean
-                    if !model.completedScans.contains(.clean) { model.runScan(.clean) }
+                PrimaryButton(title: "Run Smart Check", symbol: "sparkles") {
+                    model.runScan(.overview)
                 }.disabled(model.busy).padding(.top, 2)
             }
             Spacer(minLength: 0)

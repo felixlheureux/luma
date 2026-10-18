@@ -72,6 +72,9 @@ struct LumaApp: App {
         }
         let arguments = CommandLine.arguments
         #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-smart-check"), arguments.indices.contains(flag + 1) {
+            checkSmartCheck(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-device-backups"), arguments.indices.contains(flag + 1) {
             checkDeviceBackups(output: arguments[flag + 1])
         }

@@ -6,6 +6,7 @@ struct ScanSessionPanel: View {
     var onlyTarget: ScanTarget?
     private var visibleSession: ScanSession? {
         guard let session = model.scanSessions.session else { return nil }
+        if session.request.target == .overview, session.phase.isTerminal { return nil }
         if let onlyTarget { return session.request.target == onlyTarget ? session : nil }
         return model.scanSessions.isBusy || session.request.target == model.currentScanTarget ? session : nil
     }

@@ -5,6 +5,7 @@ import LumaCore
 import SwiftUI
 
 struct SystemSample: Sendable {
+    var sampledAt: Date?
     var totalDisk: Int64 = 0
     var availableDisk: Int64 = 0
     var physicalMemory: Int64 = Int64(ProcessInfo.processInfo.physicalMemory)
@@ -32,7 +33,9 @@ struct SystemSample: Sendable {
         default: .secondary
         }
     }
-    var thermal: String {
+    var thermal = thermalState()
+
+    private static func thermalState() -> String {
         switch ProcessInfo.processInfo.thermalState {
         case .nominal: "Normal"
         case .fair: "Fair"
@@ -44,6 +47,7 @@ struct SystemSample: Sendable {
 
     static func collect(previous: [UInt64] = [], includeProcesses: Bool = false) -> SystemSample {
         var result = SystemSample()
+        result.sampledAt = Date()
         if let values = try? FileManager.default.homeDirectoryForCurrentUser.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]) {
             result.totalDisk = Int64(values.volumeTotalCapacity ?? 0)
             result.availableDisk = values.volumeAvailableCapacityForImportantUsage ?? 0

@@ -21,7 +21,7 @@ struct RootView: View {
                                 pageHeader.id("page-top")
                                 CleanupProgressPanel()
                                 ScanSessionPanel()
-                                if let target = model.currentScanTarget { CompletedScanCaption(target: target) }
+                                if let target = model.currentScanTarget, target != .overview { CompletedScanCaption(target: target) }
                                 Group {
                                     switch model.destination ?? .overview {
                                     case .overview: OverviewView()
@@ -108,7 +108,7 @@ struct RootView: View {
                 Button { model.cancel() } label: { Label(model.scanSessions.isBusy ? "Cancel scan" : "Cancel review", systemImage: "stop.circle") }.buttonStyle(.glass)
             }
             if [.overview, .clean, .applications].contains(model.destination ?? .overview) {
-                Button { model.runScan() } label: { Label(model.scanSessions.isBusy ? "Queue new scan" : model.destination == .overview ? "Local check" : "Scan again", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") }
+                Button { model.runScan() } label: { Label(model.scanSessions.isBusy ? "Queue new scan" : model.destination == .overview ? "Smart Check" : "Scan again", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") }
                     .buttonStyle(.glass).controlSize(.large).font(.system(size: 11, weight: .medium)).keyboardShortcut("r", modifiers: .command).disabled(!model.canStartScan)
             }
         }

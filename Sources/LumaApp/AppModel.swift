@@ -48,6 +48,11 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     @ObservationIgnored var showSettingsWindow: (() -> Void)?
     var destination: Destination? = .overview
     var system = SystemSample()
+    var smartMeasurement: SystemSample?
+    var smartStartedAt: Date?
+    var smartPhase: ScanPhase?
+    var smartSnapshots: [ScanTarget: ScanSnapshot] = [:]
+    var smartScopes: [ScanTarget: URL] = [:]
     var cpuHistory: [Double] = []
     var memoryHistory: [Double] = []
     var cleanup: [CleanupItem] = []
@@ -186,6 +191,9 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         scanSessions.onChange = { [weak self] in
             guard let self else { return }
             self.operationStatus = self.scanSessions.statusText
+            if let session = self.scanSessions.session, session.request.target == .overview {
+                self.smartPhase = session.phase
+            }
         }
         scanSessions.onComplete = { [weak self] snapshot in self?.applyScan(snapshot) }
     }
@@ -215,7 +223,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         let target = target ?? destination ?? .overview
         let request: ScanRequest
         switch target {
-        case .overview: request = .init(.overview)
+        case .overview: request = .init(.overview, ignoredPaths: ignored, smartScopes: smartScopes)
         case .clean: request = .init(.generatedData)
         case .applications: request = .init(applicationTab == .leftovers ? .leftovers : .applications)
         case .storage:
@@ -245,6 +253,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         if request.target == .developerProjects { projectRoot = request.root }
         if request.target == .storage { storageRoot = request.root }
         if request.target == .duplicates { duplicateRoot = request.root }
+        if request.target == .overview { smartMeasurement = system; smartStartedAt = Date() }
         scanRequests[request.target] = request
         let runner = scanRunner
         scanSessions.start(request) { emit in try await runner(request, emit) }
@@ -257,15 +266,20 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     private func applyScan(_ snapshot: ScanSnapshot) {
         let result = snapshot.result
+        if snapshot.request.target != .overview,
+           scanSessions.session?.request.target == .overview,
+           scanSessions.session?.id == snapshot.sessionID {
+            smartSnapshots[snapshot.request.target] = snapshot
+            scanRequests[snapshot.request.target] = snapshot.request
+            if snapshot.request.target == .downloads { downloadsRoot = snapshot.request.root }
+            if snapshot.request.target == .developerProjects { projectRoot = snapshot.request.root }
+        }
         completedSnapshots[snapshot.request.target] = snapshot
         switch snapshot.request.target {
-        case .generatedData, .overview:
+        case .overview: break // Completed subchecks were committed progressively.
+        case .generatedData:
             cleanup = result.report.items; cleanupReport = result.report
             completedSnapshots[.generatedData] = snapshot; completedScans.insert(.clean)
-            if snapshot.request.target == .overview {
-                applications = result.applications; completedScans.insert(.applications)
-                completedSnapshots[.applications] = snapshot
-            }
         case .applications:
             applications = result.applications; completedScans.insert(.applications)
         case .deviceBackups:

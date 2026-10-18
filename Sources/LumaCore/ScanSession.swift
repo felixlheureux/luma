@@ -5,7 +5,7 @@ public enum ScanTarget: String, Sendable, Hashable, CaseIterable {
     case overview, generatedData, applications, leftovers, footprint, storage, duplicates, developerProjects, downloads, deviceBackups
     public var title: String {
         switch self {
-        case .overview: "Local check"
+        case .overview: "Smart Check"
         case .generatedData: "Generated data"
         case .applications: "Applications"
         case .leftovers: "Potential leftovers"
@@ -24,10 +24,21 @@ public struct ScanRequest: Sendable {
     public let root: URL?
     public let application: ApplicationRecord?
     public let ignoredPaths: Set<String>
-    public init(_ target: ScanTarget, root: URL? = nil, application: ApplicationRecord? = nil, ignoredPaths: Set<String> = []) {
+    public let smartScopes: [ScanTarget: URL]
+    public init(_ target: ScanTarget, root: URL? = nil, application: ApplicationRecord? = nil, ignoredPaths: Set<String> = [], smartScopes: [ScanTarget: URL] = [:]) {
         self.target = target; self.root = root; self.application = application; self.ignoredPaths = ignoredPaths
+        self.smartScopes = smartScopes
     }
-    public var scope: String { application?.url.path ?? root?.path ?? target.title }
+    public var scope: String {
+        if let application { return application.url.path }
+        if let root { return root.path }
+        switch target {
+        case .generatedData: return "Known generated-data locations in the current home"
+        case .applications: return "Standard local application locations"
+        case .leftovers: return "Current home and standard local application locations"
+        default: return target.title
+        }
+    }
 }
 
 public struct ScanPulse: Sendable {
@@ -44,6 +55,7 @@ public struct ScanPulse: Sendable {
 }
 
 public enum ScanEvent: Sendable {
+    case checkCompleted(ScanSnapshot)
     case progress(ScanPulse)
     case item(CleanupItem)
     case application(ApplicationRecord)
@@ -54,6 +66,7 @@ public enum ScanEvent: Sendable {
 public typealias ScanEmitter = @Sendable (ScanEvent) -> Void
 
 public struct ScanResult: Sendable {
+    public var smartCheckFailure: String? = nil
     public var report: ScanReport
     public var applications: [ApplicationRecord]
     public var duplicates: [DuplicateGroup]
@@ -135,12 +148,15 @@ private final class ScanMailbox: @unchecked Sendable {
     private var items: [Data: CleanupItem] = [:]
     private var applications: [Data: ApplicationRecord] = [:]
     private var groups: [String: DuplicateGroup] = [:]
+    private var completedChecks: [ScanSnapshot] = []
 
     func send(_ event: ScanEvent) {
         lock.lock(); defer { lock.unlock() }
         guard enabled else { return }
         changed = true; updatedAt = Date()
         switch event {
+        case .checkCompleted(let snapshot):
+            if completedChecks.count < SmartCheck.targets.count { completedChecks.append(snapshot) }
         case .progress(let value): pulse = value
         case .item(let item):
             let key = Data(item.url.path.utf8)
@@ -157,7 +173,7 @@ private final class ScanMailbox: @unchecked Sendable {
         }
     }
     func disable() { lock.lock(); enabled = false; lock.unlock() }
-    func take() -> (ScanPulse, Date, ScanPreview)? {
+    func take() -> (ScanPulse, Date, ScanPreview, [ScanSnapshot])? {
         lock.lock(); defer { lock.unlock() }
         guard changed else { return nil }
         changed = false
@@ -165,7 +181,9 @@ private final class ScanMailbox: @unchecked Sendable {
         value.items = Array(items.values)
         value.applications = Array(applications.values)
         value.duplicates = Array(groups.values)
-        return (pulse, updatedAt, value)
+        let checks = completedChecks
+        completedChecks.removeAll()
+        return (pulse, updatedAt, value, checks)
     }
 }
 
@@ -248,8 +266,26 @@ private final class ScanMailbox: @unchecked Sendable {
     /// still owns the busy slot until it actually exits; time alone never frees it.
     public func poll(now: Date = Date()) {
         guard isBusy, var current = session, current.phase == .running else { return }
-        if let (pulse, updated, preview) = mailbox?.take() {
+        if let (pulse, updated, preview, checks) = mailbox?.take() {
             current.progress = pulse; current.lastProgressAt = updated; current.preview = preview
+            // Only completed subchecks of this captured Overview request gain
+            // snapshot authority. Ordinary preview events never cross this boundary.
+            if current.request.target == .overview {
+                let requests = SmartCheck.requests(for: current.request)
+                session = current
+                for check in checks {
+                    guard let child = requests.first(where: {
+                        $0.target == check.request.target && $0.root == check.request.root
+                    }) else { continue }
+                    let snapshot = ScanSnapshot(sessionID: current.id, request: child,
+                        finishedAt: check.finishedAt, result: check.result)
+                    snapshots[child.target] = snapshot
+                    onComplete?(snapshot)
+                    // A consumer can stop or replace the scan upon receiving a
+                    // completed check. Do not revive it or publish later checks.
+                    guard session?.id == current.id, session?.phase == .running else { return }
+                }
+            }
         }
         let idle = now.timeIntervalSince(current.lastProgressAt)
         current.stalled = idle >= (limits?.stallAfter ?? 15)
