@@ -42,7 +42,7 @@ public enum Filesystem {
     static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil,
                         onFile: ((FileObjectID, Int64) throws -> Void)?, legacyFingerprint: Bool = false) throws -> (Int64, FileIdentity) {
         return try NonMaterializingIO.perform {
-            try Task.checkCancellation()
+            try MutationOutcome.checkCancellation()
             let pinned = try PinnedPath(url)
             let root = pinned.value
             let device = UInt64(UInt32(bitPattern: root.st_dev))
@@ -66,7 +66,7 @@ public enum Filesystem {
                 records.append(data)
             }
             func visit(_ fd: Int32, info: stat, relative: String, path: URL, depth: Int) throws {
-                try Task.checkCancellation()
+                try MutationOutcome.checkCancellation()
                 try FilesystemAccess.check(path, metadata: info, descriptor: fd)
                 guard depth <= 256 else { throw LumaError.rejected("This tree is too deep; narrow your selection.") }
                 guard UInt64(UInt32(bitPattern: info.st_dev)) == device else {
@@ -217,7 +217,7 @@ public enum Filesystem {
             var digest = SHA256()
             var bytesRead: Int64 = 0
             while true {
-                try Task.checkCancellation()
+                try MutationOutcome.checkCancellation()
                 guard let data = try handle.read(upToCount: partial ? 65_536 : 1_048_576), !data.isEmpty else { break }
                 digest.update(data: data)
                 bytesRead += Int64(data.count); progress?(bytesRead)

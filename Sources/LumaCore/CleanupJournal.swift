@@ -10,6 +10,8 @@ public struct RecoveryNotice: Identifiable, Sendable {
 public struct JournalSnapshot: Sendable {
     public let records: [CleanupRecord]
     public let unresolved: [RecoveryNotice]
+    public let sessions: [CleanupSession]
+    public let undoAttempts: [UndoAttempt]
 }
 
 enum JournalAction: String, Codable { case trash, restore }
@@ -36,6 +38,8 @@ struct JournalState: Codable {
     var version = 1
     var records: [CleanupRecord] = []
     var pending: [JournalIntent] = []
+    var sessions: [CleanupSession]? = nil
+    var undoAttempts: [UndoAttempt]? = nil
 }
 
 /// The operation intent reaches disk before any move. Completed history and
@@ -49,10 +53,20 @@ public actor CleanupJournal {
     private var recoveryDetails: [UUID: String] = [:]
     private var executingPlan = false
     private var mutationCheckpoint: (@Sendable () throws -> Void)?
+    private var journalWriteCheckpoint: (@Sendable () throws -> Void)?
+    private var restoreOutcomeCheckpoint: (@Sendable () -> Void)?
 
     // Deterministic test synchronization; never supplies or bypasses validation.
     func setMutationCheckpoint(_ checkpoint: @escaping @Sendable () throws -> Void) {
         mutationCheckpoint = checkpoint
+    }
+
+    func setJournalWriteCheckpoint(_ checkpoint: @escaping @Sendable () throws -> Void) {
+        journalWriteCheckpoint = checkpoint
+    }
+
+    func setRestoreOutcomeCheckpoint(_ checkpoint: @escaping @Sendable () -> Void) {
+        restoreOutcomeCheckpoint = checkpoint
     }
 
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, directory: URL? = nil,
@@ -86,34 +100,65 @@ public actor CleanupJournal {
         JournalSnapshot(records: state.records, unresolved: state.pending.map {
             RecoveryNotice(id: $0.id, original: $0.original,
                 detail: recoveryDetails[$0.id] ?? "An interrupted operation needs review. Check its original location and Trash before continuing.")
-        })
+        }, sessions: state.sessions ?? [], undoAttempts: state.undoAttempts ?? [])
     }
 
     /// The only cleanup entry point. Hold the operation lock over the complete
     /// plan, including awaited UI context/progress callbacks and every move.
     public func execute(_ plan: CleanupPlan,
                         context: @Sendable () async throws -> CleanupExecutionContext = { await .current() },
-                        onRecord: @Sendable (CleanupRecord) async -> Void = { _ in }) async throws -> [CleanupRecord] {
+                        onRecord: @Sendable (CleanupRecord) async -> Void = { _ in },
+                        onProgress: @Sendable (CleanupProgress) async -> Void = { _ in }) async throws -> [CleanupRecord] {
         try requireIdle()
         executingPlan = true; defer { executingPlan = false }
         let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
         try reload()
         guard state.pending.isEmpty else { throw LumaError.rejected("Review interrupted operations in Activity before starting another cleanup.") }
-        guard !state.records.contains(where: { $0.planID == plan.id }) else {
+        guard !(state.sessions ?? []).contains(where: { $0.id == plan.id }), !state.records.contains(where: { $0.planID == plan.id }) else {
             throw LumaError.rejected("This cleanup plan has already been used. Prepare a new review before moving more items.")
         }
-        let initialContext = try await context()
-        try plan.preflight(home: home, context: initialContext)
+        var prepared = state
+        prepared.sessions = (prepared.sessions ?? []) + [CleanupSession(id: plan.id, source: plan.source, date: Date(),
+            paths: plan.items.map(\.url), logicalBytes: plan.logicalBytes, phase: .validating)]
+        try commit(prepared)
         var completed: [CleanupRecord] = []
-        for item in plan.items {
+        var currentPath: URL?
+        do {
+            await onProgress(CleanupProgress(sessionID: plan.id, phase: .validating, current: nil, completed: 0, total: plan.items.count))
             try Task.checkCancellation()
-            let currentContext = try await context()
-            let record = try trash(item, plan: plan, context: currentContext)
-            completed.append(record)
-            // Commit first; cancellation must not lose evidence of a finished move.
-            await onRecord(record)
+            let initialContext = try await context()
+            try plan.preflight(home: home, context: initialContext, onItem: { currentPath = $0.url })
+            for item in plan.items {
+                currentPath = item.url
+                try Task.checkCancellation()
+                await onProgress(CleanupProgress(sessionID: plan.id, phase: .moving, current: item.url, completed: completed.count, total: plan.items.count))
+                let currentContext = try await context()
+                try Task.checkCancellation()
+                let record = try trash(item, plan: plan, context: currentContext)
+                completed.append(record)
+                // A native operation must commit its outcome before observing Stop.
+                await onRecord(record)
+            }
+            try updateSession(plan.id, phase: .completed)
+            return completed
+        } catch {
+            let phase: CleanupPhase = state.pending.isEmpty
+                ? (completed.isEmpty ? (error is CancellationError ? .stopped : .failed) : .partial)
+                : .recoveryNeeded
+            try updateSession(plan.id, phase: phase, detail: error is CancellationError ? "Stopped at a safe boundary." : error.localizedDescription,
+                              blockedPath: error is CancellationError ? nil : currentPath)
+            throw error
         }
-        return completed
+    }
+
+    private func updateSession(_ id: UUID, phase: CleanupPhase, detail: String? = nil, blockedPath: URL? = nil) throws {
+        var next = state
+        if let index = next.sessions?.firstIndex(where: { $0.id == id }) {
+            next.sessions?[index].phase = phase
+            next.sessions?[index].detail = detail
+            next.sessions?[index].blockedPath = blockedPath
+        }
+        try commit(next)
     }
 
     private func requireIdle() throws {
@@ -133,31 +178,34 @@ public actor CleanupJournal {
                 try mutationCheckpoint?()
                 try plan.validate(item, home: home, context: context)
                 try pinned.revalidate(expected: item.identity.location)
+                try Task.checkCancellation()
                 moveStarted = true
                 let destination = try withExtendedLifetime(pinned) { try trashMover(item.url) }
-                try validateTrashLocation(destination, readPath: false)
-                var moved = state
-                if let index = moved.pending.firstIndex(where: { $0.id == intent.id }) { moved.pending[index].destination = destination }
-                try commit(moved)
-                do {
-                    let movedPin = try PinnedPath(destination)
-                    guard UInt64(UInt32(bitPattern: movedPin.value.st_dev)) == item.identity.device,
-                          movedPin.value.st_ino == item.identity.inode,
-                          movedPin.value.st_uid == getuid(),
-                          try Filesystem.inspect(destination).1 == item.identity else {
-                        throw LumaError.rejected("The moved item could not be identified. Review the interrupted operation in Activity.")
+                return try MutationOutcome.$preserving.withValue(true) {
+                    try validateTrashLocation(destination, readPath: false)
+                    var moved = state
+                    if let index = moved.pending.firstIndex(where: { $0.id == intent.id }) { moved.pending[index].destination = destination }
+                    try commit(moved)
+                    do {
+                        let movedPin = try PinnedPath(destination)
+                        guard UInt64(UInt32(bitPattern: movedPin.value.st_dev)) == item.identity.device,
+                              movedPin.value.st_ino == item.identity.inode,
+                              movedPin.value.st_uid == getuid(),
+                              try Filesystem.inspect(destination).1 == item.identity else {
+                            throw LumaError.rejected("The moved item could not be identified. Review the interrupted operation in Activity.")
+                        }
+                        try movedPin.revalidate()
+                    } catch {
+                        // macOS can allow the Trash move without granting read access to
+                        // Trash. Preserve its returned location and the pre-move identity;
+                        // Restore will still require a full identity check before moving.
+                        guard GeneratedDataScanner.failureState(error) == .blocked else { throw error }
                     }
-                    try movedPin.revalidate()
-                } catch {
-                    // macOS can allow the Trash move without granting read access to
-                    // Trash. Preserve its returned location and the pre-move identity;
-                    // Restore will still require a full identity check before moving.
-                    guard GeneratedDataScanner.failureState(error) == .blocked else { throw error }
+                    let record = intent.completedRecord(at: destination)
+                    var completed = state; completed.records.insert(record, at: 0); completed.pending.removeAll { $0.id == intent.id }
+                    try commit(completed)
+                    return record
                 }
-                let record = intent.completedRecord(at: destination)
-                var completed = state; completed.records.insert(record, at: 0); completed.pending.removeAll { $0.id == intent.id }
-                try commit(completed)
-                return record
             } catch {
                 if !moveStarted {
                     var cancelled = state; cancelled.pending.removeAll { $0.id == intent.id }
@@ -172,10 +220,15 @@ public actor CleanupJournal {
     }
 
     public func restore(_ record: CleanupRecord) throws {
+        try requireIdle()
+        let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
+        try reload()
+        try restoreStored(record)
+    }
+
+    private func restoreStored(_ record: CleanupRecord) throws {
         return try NonMaterializingIO.perform {
-            try requireIdle()
-            let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
-            try reload()
+            try Task.checkCancellation()
             guard state.pending.isEmpty else { throw LumaError.rejected("Review interrupted operations in Activity first.") }
             guard let stored = state.records.first(where: { $0.id == record.id }), !stored.restored,
                   let expected = stored.identity else { throw LumaError.rejected("This older activity entry has no stored file identity. Restore it through Finder’s Trash.") }
@@ -197,6 +250,7 @@ public actor CleanupJournal {
                 guard try Filesystem.inspect(stored.trashed).1 == expected else { throw LumaError.rejected("The item changed before restore. Review it in Finder.") }
                 try validateOriginalParent(stored.original, expected: expected)
                 try mutationCheckpoint?()
+                try Task.checkCancellation()
                 try sourcePin.revalidate()
                 try parentPin.revalidate()
                 try validateOriginalParent(stored.original, expected: expected)
@@ -217,13 +271,16 @@ public actor CleanupJournal {
                 guard result == 0 else {
                     throw PinnedPath.posixError()
                 }
-                try parentPin.revalidate()
-                guard try Filesystem.inspect(stored.original).1 == expected else {
-                    throw LumaError.rejected("The restored item could not be verified. Review Activity and Finder.")
+                try MutationOutcome.$preserving.withValue(true) {
+                    restoreOutcomeCheckpoint?()
+                    try parentPin.revalidate()
+                    guard try Filesystem.inspect(stored.original).1 == expected else {
+                        throw LumaError.rejected("The restored item could not be verified. Review Activity and Finder.")
+                    }
+                    var completed = state
+                    if let index = completed.records.firstIndex(where: { $0.id == stored.id }) { completed.records[index].restored = true }
+                    completed.pending.removeAll { $0.id == intent.id }; try commit(completed)
                 }
-                var completed = state
-                if let index = completed.records.firstIndex(where: { $0.id == stored.id }) { completed.records[index].restored = true }
-                completed.pending.removeAll { $0.id == intent.id }; try commit(completed)
             } catch {
                 if !moveStarted {
                     var cancelled = state; cancelled.pending.removeAll { $0.id == intent.id }
@@ -234,62 +291,172 @@ public actor CleanupJournal {
         }
     }
 
-    public func reconcile() throws -> JournalSnapshot {
-        return try NonMaterializingIO.perform {
-            try requireIdle()
-            let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
-            try reload()
-            var next = state
-            var changed = false
-            for intent in state.pending {
+    public func reviewUndo(sessionID: UUID) throws -> UndoReview {
+        _ = try reconcile()
+        try requireIdle()
+        let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
+        try reload()
+        guard state.pending.isEmpty else { throw LumaError.rejected("Resolve interrupted operations before reviewing Undo.") }
+        guard (state.sessions ?? []).contains(where: { $0.id == sessionID }) || state.records.contains(where: { $0.planID == sessionID }) else {
+            throw LumaError.rejected("This cleanup session is unavailable.")
+        }
+        // Exact path byte order, reversed: children would precede parents. Plans
+        // reject overlapping paths; no parent creation or overwrite is allowed.
+        let records = state.records.filter { $0.planID == sessionID }.sorted {
+            $1.original.path.utf8.lexicographicallyPrecedes($0.original.path.utf8)
+        }
+        let items = try NonMaterializingIO.perform { records.map(undoItem) }
+        return UndoReview(id: UUID(), sessionID: sessionID, items: items)
+    }
+
+    private func undoItem(_ record: CleanupRecord) -> UndoReviewItem {
+        func item(_ status: UndoEligibility, _ detail: String) -> UndoReviewItem {
+            UndoReviewItem(record: record, eligibility: status, detail: detail)
+        }
+        if record.restored { return item(.restored, "Already restored") }
+        guard let identity = record.identity, identity.location != nil else { return item(.unavailable, "Missing identity or parent evidence; use Finder.") }
+        do {
+            if exists(record.original) { return item(.occupied, "Original destination is occupied; use Finder to choose another location.") }
+            try validateTrashLocation(record.trashed)
+            guard try Filesystem.inspect(record.trashed).1 == identity else { return item(.changed, "Trash contents changed; inspect in Finder.") }
+            try validateOriginalParent(record.original, expected: identity)
+            return item(.eligible, "Eligible for verified restore")
+        } catch {
+            return item(GeneratedDataScanner.failureState(error) == .missing ? .missing : .unavailable, error.localizedDescription)
+        }
+    }
+
+    public func undo(_ review: UndoReview,
+                     onProgress: @Sendable (CleanupProgress) async -> Void = { _ in }) async throws {
+        try requireIdle()
+        executingPlan = true; defer { executingPlan = false }
+        let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
+        try reload()
+        guard state.pending.isEmpty else { throw LumaError.rejected("Resolve interrupted operations before Undo.") }
+        guard !(state.undoAttempts ?? []).contains(where: { $0.id == review.id }) else { throw LumaError.rejected("Review Undo again before another attempt.") }
+        let ids = review.eligibleIDs
+        guard !ids.isEmpty, Set(ids).count == ids.count,
+              ids.allSatisfy({ id in state.records.contains { $0.id == id && $0.planID == review.sessionID } }) else {
+            throw LumaError.rejected("The reviewed Undo selection is unavailable.")
+        }
+        var next = state
+        next.undoAttempts = (next.undoAttempts ?? []) + [UndoAttempt(id: review.id, sessionID: review.sessionID,
+            date: Date(), recordIDs: ids, outcomes: [], phase: .validating)]
+        try commit(next)
+        let index = state.undoAttempts!.count - 1
+        do {
+            for (offset, id) in ids.enumerated() {
+                try Task.checkCancellation()
+                guard let record = state.records.first(where: { $0.id == id }) else { throw LumaError.rejected("Activity changed; review Undo again.") }
+                await onProgress(CleanupProgress(sessionID: review.sessionID, phase: .moving, current: record.original, completed: offset, total: ids.count))
+                try Task.checkCancellation()
                 do {
-                    switch intent.action {
-                    case .trash:
-                        if try matches(intent.source, identity: intent.identity) {
-                            next.pending.removeAll { $0.id == intent.id }; changed = true
-                            continue // The recorded move did not happen; never retry it automatically.
-                        }
-                        if let destination = intent.destination {
-                            try validateTrashLocation(destination)
-                            if try matches(destination, identity: intent.identity) {
-                                if !next.records.contains(where: { $0.id == intent.id }) {
-                                    next.records.insert(intent.completedRecord(at: destination), at: 0)
-                                }
-                                next.pending.removeAll { $0.id == intent.id }; changed = true
-                                continue
-                            }
-                        }
-                        let trash = home.appendingPathComponent(".Trash")
-                        try Filesystem.validatePath(trash)
-                        let children = try FileManager.default.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil)
-                        var candidates: [URL] = []
-                        for child in children {
-                            let attributes = try? Filesystem.attributes(child)
-                            if (attributes?[.systemNumber] as? NSNumber)?.uint64Value == intent.identity.device,
-                               (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value == intent.identity.inode,
-                               try matches(child, identity: intent.identity) { candidates.append(child) }
-                        }
-                        guard candidates.count == 1, let destination = candidates.first else {
-                            throw LumaError.rejected("The moved item could not be uniquely identified in Trash. Nothing will be retried automatically.")
-                        }
-                        if !next.records.contains(where: { $0.id == intent.id }) {
-                            next.records.insert(intent.completedRecord(at: destination), at: 0)
-                        }
-                        next.pending.removeAll { $0.id == intent.id }; changed = true
-                    case .restore:
-                        guard let destination = intent.destination, let recordID = intent.recordID else { throw LumaError.rejected("Incomplete restore metadata; review it in Finder.") }
-                        if try matches(destination, identity: intent.identity), !exists(intent.source) {
-                            if let index = next.records.firstIndex(where: { $0.id == recordID }) { next.records[index].restored = true }
-                            next.pending.removeAll { $0.id == intent.id }; changed = true
-                        } else if try matches(intent.source, identity: intent.identity) {
-                            next.pending.removeAll { $0.id == intent.id }; changed = true
-                        } else { throw LumaError.rejected("The interrupted restore cannot be verified. Check the original location and Trash in Finder.") }
-                    }
-                    recoveryDetails.removeValue(forKey: intent.id)
-                } catch { recoveryDetails[intent.id] = error.localizedDescription }
+                    try restoreStored(record)
+                    var updated = state
+                    updated.undoAttempts?[index].outcomes.append(UndoOutcome(recordID: id, restored: true, detail: "Restored"))
+                    try commit(updated)
+                } catch {
+                    var updated = state
+                    let restored = state.records.contains { $0.id == id && $0.restored }
+                    updated.undoAttempts?[index].outcomes.append(UndoOutcome(recordID: id, restored: restored,
+                        detail: restored ? "Restored; verified in Activity." : error.localizedDescription))
+                    try commit(updated)
+                    // Unknown operations require reconciliation, never a retry.
+                    if error is CancellationError || !state.pending.isEmpty { throw error }
+                }
             }
-            if changed { try commit(next) }
-            return snapshot()
+            var updated = state
+            let allRestored = updated.undoAttempts![index].outcomes.allSatisfy(\.restored)
+            updated.undoAttempts?[index].phase = allRestored ? .completed : .partial
+            try commit(updated)
+        } catch {
+            var updated = state
+            updated.undoAttempts?[index].phase = state.pending.isEmpty ? .stopped : .recoveryNeeded
+            try commit(updated)
+            throw error
+        }
+    }
+
+    public func reconcile() throws -> JournalSnapshot {
+        return try MutationOutcome.$preserving.withValue(true) {
+            try NonMaterializingIO.perform {
+                try requireIdle()
+                let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
+                try reload()
+                var next = state
+                var changed = false
+                for intent in state.pending {
+                    do {
+                        switch intent.action {
+                        case .trash:
+                            if try matches(intent.source, identity: intent.identity) {
+                                next.pending.removeAll { $0.id == intent.id }; changed = true
+                                continue // The recorded move did not happen; never retry it automatically.
+                            }
+                            if let destination = intent.destination {
+                                try validateTrashLocation(destination)
+                                if try matches(destination, identity: intent.identity) {
+                                    if !next.records.contains(where: { $0.id == intent.id }) {
+                                        next.records.insert(intent.completedRecord(at: destination), at: 0)
+                                    }
+                                    next.pending.removeAll { $0.id == intent.id }; changed = true
+                                    continue
+                                }
+                            }
+                            let trash = home.appendingPathComponent(".Trash")
+                            try Filesystem.validatePath(trash)
+                            let children = try FileManager.default.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil)
+                            var candidates: [URL] = []
+                            for child in children {
+                                let attributes = try? Filesystem.attributes(child)
+                                if (attributes?[.systemNumber] as? NSNumber)?.uint64Value == intent.identity.device,
+                                   (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value == intent.identity.inode,
+                                   try matches(child, identity: intent.identity) { candidates.append(child) }
+                            }
+                            guard candidates.count == 1, let destination = candidates.first else {
+                                throw LumaError.rejected("The moved item could not be uniquely identified in Trash. Nothing will be retried automatically.")
+                            }
+                            if !next.records.contains(where: { $0.id == intent.id }) {
+                                next.records.insert(intent.completedRecord(at: destination), at: 0)
+                            }
+                            next.pending.removeAll { $0.id == intent.id }; changed = true
+                        case .restore:
+                            guard let destination = intent.destination, let recordID = intent.recordID else { throw LumaError.rejected("Incomplete restore metadata; review it in Finder.") }
+                            if try matches(destination, identity: intent.identity), !exists(intent.source) {
+                                if let index = next.records.firstIndex(where: { $0.id == recordID }) { next.records[index].restored = true }
+                                next.pending.removeAll { $0.id == intent.id }; changed = true
+                            } else if try matches(intent.source, identity: intent.identity) {
+                                next.pending.removeAll { $0.id == intent.id }; changed = true
+                            } else { throw LumaError.rejected("The interrupted restore cannot be verified. Check the original location and Trash in Finder.") }
+                        }
+                        recoveryDetails.removeValue(forKey: intent.id)
+                    } catch { recoveryDetails[intent.id] = error.localizedDescription }
+                }
+                for index in (next.sessions ?? []).indices {
+                    let session = next.sessions![index]
+                    let count = next.records.filter { $0.planID == session.id }.count
+                    let pending = next.pending.contains { $0.planID == session.id }
+                    if !session.phase.isTerminal || session.phase == .recoveryNeeded {
+                        next.sessions?[index].phase = pending ? .recoveryNeeded : count == session.paths.count ? .completed : count > 0 ? .partial : .stopped
+                        changed = true
+                    }
+                }
+                for index in (next.undoAttempts ?? []).indices where !next.undoAttempts![index].phase.isTerminal || next.undoAttempts![index].phase == .recoveryNeeded {
+                    let attempt = next.undoAttempts![index]
+                    let unresolved = next.pending.contains { $0.recordID.map(attempt.recordIDs.contains) == true }
+                    for id in attempt.recordIDs {
+                        if next.records.contains(where: { $0.id == id && $0.restored }) {
+                            next.undoAttempts?[index].outcomes.removeAll { $0.recordID == id }
+                            next.undoAttempts?[index].outcomes.append(UndoOutcome(recordID: id, restored: true, detail: "Restored; verified during recovery."))
+                        }
+                    }
+                    let restored = next.undoAttempts![index].outcomes.filter(\.restored).count
+                    next.undoAttempts?[index].phase = unresolved ? .recoveryNeeded : restored == attempt.recordIDs.count ? .completed : .stopped
+                    changed = true
+                }
+                if changed { try commit(next) }
+                return snapshot()
+            }
         }
     }
 
@@ -384,21 +551,24 @@ public actor CleanupJournal {
     }
 
     private func commit(_ next: JournalState) throws {
-        return try NonMaterializingIO.perform {
-            try ensureDirectory()
-            if exists(url) { try Filesystem.validatePath(url) }
-            let data = try JSONEncoder().encode(next)
-            let temporary = directory.appendingPathComponent(".operations-\(UUID().uuidString).tmp")
-            let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
-            guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            defer { close(descriptor); try? FileManager.default.removeItem(at: temporary) }
-            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
-            try handle.write(contentsOf: data)
-            guard fsync(descriptor) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            guard rename(temporary.path, url.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-            let directoryFD = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-            if directoryFD >= 0 { _ = fsync(directoryFD); close(directoryFD) }
-            state = next
+        return try MutationOutcome.$preserving.withValue(true) {
+            try NonMaterializingIO.perform {
+                try ensureDirectory()
+                if exists(url) { try Filesystem.validatePath(url) }
+                try journalWriteCheckpoint?()
+                let data = try JSONEncoder().encode(next)
+                let temporary = directory.appendingPathComponent(".operations-\(UUID().uuidString).tmp")
+                let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+                guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                defer { close(descriptor); try? FileManager.default.removeItem(at: temporary) }
+                let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
+                try handle.write(contentsOf: data)
+                guard fsync(descriptor) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                guard rename(temporary.path, url.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                let directoryFD = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+                if directoryFD >= 0 { _ = fsync(directoryFD); close(directoryFD) }
+                state = next
+            }
         }
     }
 }

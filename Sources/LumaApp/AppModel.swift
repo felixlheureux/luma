@@ -84,6 +84,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     }
     var currentNotices: [String] { currentScanTarget.flatMap { completedSnapshots[$0]?.result.report.notices } ?? [] }
     var canCancel: Bool { scanSessions.isBusy || scanTask != nil }
+    let cleanupSession = CleanupSessionModel()
     var scanTarget: ScanTarget? { scanSessions.session?.request.target }
     var visibleApplications: [ApplicationRecord] {
         if scanSessions.isBusy, [.applications, .overview].contains(scanTarget) {
@@ -296,7 +297,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             error = journalError ?? "Review interrupted operations in Activity before cleaning."; return
         }
         busy = true; showingReview = false; status = "Validating selected items…"
-        Task {
+        cleanupSession.run { [self] in
             defer { invalidateGeneratedFindings() }
             do {
                 _ = try await journal.execute(plan, context: { @MainActor [self] in
@@ -309,16 +310,31 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                     leftovers.removeAll { $0.url == record.original }
                     if record.original.pathExtension == "app" { didScanLeftovers = false }
                     status = "Moving reviewed items to Trash…"
+                }, onProgress: { @MainActor [self] progress in
+                    cleanupSession.update(progress)
                 })
                 selected = []; status = "Moved to Trash · restore from Activity"
             } catch {
-                self.error = error.localizedDescription; status = "Stopped · review Activity for completed moves"
+                if !(error is CancellationError) { self.error = error.localizedDescription }
+                status = "Stopped · review Activity for completed moves"
                 do { apply(try await journal.reconcile()) } catch { journalError = error.localizedDescription }
             }
+            apply(await journal.snapshot())
+            status = "Cleanup finished · review Activity for moved and remaining items"
             reviewPlan = nil
             finish()
         }
     }
+
+    #if DEBUG
+    // Opt-in QA swaps only the journal, using a disposable generated home.
+    func installFixtureJournal(_ fixture: CleanupJournal) async throws {
+        guard !busy else { throw LumaError.rejected("Wait for the current operation.") }
+        journal = fixture
+        apply(try await fixture.reconcile())
+        recoveryLoading = false; journalError = nil
+    }
+    #endif
 
     func loadJournal() async {
         guard !recoveryStarted else { return }
@@ -331,6 +347,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     private func apply(_ snapshot: JournalSnapshot) {
         history = snapshot.records; recoveryNotices = snapshot.unresolved
+        cleanupSession.sessions = snapshot.sessions
+        cleanupSession.undoAttempts = snapshot.undoAttempts
     }
 
     func checkRecovery() {
@@ -352,6 +370,36 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         Task {
             do { apply(try await journal.acknowledge(notice.id)) }
             catch { self.error = error.localizedDescription }
+            finish()
+        }
+    }
+
+    func reviewUndo(_ session: CleanupSession) {
+        guard !busy, let journal else { return }
+        busy = true; status = "Checking Undo eligibility…"
+        Task {
+            do {
+                cleanupSession.undoReview = try await journal.reviewUndo(sessionID: session.id)
+                apply(await journal.snapshot())
+            } catch { self.error = error.localizedDescription }
+            finish()
+        }
+    }
+
+    func undoSession() {
+        guard !busy, let review = cleanupSession.undoReview, let journal else { return }
+        cleanupSession.undoReview = nil
+        busy = true; status = "Restoring reviewed items…"
+        cleanupSession.run { [self] in
+            defer { invalidateGeneratedFindings() }
+            do {
+                try await journal.undo(review, onProgress: { @MainActor [self] in cleanupSession.update($0) })
+            } catch {
+                if !(error is CancellationError) { self.error = error.localizedDescription }
+            }
+            do { apply(try await journal.reconcile()) }
+            catch { journalError = error.localizedDescription; apply(await journal.snapshot()) }
+            status = "Undo finished · review Activity for individual outcomes"
             finish()
         }
     }

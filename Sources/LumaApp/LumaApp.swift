@@ -72,6 +72,9 @@ struct LumaApp: App {
         if let flag = arguments.firstIndex(of: "--check-scan-sessions"), arguments.indices.contains(flag + 1) {
             checkScanSessions(output: arguments[flag + 1])
         }
+        if let flag = arguments.firstIndex(of: "--check-cleanup-sessions"), arguments.indices.contains(flag + 1) {
+            checkCleanupSessions(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-cleanup-review"), arguments.indices.contains(flag + 1) {
             checkCleanupReview(output: arguments[flag + 1])
         }

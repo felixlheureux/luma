@@ -52,7 +52,7 @@ final class PinnedPath {
             let names = url.pathComponents.dropFirst()
             var last = initial
             for (index, name) in names.enumerated() {
-                try Task.checkCancellation()
+                try MutationOutcome.checkCancellation()
                 let parent = opened[opened.count - 1]
                 let isParent = index < names.count - 1
                 let (fd, info) = try Self.openChild(parent, name: name, directory: isParent)
@@ -142,7 +142,7 @@ final class PinnedPath {
             defer { closedir(stream) }
             var result: [String] = []
             while true {
-                try Task.checkCancellation()
+                try MutationOutcome.checkCancellation()
                 guard result.count <= limit else { throw LumaError.rejected("This directory exceeds the current inspection limit; narrow your selection.") }
                 errno = 0
                 guard let entry = readdir(stream) else {

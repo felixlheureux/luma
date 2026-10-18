@@ -31,14 +31,14 @@ Remaining release hardening:
 - Implemented task 001: immutable core cleanup plans, selection-wide validation, live full-content duplicate keeper checks, unique logical totals, plan-linked journal outcomes, and a single cleanup executor. All 83 fixture tests and native light/dark review checks pass. Task 002 adds the descriptor identity boundary; residual final-move races remain documented.
 - Implemented task 002: descriptor-relative identity and parent-chain checks, byte-exact fingerprints, supported-type/alias exclusions, and non-overwriting descriptor-relative Restore. All 96 tests pass, including real native Trash/Restore and a disposable case-sensitive APFS corpus. Older history remains readable; entries without parent evidence require Finder Restore.
 - Implemented task 047: shared ancestor/leaf provider capabilities, synchronous no-materialization I/O scopes, guarded hashing/metadata/cleanup/Restore, skipped coverage and Finder handoffs. Reported provider files remain excluded when downloaded; detection and real-provider integration limits are documented in Safety.md. All 119 tests and native light/dark scan checks pass.
-- Visible cleanup sessions with progress, safe stopping between moves, and reviewed session Undo with accurate partial recovery.
+- Implemented task 048: durable grouped cleanup sessions, independent mutation progress/Stop, reviewed eligible-only session Undo, deterministic non-overwriting restoration and per-item outcomes across restart. All 143 fixture tests and native light/dark cleanup checks pass; screenshot/accessibility limits are recorded in the task.
 - Implemented task 003: isolated scan sessions, metadata-first application inventory, read-only streaming previews, queued replacement, stopping/stall/timeout states, per-feature completed snapshots and scoped permission retry. Native light/dark checks cover navigation, Settings, window reopening, monitoring and cancelled app inspection.
 - Implemented task 050: four verified VS Code 1.142.0 cache/log units, installed-product and helper/process guards, app/category grouping, hard-link-aware logical totals, and post-mutation snapshot invalidation. The support matrix explicitly leaves unverified Electron, sandbox and additional Xcode targets unavailable; broader coverage remains task 031/008.
 - Hierarchical storage navigation, synchronized map/list selection, and explicit manual review.
 - Shared application ownership evidence, clearer footprint categories, and explicit application reset.
 - Native appearance, accessibility, performance, lifecycle, and packaged-release review.
 
-Tasks 001–003, 047 and 050 are implemented. Tasks 004–007 and 048 remain queued; 0.3.0 has not been released. Validated community rule files and a personal Homebrew tap follow as tasks 008–009.
+Tasks 001–003, 047, 048 and 050 are implemented. Tasks 004–007 remain queued; 0.3.0 has not been released. Validated community rule files and a personal Homebrew tap follow as tasks 008–009.
 
 ## After the current queue
 

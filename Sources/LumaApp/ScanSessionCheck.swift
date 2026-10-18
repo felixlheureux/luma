@@ -232,7 +232,7 @@ extension LumaAppDelegate {
         guard condition() else { throw LumaError.rejected("Native scan QA timed out.") }
     }
 
-    private func saveScanCheckWindow(_ window: NSWindow, path: String) throws {
+    func saveScanCheckWindow(_ window: NSWindow, path: String) throws {
         window.displayIfNeeded()
         let capture = Process()
         capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")

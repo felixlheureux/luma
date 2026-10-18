@@ -17,6 +17,7 @@ struct RootView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 28) {
                             pageHeader
+                            CleanupProgressPanel()
                             ScanSessionPanel()
                             if let target = model.currentScanTarget { CompletedScanCaption(target: target) }
                             Group {
@@ -60,6 +61,7 @@ struct RootView: View {
         .tint(Palette.accent)
         .frame(minWidth: 1010, minHeight: 700)
         .sheet(isPresented: $model.showingReview) { ReviewSheet() }
+        .sheet(item: Binding(get: { model.cleanupSession.undoReview }, set: { model.cleanupSession.undoReview = $0 })) { UndoReviewSheet(review: $0) }
         .sheet(item: $model.inspectedApp) { app in AppFootprintView(app: app) }
         .alert("Luma needs your attention", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }

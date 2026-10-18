@@ -49,6 +49,9 @@ struct PrivacyView: View {
 struct HistoryView: View {
     @Environment(AppModel.self) private var model
     @ViewState private var acknowledging: RecoveryNotice?
+    private var ungroupedRecords: [CleanupRecord] {
+        model.history.filter { record in !model.cleanupSession.sessions.contains { $0.id == record.planID } }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if let error = model.journalError {
@@ -82,32 +85,35 @@ struct HistoryView: View {
                     }
                 }
             }
-            if model.history.isEmpty {
+            CleanupSessionHistory()
+            if model.history.isEmpty && model.cleanupSession.sessions.isEmpty {
                 EmptyState(symbol: "clock.arrow.circlepath", title: "A clean slate", message: "Files moved by Luma will appear here, with their original and Trash locations. No changes have been recorded.", actionTitle: "Open Trash in Finder", actionSymbol: "trash") {
                     openTrash()
                 }
             } else {
-                Surface(padding: 18) {
-                    VStack(spacing: 0) {
-                        ForEach(model.history) { record in
-                            HStack(spacing: 14) {
-                                SymbolTile(symbol: record.restored ? "arrow.uturn.backward" : "trash", tint: record.restored ? Palette.mint : Palette.accent, size: 36)
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(record.original.lastPathComponent).font(.system(size: 12, weight: .semibold))
-                                    Text(record.original.path).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
-                                    Text("\(record.date.formatted()) · \(formatBytes(record.bytes)) · \(record.restored ? "Restored" : "Moved to Trash")").font(.system(size: 10)).foregroundStyle(.tertiary)
-                                }
-                                Spacer()
-                                if !record.restored {
-                                    if record.identity != nil {
-                                        Button("Restore") { model.restore(record) }.buttonStyle(.glass).controlSize(.small).disabled(model.busy || !model.recoveryNotices.isEmpty)
-                                    } else {
-                                        Button("Open Trash", action: openTrash).buttonStyle(.glass).controlSize(.small)
-                                            .help("This older entry has no saved file identity; inspect and restore it in Finder.")
+                if !ungroupedRecords.isEmpty {
+                    Surface(padding: 18) {
+                        VStack(spacing: 0) {
+                            ForEach(ungroupedRecords) { record in
+                                HStack(spacing: 14) {
+                                    SymbolTile(symbol: record.restored ? "arrow.uturn.backward" : "trash", tint: record.restored ? Palette.mint : Palette.accent, size: 36)
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(record.original.lastPathComponent).font(.system(size: 12, weight: .semibold))
+                                        Text(record.original.path).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                                        Text("\(record.date.formatted()) · \(formatBytes(record.bytes)) · \(record.restored ? "Restored" : "Moved to Trash")").font(.system(size: 10)).foregroundStyle(.tertiary)
                                     }
-                                } else { Image(systemName: "checkmark.circle").foregroundStyle(Palette.mint) }
-                            }.padding(.vertical, 13)
-                            if record.id != model.history.last?.id { Divider() }
+                                    Spacer()
+                                    if !record.restored {
+                                        if record.identity != nil {
+                                            Button("Restore") { model.restore(record) }.buttonStyle(.glass).controlSize(.small).disabled(model.busy || !model.recoveryNotices.isEmpty)
+                                        } else {
+                                            Button("Open Trash", action: openTrash).buttonStyle(.glass).controlSize(.small)
+                                                .help("This older entry has no saved file identity; inspect and restore it in Finder.")
+                                        }
+                                    } else { Image(systemName: "checkmark.circle").foregroundStyle(Palette.mint) }
+                                }.padding(.vertical, 13)
+                                if record.id != ungroupedRecords.last?.id { Divider() }
+                            }
                         }
                     }
                 }

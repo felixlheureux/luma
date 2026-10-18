@@ -312,7 +312,8 @@ private let idleContext: @Sendable () async throws -> CleanupExecutionContext = 
             })
         }
         #expect(await journal.snapshot().records.isEmpty)
-        let records = try await journal.execute(plan, context: idleContext)
+        let freshPlan = try CleanupPlan(items: [item], source: .generatedData)
+        let records = try await journal.execute(freshPlan, context: idleContext)
         #expect(records.first?.planSource == .generatedData)
         try await journal.restore(try #require(records.first))
         #expect(f.exists(rule.relativePath + "/entry"))

@@ -126,8 +126,11 @@ public struct CleanupPlan: Identifiable, Sendable {
 
     func accountedBytes(for item: CleanupItem) -> Int64 { contributions[Data(item.id.utf8)] ?? 0 }
 
-    func preflight(home: URL, context: CleanupExecutionContext) throws {
-        for item in items { try validate(item, home: home, context: context) }
+    func preflight(home: URL, context: CleanupExecutionContext, onItem: (CleanupItem) -> Void = { _ in }) throws {
+        for item in items {
+            onItem(item)
+            try validate(item, home: home, context: context)
+        }
     }
 
     func validate(_ item: CleanupItem, home: URL, context: CleanupExecutionContext, checkDuplicateContent: Bool = true) throws {

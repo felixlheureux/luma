@@ -39,6 +39,17 @@ private extension CleanupJournal {
     }
 }
 
+private final class JournalWriteGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    let failingWrite: Int
+    init(_ failingWrite: Int) { self.failingWrite = failingWrite }
+    func check() throws {
+        let fail = lock.withLock { count += 1; return count == failingWrite }
+        if fail { throw LumaError.rejected("Injected journal write failure") }
+    }
+}
+
 @Suite("Durable cleanup and restoration") struct JournalTests {
     @Test func moveAndRestorePersistAcrossJournalInstances() async throws {
         let f = try JournalFixture(); defer { f.remove() }
@@ -217,4 +228,214 @@ private extension CleanupJournal {
         #expect(recovered.records.count == 1)
         #expect(recovered.unresolved.isEmpty)
     }
+    private func plan(_ f: JournalFixture, _ names: [String]) throws -> CleanupPlan {
+        try CleanupPlan(items: names.map { try f.item($0) }, authorizedRoots: [f.downloads])
+    }
+
+    @Test func stopDuringPreflightMovesNothingAndPersistsSession() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b"]), journal = try f.journal()
+        let task = Task {
+            try await journal.execute(p, context: { CleanupExecutionContext() }, onProgress: { progress in
+                if progress.phase == .validating { withUnsafeCurrentTask { $0?.cancel() } }
+            })
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+        let snapshot = try await f.journal().reconcile()
+        #expect(snapshot.records.isEmpty && snapshot.unresolved.isEmpty)
+        #expect(snapshot.sessions.first?.phase == .stopped)
+        #expect(snapshot.sessions.first?.paths.count == 2)
+        #expect(FileManager.default.fileExists(atPath: f.downloads.appendingPathComponent("a").path))
+    }
+
+    @Test func cancellationInsideNativeMoveCommitsBeforeReturning() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b"])
+        let journal = try CleanupJournal(home: f.home, trashMover: { source in
+            let destination = f.trash.appendingPathComponent(source.lastPathComponent)
+            try FileManager.default.moveItem(at: source, to: destination)
+            withUnsafeCurrentTask { $0?.cancel() }
+            return destination
+        })
+        let task = Task { try await journal.execute(p, context: { CleanupExecutionContext() }) }
+        await #expect(throws: CancellationError.self) { try await task.value }
+        // No reconciliation needed: a finished move is already durable.
+        let snapshot = try await f.journal().snapshot()
+        #expect(snapshot.records.count == 1 && snapshot.unresolved.isEmpty)
+        #expect(snapshot.sessions.first?.phase == .partial)
+        #expect(FileManager.default.fileExists(atPath: f.downloads.appendingPathComponent("b").path))
+    }
+
+    @Test func undoReviewClassifiesMixedItemsAndOnlyRestoresChosenSession() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b", "c", "d"]), journal = try f.journal()
+        let records = try await journal.execute(p, context: { CleanupExecutionContext() })
+        let other = try plan(f, ["other"])
+        _ = try await journal.execute(other, context: { CleanupExecutionContext() })
+        try Data("occupied".utf8).write(to: f.downloads.appendingPathComponent("b"))
+        try Data("edited trash".utf8).write(to: records[2].trashed)
+        try FileManager.default.removeItem(at: records[3].trashed)
+        let review = try await journal.reviewUndo(sessionID: p.id)
+        #expect(review.items.first { $0.record.original.lastPathComponent == "a" }?.eligibility == .eligible)
+        #expect(review.items.first { $0.record.original.lastPathComponent == "b" }?.eligibility == .occupied)
+        #expect(review.items.first { $0.record.original.lastPathComponent == "c" }?.eligibility == .changed)
+        #expect(review.items.first { $0.record.original.lastPathComponent == "d" }?.eligibility == .missing)
+        try await journal.undo(review)
+        let snapshot = try await f.journal().snapshot()
+        #expect(snapshot.records.filter(\.restored).count == 1)
+        #expect(snapshot.records.first { $0.planID == other.id }?.restored == false)
+        #expect(snapshot.undoAttempts.first?.phase == .completed)
+        #expect(try String(contentsOf: f.downloads.appendingPathComponent("b"), encoding: .utf8) == "occupied")
+        await #expect(throws: (any Error).self) { try await journal.undo(review) }
+    }
+
+    @Test func undoRevalidatesConflictsAfterReviewAndRecordsFailure() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b"]), journal = try f.journal()
+        _ = try await journal.execute(p, context: { CleanupExecutionContext() })
+        let review = try await journal.reviewUndo(sessionID: p.id)
+        try Data("new occupant".utf8).write(to: f.downloads.appendingPathComponent("b"))
+        try await journal.undo(review)
+        let snapshot = try await f.journal().snapshot()
+        #expect(snapshot.records.filter(\.restored).count == 1)
+        #expect(snapshot.undoAttempts.first?.phase == .partial)
+        #expect(snapshot.undoAttempts.first?.outcomes.count == 2)
+        #expect(try String(contentsOf: f.downloads.appendingPathComponent("b"), encoding: .utf8) == "new occupant")
+    }
+
+    @Test func stopUndoBetweenRestoresPreservesOutcomesAcrossRestart() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b", "c"]), journal = try f.journal()
+        _ = try await journal.execute(p, context: { CleanupExecutionContext() })
+        let review = try await journal.reviewUndo(sessionID: p.id)
+        let task = Task {
+            try await journal.undo(review, onProgress: { progress in
+                if progress.completed == 1 { withUnsafeCurrentTask { $0?.cancel() } }
+            })
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+        let reopened = try f.journal()
+        let snapshot = try await reopened.reconcile()
+        #expect(snapshot.records.filter(\.restored).count == 1)
+        #expect(snapshot.undoAttempts.first?.outcomes.filter(\.restored).count == 1)
+        #expect(snapshot.undoAttempts.first?.phase == .stopped)
+        let next = try await reopened.reviewUndo(sessionID: p.id)
+        #expect(next.eligibleIDs.count == 2)
+        #expect(next.items.filter { $0.eligibility == .restored }.count == 1)
+        try await reopened.undo(next)
+        #expect(await reopened.snapshot().records.allSatisfy(\.restored))
+    }
+
+    @Test func undoRejectsReplacedParentAndPreservesTrash() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a"]), journal = try f.journal()
+        let records = try await journal.execute(p, context: { CleanupExecutionContext() })
+        let review = try await journal.reviewUndo(sessionID: p.id)
+        try FileManager.default.removeItem(at: f.downloads)
+        try FileManager.default.createDirectory(at: f.downloads, withIntermediateDirectories: false)
+        try await journal.undo(review)
+        #expect(await journal.snapshot().records.first?.restored == false)
+        #expect(FileManager.default.fileExists(atPath: records[0].trashed.path))
+    }
+
+    @Test func interruptedSessionIsClassifiedWithoutInventingLegacyGrouping() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let item = try f.item(), id = UUID()
+        let legacy = CleanupRecord(original: item.url, trashed: f.trash.appendingPathComponent("old"), bytes: 1)
+        let session = CleanupSession(id: id, source: .storage, date: Date(), paths: [item.url], logicalBytes: item.bytes, phase: .moving)
+        try f.persist(JournalState(records: [legacy], sessions: [session]))
+        let snapshot = try await f.journal().reconcile()
+        #expect(snapshot.sessions.first?.phase == .stopped)
+        #expect(snapshot.records.first?.planID == nil)
+    }
+
+    @Test func failedCompletionWriteRetainsRecoverableMoveAndSession() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b"]), journal = try f.journal()
+        let gate = JournalWriteGate(4) // Session, intent, destination, completion.
+        await journal.setJournalWriteCheckpoint { try gate.check() }
+        await #expect(throws: (any Error).self) {
+            try await journal.execute(p, context: { CleanupExecutionContext() })
+        }
+        #expect(await journal.snapshot().sessions.first?.phase == .recoveryNeeded)
+        let reopened = try f.journal()
+        let recovered = try await reopened.reconcile()
+        #expect(recovered.records.count == 1 && recovered.unresolved.isEmpty)
+        #expect(recovered.sessions.first?.phase == .partial)
+        #expect(FileManager.default.fileExists(atPath: f.downloads.appendingPathComponent("b").path))
+    }
+
+    @Test func interruptedUndoCompletionRecoversOutcomeWithoutRetry() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b"]), journal = try f.journal()
+        _ = try await journal.execute(p, context: { CleanupExecutionContext() })
+        let review = try await journal.reviewUndo(sessionID: p.id)
+        let gate = JournalWriteGate(3) // Undo attempt, restore intent, completion.
+        await journal.setJournalWriteCheckpoint { try gate.check() }
+        await #expect(throws: (any Error).self) { try await journal.undo(review) }
+        let reopened = try f.journal()
+        let recovered = try await reopened.reconcile()
+        #expect(recovered.records.filter(\.restored).count == 1)
+        #expect(recovered.unresolved.isEmpty)
+        #expect(recovered.undoAttempts.first?.outcomes.filter(\.restored).count == 1)
+        #expect(recovered.undoAttempts.first?.phase == .stopped)
+        #expect(try await reopened.reviewUndo(sessionID: p.id).eligibleIDs.count == 1)
+    }
+
+    @Test func stopInsideRestoreCommitsBeforeNextItem() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b"]), journal = try f.journal()
+        _ = try await journal.execute(p, context: { CleanupExecutionContext() })
+        let review = try await journal.reviewUndo(sessionID: p.id)
+        await journal.setRestoreOutcomeCheckpoint { withUnsafeCurrentTask { $0?.cancel() } }
+        let operation = Task { try await journal.undo(review) }
+        await #expect(throws: CancellationError.self) { try await operation.value }
+        let persisted = try await f.journal().snapshot()
+        #expect(persisted.records.filter(\.restored).count == 1)
+        #expect(persisted.unresolved.isEmpty)
+        #expect(persisted.undoAttempts.first?.outcomes.filter(\.restored).count == 1)
+        #expect(persisted.undoAttempts.first?.phase == .stopped)
+    }
+
+    @Test func providerStateChangedAfterUndoReviewBlocksRestore() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a"]), journal = try f.journal()
+        _ = try await journal.execute(p, context: { CleanupExecutionContext() })
+        let review = try await journal.reviewUndo(sessionID: p.id)
+        try await FilesystemAccess.$restriction.withValue({ $0.path == f.trash.path ? .providerManaged : .local }) {
+            try await journal.undo(review)
+        }
+        let snapshot = await journal.snapshot()
+        #expect(snapshot.records.first?.restored == false)
+        #expect(snapshot.undoAttempts.first?.phase == .partial)
+        #expect(!FileManager.default.fileExists(atPath: f.downloads.appendingPathComponent("a").path))
+    }
+
+    @Test func preflightFailureIdentifiesBlockedPathAndMovesNothing() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a", "b"]), journal = try f.journal()
+        try Data("changed after review".utf8).write(to: p.items[1].url)
+        await #expect(throws: (any Error).self) { try await journal.execute(p, context: { CleanupExecutionContext() }) }
+        let snapshot = try await f.journal().snapshot()
+        #expect(snapshot.records.isEmpty)
+        #expect(snapshot.sessions.first?.phase == .failed)
+        #expect(snapshot.sessions.first?.blockedPath == p.items[1].url)
+        #expect(FileManager.default.fileExists(atPath: p.items[0].url.path))
+    }
+
+    @Test func failedUndoSummaryWriteCannotMislabelCommittedRestore() async throws {
+        let f = try JournalFixture(); defer { f.remove() }
+        let p = try plan(f, ["a"]), journal = try f.journal()
+        _ = try await journal.execute(p, context: { CleanupExecutionContext() })
+        let review = try await journal.reviewUndo(sessionID: p.id)
+        let gate = JournalWriteGate(4) // Attempt, intent, restored record, attempt outcome.
+        await journal.setJournalWriteCheckpoint { try gate.check() }
+        try await journal.undo(review)
+        let snapshot = try await f.journal().snapshot()
+        #expect(snapshot.records.first?.restored == true)
+        #expect(snapshot.undoAttempts.first?.outcomes.first?.restored == true)
+        #expect(snapshot.undoAttempts.first?.phase == .completed)
+        #expect(snapshot.unresolved.isEmpty)
+    }
+
 }
