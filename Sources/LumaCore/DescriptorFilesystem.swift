@@ -26,20 +26,22 @@ final class PinnedPath {
     let descriptors: [Int32]
     var descriptor: Int32 { descriptors[descriptors.count - 1] }
     let value: stat
+    private let allowsInspectionRoot: Bool
 
-    init(_ input: URL, rejectAliases: Bool = true) throws {
-        let result = try NonMaterializingIO.perform { try Self.pin(input, rejectAliases: rejectAliases) }
+    init(_ input: URL, rejectAliases: Bool = true, allowInspectionRoot: Bool = false) throws {
+        allowsInspectionRoot = allowInspectionRoot
+        let result = try NonMaterializingIO.perform { try Self.pin(input, rejectAliases: rejectAliases, allowInspectionRoot: allowInspectionRoot) }
         url = result.0; descriptors = result.1; value = result.2; location = result.3
     }
 
-    private static func pin(_ input: URL, rejectAliases: Bool) throws -> (URL, [Int32], stat, FileLocation) {
+    private static func pin(_ input: URL, rejectAliases: Bool, allowInspectionRoot: Bool) throws -> (URL, [Int32], stat, FileLocation) {
         guard input.isFileURL else { throw LumaError.rejected("Only local filesystem paths are supported.") }
         let url = input.exactStandardizedFileURL
         guard input.host?.isEmpty != false, input.query == nil, input.fragment == nil, !input.path.utf8.contains(0),
               Data(input.path.utf8) == Data(url.path.utf8) else {
             throw LumaError.rejected("Use a canonical local path without dot components or a remote host.")
         }
-        guard url.path != "/" else { throw LumaError.rejected("The filesystem root is protected.") }
+        guard url.path != "/" || allowInspectionRoot else { throw LumaError.rejected("The filesystem root is protected.") }
         var opened: [Int32] = []
         do {
             let root = open("/", O_SEARCH | O_CLOEXEC)
@@ -50,6 +52,7 @@ final class PinnedPath {
             var chain = [FileLocation.Component(initial)]
             var cursor = URL(fileURLWithPath: "/", isDirectory: true)
             let names = url.pathComponents.dropFirst()
+            if names.isEmpty { try FilesystemAccess.check(cursor, metadata: initial, descriptor: root) }
             var last = initial
             for (index, name) in names.enumerated() {
                 try MutationOutcome.checkCancellation()
@@ -116,7 +119,7 @@ final class PinnedPath {
     }
 
     func revalidate(expected: FileLocation? = nil) throws {
-        let fresh = try PinnedPath(url)
+        let fresh = try PinnedPath(url, allowInspectionRoot: allowsInspectionRoot)
         guard fresh.location == location, expected == nil || expected == location else {
             throw LumaError.rejected("The item or one of its parent folders was replaced. Scan again before continuing.")
         }

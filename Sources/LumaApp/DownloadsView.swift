@@ -9,7 +9,6 @@ struct DownloadsView: View {
     @ViewState private var age = DownloadAge.any
     @ViewState private var minimumBytes: Int64 = 0
     @ViewState private var displayLimit = 100
-    @ViewState private var memberLimits: [String: Int] = [:]
     private var inventory: DownloadsInventory? { model.downloadsInventory }
     private var visible: [DownloadFile] {
         (inventory?.files(matching: .init(kind: kind, minimumBytes: minimumBytes, age: age)) ?? [])
@@ -99,25 +98,7 @@ struct DownloadsView: View {
                         if visible.count > displayLimit { Button("Show 100 more files") { displayLimit += 100 }.buttonStyle(.glass) }
                     }
                 } else {
-                    Text("Full SHA-256 content matches across independent local files. This view shows complete groups without file filters. Choose manually, or explicitly keep one copy and select the others.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                    if groups.isEmpty { ContentUnavailableView("No verified duplicate downloads", systemImage: "doc.on.doc", description: Text("Names, source URLs, file types and similar installer versions are not content matches.")) }
-                    ForEach(Array(groups.prefix(displayLimit))) { group in
-                        Surface(padding: 18) {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack { Text("\(group.items.count) exact copies").font(.headline); Spacer(); Text("\(formatBytes(group.recoverable)) if one independent copy stays").font(.system(size: 11)).foregroundStyle(.secondary) }
-                                ForEach(Array(group.items.prefix(memberLimits[group.id] ?? 100))) { item in
-                                    ItemList(items: [item])
-                                    Button("Keep \(item.name); select \(group.items.count - 1) \(group.items.count == 2 ? "other copy" : "other copies")") { model.selectDownloadKeeper(group: group, keeper: item) }
-                                        .buttonStyle(.glass).font(.system(size: 11)).disabled(model.busy)
-                                }
-                                if group.items.count > (memberLimits[group.id] ?? 100) {
-                                    Button("Show 100 more copies") { memberLimits[group.id] = (memberLimits[group.id] ?? 100) + 100 }.buttonStyle(.glass)
-                                }
-                            }
-                        }
-                    }
-                    if groups.count > displayLimit { Button("Show more groups") { displayLimit += 100 }.buttonStyle(.glass) }
+                    DuplicateGroupsView(groups: groups, source: .downloads)
                 }
                 SelectionBar(items: selectable).disabled(keepOneViolated)
                 if keepOneViolated { Label("Keep at least one independent copy in every duplicate group.", systemImage: "info.circle").font(.system(size: 12)).foregroundStyle(Palette.peach) }

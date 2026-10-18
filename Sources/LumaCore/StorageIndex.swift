@@ -24,6 +24,7 @@ public struct StorageNode: Identifiable, Sendable {
 
 public struct StorageIndex: Sendable {
     public let rootID: String
+    public let scope: StorageScope
     public let nodes: [String: StorageNode]
     public let scannedAt: Date
     public let duration: TimeInterval
@@ -48,6 +49,8 @@ public struct StorageIndex: Sendable {
         guard Date().timeIntervalSince(scannedAt) < 1800 else {
             throw LumaError.rejected("This folder analysis is over 30 minutes old. Scan again.")
         }
+        guard !scope.inspectionOnly else { throw LumaError.rejected("This analysis is inspection-only. External and broader system targets cannot enter cleanup.") }
+        try scope.validate()
         return try NonMaterializingIO.perform {
             try ids.sorted().map { id in
                 guard let node = nodes[id], node.parentID == directory, node.isComplete else {
@@ -73,15 +76,19 @@ public struct StorageIndex: Sendable {
         Date(timeIntervalSince1970: Double(info.st_mtimespec.tv_sec) + Double(info.st_mtimespec.tv_nsec) / 1_000_000_000)
     }
 
-    public static func scan(root: URL, limit: Int = 100_000, emit: @escaping ScanEmitter = { _ in }) throws -> Self {
-        try scan(root: root, limit: limit, cache: nil, emit: emit)
+    public static func scan(root: URL, limit: Int = 100_000, ignoredPaths: Set<String> = [], home: URL = FileManager.default.homeDirectoryForCurrentUser, expectedVolume: StorageVolumeIdentity? = nil, emit: @escaping ScanEmitter = { _ in }) throws -> Self {
+        try scan(root: root, limit: limit, ignoredPaths: ignoredPaths, home: home, expectedVolume: expectedVolume, cache: nil, emit: emit)
     }
 
-    static func scan(root: URL, limit: Int = 100_000, cache: AnalysisIndexSession?, emit: @escaping ScanEmitter = { _ in }) throws -> Self {
+    static func scan(root: URL, limit: Int = 100_000, ignoredPaths: Set<String> = [], home: URL = FileManager.default.homeDirectoryForCurrentUser, expectedVolume: StorageVolumeIdentity? = nil, cache: AnalysisIndexSession?, emit: @escaping ScanEmitter = { _ in }) throws -> Self {
         try NonMaterializingIO.perform {
             let started = Date()
             let root = root.exactStandardizedFileURL
-            let rootPin = try PinnedPath(root)
+            let scope = try StorageScope.capture(root: root, home: home)
+            guard expectedVolume == nil || expectedVolume == scope.volume.identity else {
+                throw LumaError.rejected("The selected volume changed. Refresh the volume list and choose it again.")
+            }
+            let rootPin = try PinnedPath(root, allowInspectionRoot: true)
             guard rootPin.value.st_mode & S_IFMT == S_IFDIR else { throw LumaError.rejected("Choose a directory.") }
             let device = UInt64(UInt32(bitPattern: rootPin.value.st_dev))
             var nodes: [String: StorageNode] = [:]
@@ -105,8 +112,11 @@ public struct StorageIndex: Sendable {
                 var accessCapability: FilesystemCapability?
                 var coverageState: CoverageState?
                 do {
+                    guard !ignoredPaths.contains(where: { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }) else {
+                        throw LumaError.rejected("Ignored location; contents were not inspected.")
+                    }
                     guard count <= limit, depth <= 128 else { throw LumaError.rejected("Inspection limit reached; choose a smaller folder.") }
-                    let pin = try PinnedPath(url)
+                    let pin = try PinnedPath(url, allowInspectionRoot: true)
                     let info = pin.value
                     directory = info.st_mode & S_IFMT == S_IFDIR
                     guard directory || info.st_mode & S_IFMT == S_IFREG else { throw LumaError.rejected("Unsupported filesystem object.") }
@@ -141,6 +151,9 @@ public struct StorageIndex: Sendable {
                             if !child.isComplete { issue = "Partial size: one or more children could not be fully inspected. Skipped bytes are unknown." }
                         }
                     } else if package {
+                        guard !ignoredPaths.contains(where: { Filesystem.isWithin(URL(fileURLWithPath: $0), root: url) }) else {
+                            throw LumaError.rejected("Package contains an ignored location; its size was not inspected.")
+                        }
                         // Packages stay opaque navigation leaves, but share the
                         // same inode accounting as ordinary files in the index.
                         _ = try Filesystem.inspect(url, onFile: { object, size in
@@ -167,7 +180,8 @@ public struct StorageIndex: Sendable {
             }
             _ = try visit(root, parent: nil, depth: 0)
             try rootPin.revalidate()
-            return Self(rootID: root.path, nodes: nodes, scannedAt: started, duration: Date().timeIntervalSince(started))
+            try scope.validate()
+            return Self(rootID: root.path, scope: scope, nodes: nodes, scannedAt: started, duration: Date().timeIntervalSince(started))
         }
     }
 }

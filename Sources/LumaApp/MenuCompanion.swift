@@ -36,11 +36,24 @@ struct MenuCompanion: View {
                             .foregroundStyle(.secondary)
                         Text(model.system.battery.map { "\($0)%" } ?? model.system.thermal)
                             .font(.system(size: 28, weight: .semibold)).tracking(-0.8).monospacedDigit()
-                        Text(model.system.battery == nil ? "System thermal state" : model.system.charging ? "Charging" : model.system.onExternalPower ? "Connected to power" : "On battery power")
+                        Text(model.system.battery == nil ? "System thermal state" : model.system.batteryDetails.state)
                             .font(.system(size: 11)).foregroundStyle(.secondary).frame(height: 28, alignment: .bottom)
                     }
                 }
             }
+
+            Button {
+                model.monitoringFocus = nil; show(.system)
+                DispatchQueue.main.async { model.monitoringFocus = "network-details" }
+            } label: {
+                HStack {
+                    Label("Network", systemImage: "network")
+                    Spacer()
+                    Text("↓ \(formatNetworkRate(model.system.network.downloadRate))  ↑ \(formatNetworkRate(model.system.network.uploadRate))").monospacedDigit()
+                }.font(.system(size: 11)).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+                .accessibilityLabel("Network activity. \(model.system.network.state.rawValue). Download \(formatNetworkRate(model.system.network.downloadRate)), upload \(formatNetworkRate(model.system.network.uploadRate)). Open details.")
+                .help(model.system.network.state.rawValue)
 
             tile {
                 VStack(alignment: .leading, spacing: 12) {

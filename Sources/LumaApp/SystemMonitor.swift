@@ -1,11 +1,13 @@
 import Foundation
 import Darwin
-import IOKit.ps
 import LumaCore
 import SwiftUI
 
 struct SystemSample: Sendable {
     var sampledAt: Date?
+    var networkObservation: NetworkObservation?
+    var network = NetworkActivity()
+    var batteryDetails = BatteryDetails()
     var totalDisk: Int64 = 0
     var availableDisk: Int64 = 0
     var physicalMemory: Int64 = Int64(ProcessInfo.processInfo.physicalMemory)
@@ -45,7 +47,7 @@ struct SystemSample: Sendable {
         }
     }
 
-    static func collect(previous: [UInt64] = [], includeProcesses: Bool = false) -> SystemSample {
+    static func collect(previous: [UInt64] = [], includeProcesses: Bool = false, includeExtendedMonitoring: Bool = true) -> SystemSample {
         var result = SystemSample()
         result.sampledAt = Date()
         if let values = try? FileManager.default.homeDirectoryForCurrentUser.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]) {
@@ -93,15 +95,12 @@ struct SystemSample: Sendable {
                 result.cpu = total > 0 ? Double(total - delta[2]) / Double(total) * 100 : 0
             }
         }
-        if let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(), let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] {
-            for source in sources {
-                if let details = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
-                   let current = details[kIOPSCurrentCapacityKey] as? Int, let max = details[kIOPSMaxCapacityKey] as? Int, max > 0 {
-                    result.battery = current * 100 / max
-                    result.charging = details[kIOPSIsChargingKey] as? Bool ?? false
-                    result.onExternalPower = details[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue
-                }
-            }
+        if includeExtendedMonitoring {
+            result.networkObservation = NetworkProvider.collect()
+            result.batteryDetails = BatteryProvider.collect()
+            result.battery = result.batteryDetails.charge
+            result.charging = result.batteryDetails.charging == true
+            result.onExternalPower = result.batteryDetails.externalPower == true
         }
         if includeProcesses {
             result.processes = readProcesses()

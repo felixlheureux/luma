@@ -55,7 +55,6 @@ extension ItemCategory: Identifiable { public var id: String { rawValue } }
 
 struct DuplicatesView: View {
     @Environment(AppModel.self) private var model
-    @ViewState private var displayLimit = 100
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             if !model.completedScans.contains(.duplicates) {
@@ -66,33 +65,18 @@ struct DuplicatesView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Eyebrow(text: "\(model.duplicates.count) verified groups")
                             Text(formatBytes(model.duplicates.reduce(0) { $0 + $1.recoverable })).font(.system(size: 36, weight: .semibold))
-                            Text("Potential savings if you keep one copy per group.").font(.system(size: 12)).foregroundStyle(.secondary)
+                            Text("Potential logical savings if one independent copy stays per group.").font(.system(size: 12)).foregroundStyle(.secondary)
+                            if let root = model.duplicateRoot { Text(root.path).font(.caption).textSelection(.enabled) }
                         }
                         Spacer()
-                        Button("Choose another folder") { model.chooseFolder(for: .duplicates) }.buttonStyle(.glass).disabled(!model.canStartScan)
+                        Button("Scan again") { model.runScan(.duplicates) }.buttonStyle(.glass).disabled(!model.canStartScan)
+                        Button("Choose folder") { model.chooseFolder(for: .duplicates) }.buttonStyle(.glass).disabled(!model.canStartScan)
                     }
                 }
-                if model.duplicates.isEmpty {
-                    ContentUnavailableView("No exact duplicates found", systemImage: "checkmark.square", description: Text("Packages, hidden files, cloud items, and hard-linked copies are excluded."))
-                }
-                ForEach(Array(model.duplicates.prefix(displayLimit))) { group in
-                    Surface(padding: 18) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("\(group.items.count) identical copies").font(.system(size: 13, weight: .semibold))
-                                Spacer(); StatusPill(text: "SHA-256 verified", tint: Palette.mint)
-                            }
-                            ItemList(items: group.items)
-                            if group.items.allSatisfy({ model.selected.contains($0.id) }) {
-                                Label("Keep at least one copy in this group.", systemImage: "info.circle").font(.system(size: 11)).foregroundStyle(Palette.peach)
-                            }
-                        }
-                    }
-                }
-                if model.duplicates.count > displayLimit { Button("Show 100 more groups") { displayLimit += 100 }.buttonStyle(.glass) }
+                DuplicateGroupsView(groups: model.duplicates, source: .duplicates)
                 SelectionBar(items: model.duplicates.flatMap(\.items))
                     .disabled(model.duplicates.contains { $0.items.allSatisfy { model.selected.contains($0.id) } })
-                Text("Files are revalidated before moving. Packages, links, cloud placeholders, hidden files and external volumes are excluded.").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("Files are checked again before Trash. Hard links count once. Packages, provider-managed files, hidden files and other volumes are excluded. Space is reclaimed after emptying Trash in Finder.").font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
     }

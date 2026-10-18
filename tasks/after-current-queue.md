@@ -22,8 +22,8 @@ Exit evidence: representative project/Downloads/backup fixtures preserve persona
 | ID | Task | Priority | User outcome |
 | --- | --- | --- | --- |
 | 014 | [Incremental local index](014-incremental-index.md) | P2 | Revisit scans with less repeated traversal/hashing and explicit cache freshness. |
-| 015 | [Exact-duplicate comparison](015-duplicate-review.md) | P2 | Compare copies and deliberately choose which location to keep. |
-| 016 | [Volume analysis](016-volume-analysis.md) | P2 | Browse supported internal/external targets read-only with truthful scope and capacity. |
+| 015 | [Exact-duplicate comparison](015-duplicate-review.md) | P2 | Done: copy metadata/previews, complete-group filters/order and explicit revalidated keeper proposals. |
+| 016 | [Volume analysis](016-volume-analysis.md) | P2 | Done: supported local-volume selection, capacity semantics, inspection-only external/system scopes and unmount/replacement invalidation. |
 | 030 | [Trash review](030-trash-review.md) | P2 | Understand space already in Trash and use verified recovery or Finder. |
 
 Exit evidence: measured warm-scan improvements, correct invalidation after change/unmount, usable comparison, and no expansion of mutation authority merely because a location became browsable.
@@ -32,7 +32,7 @@ Exit evidence: measured warm-scan improvements, correct invalidation after chang
 
 | ID | Task | Priority | User outcome |
 | --- | --- | --- | --- |
-| 017 | [Network and battery details](017-monitoring-depth.md) | P1, near-term | See passive network activity and reliable portable-Mac battery information. |
+| 017 | [Network and battery details](017-monitoring-depth.md) | P1, near-term | Done: passive single-interface rates/session totals and reported battery fields with explicit unavailable/desktop states. |
 | 018 | [Process insights](018-process-insights.md) | P1, near-term | Distinguish sustained resource issues and unresponsive apps from normal spikes. |
 | 019 | [Login/background items](019-startup-background.md) | P1, near-term | Understand app ownership, measured activity, and available native controls. |
 | 023 | [History, schedules, and alerts](023-history-scheduling-alerts.md) | P3 | Compare scans and opt into useful read-only checks/notifications. |

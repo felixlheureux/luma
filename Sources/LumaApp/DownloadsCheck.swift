@@ -46,7 +46,11 @@ extension LumaAppDelegate {
                 try await Task.sleep(for: .milliseconds(300))
                 guard let group = inventory.duplicates.first, group.items.count == 2 else { throw LumaError.rejected("No verified Downloads duplicate group.") }
                 report["duplicateGroup"] = inventory.duplicates.count == 1
-                model.selectDownloadKeeper(group: group, keeper: group.items[0])
+                model.prepareDuplicateKeeper(group: group, keeper: group.items[0], source: .downloads)
+                try await waitForDownloadsCheck { !model.busy }
+                report["keeperPreviewBeforeSelection"] = model.duplicateChoice != nil && model.selected.isEmpty
+                model.applyDuplicateKeeper()
+                try await waitForDownloadsCheck { !model.busy }
                 report["explicitKeeperSelection"] = model.selected == [group.items[1].id]
                 try saveScanCheckWindow(window, path: output + "-duplicates.png")
                 model.review(inventory.report.items)

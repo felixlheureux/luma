@@ -41,6 +41,15 @@ struct RootView: View {
                             }.padding(.horizontal, 36).padding(.top, 22).padding(.bottom, 30).frame(maxWidth: 1160)
                                 .frame(maxWidth: .infinity)
                         }
+                        .onChange(of: model.monitoringFocus) { _, id in
+                            guard let id else { return }
+                            DispatchQueue.main.async {
+                                if model.destination == .system, model.monitoringFocus == id { proxy.scrollTo(id, anchor: .top) }
+                            }
+                        }
+                        .onChange(of: model.duplicateComparisonGroup) { _, id in
+                            if let id { proxy.scrollTo("duplicate-group-" + id, anchor: .top) }
+                        }
                         .onChange(of: model.downloadsTab) { _, _ in
                             if model.destination == .downloads { proxy.scrollTo("page-top", anchor: .top) }
                         }

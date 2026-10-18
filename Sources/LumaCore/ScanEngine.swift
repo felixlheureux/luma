@@ -27,7 +27,7 @@ public enum ScanEngine {
         case .storage:
             guard let root = request.root else { throw LumaError.rejected("Choose a folder to analyze.") }
             let (cache, cacheNote) = analysisSession(root: root, index: analysisIndex)
-            let index = try StorageIndex.scan(root: root, cache: cache, emit: emit)
+            let index = try StorageIndex.scan(root: root, ignoredPaths: request.ignoredPaths, home: home, expectedVolume: request.storageVolumeIdentity, cache: cache, emit: emit)
             var report = ScanReport()
             for node in index.nodes.values where !node.isComplete {
                 var coverage = ScanCoverage(ruleID: "storage.index", title: node.url.lastPathComponent,

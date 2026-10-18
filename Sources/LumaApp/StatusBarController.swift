@@ -73,5 +73,6 @@ import SwiftUI
     }
 
     func showForPreview() { if !popover.isShown { togglePopover() } }
+    func hideForPreview() { popover.performClose(nil) }
     var previewWindow: NSWindow? { popover.contentViewController?.view.window }
 }

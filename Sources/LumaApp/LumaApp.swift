@@ -73,6 +73,16 @@ struct LumaApp: App {
         }
         let arguments = CommandLine.arguments
         #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-monitoring-depth"), arguments.indices.contains(flag + 1) {
+            checkMonitoringDepth(output: arguments[flag + 1])
+        }
+        if let flag = arguments.firstIndex(of: "--check-storage-volumes"), arguments.indices.contains(flag + 1),
+           let root = ProcessInfo.processInfo.environment["LUMA_VOLUME_QA_ROOT"] {
+            checkStorageVolumes(output: arguments[flag + 1], rootPath: root)
+        }
+        if let flag = arguments.firstIndex(of: "--check-duplicate-review"), arguments.indices.contains(flag + 1) {
+            checkDuplicateReview(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-cleanup-feedback"), arguments.indices.contains(flag + 1) {
             checkCleanupFeedback(output: arguments[flag + 1])
         }
@@ -136,6 +146,8 @@ struct LumaApp: App {
     }
 
     #if DEBUG
+    func showMonitoringMenuForCheck() -> NSWindow? { statusController?.showForPreview(); return statusController?.previewWindow }
+    func hideMonitoringMenuForCheck() { statusController?.hideForPreview() }
     func scanCheckMenuVisible() -> Bool { statusController?.diagnostics()["visible"] as? Bool == true }
     #endif
 

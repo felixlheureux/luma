@@ -48,6 +48,13 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     @ObservationIgnored var showSettingsWindow: (() -> Void)?
     var destination: Destination? = .overview
     var system = SystemSample()
+    var monitoringFocus: String?
+    var networkInterface: String?
+    var networkTracker = NetworkActivityTracker()
+    @ObservationIgnored var wakeObserver: NSObjectProtocol?
+    @ObservationIgnored var monitoringCollector: @Sendable ([UInt64], Bool) -> SystemSample = { previous, includeProcesses in
+        SystemSample.collect(previous: previous, includeProcesses: includeProcesses)
+    }
     var smartMeasurement: SystemSample?
     var smartStartedAt: Date?
     var smartPhase: ScanPhase?
@@ -57,6 +64,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var memoryHistory: [Double] = []
     var cleanup: [CleanupItem] = []
     var storage: [CleanupItem] = []
+    let storageVolumes = StorageVolumeModel()
     var storageIndex: StorageIndex?
     var storageDirectory: String?
     var storageFocus: String?
@@ -67,7 +75,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     }
 
     func reviewStorage() {
-        guard !busy, let index = storageIndex, let directory = storageDirectory else { return }
+        guard !busy, let index = storageIndex, !index.scope.inspectionOnly, let directory = storageDirectory else { return }
         let ids = selected
         guard !ids.isEmpty else { return }
         let roots = authorizedRoots, exclusions = ignored
@@ -91,12 +99,20 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     }
 
     func invalidateStorage() {
+        storageVolumes.stopObserving()
         storageIndex = nil; storageDirectory = nil; storageFocus = nil
         storage = []; selected = []
         completedScans.remove(.storage); completedSnapshots.removeValue(forKey: .storage)
         scanSessions.invalidateSnapshots(for: [.storage])
     }
     var duplicates: [DuplicateGroup] = []
+    var duplicateChoice: DuplicateKeeperChoice?
+    var duplicateChoiceSource: CleanupSource?
+    var duplicateComparisonGroup: String?
+    var duplicateComparisons: [String: DuplicateComparison] = [:]
+    var duplicateComparisonErrors: [String: String] = [:]
+    @ObservationIgnored var duplicateComparisonTask: Task<Void, Never>?
+    @ObservationIgnored var duplicateComparisonGeneration = UUID()
     var applications: [ApplicationRecord] = []
     var applicationTab: ApplicationTab = .installed
     var leftovers: [CleanupItem] = []
@@ -170,6 +186,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     @ObservationIgnored var downloadPreviewTask: Task<Void, Never>?
     var projectRoot: URL?
     var projectInventory: ProjectInventory?
+    var storageExpectedVolume: StorageVolumeIdentity?
     var storageRoot: URL?
     var duplicateRoot: URL?
     var authorizedRoots: [URL] = []
@@ -204,13 +221,20 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     func startMonitoring() {
         guard monitorTask == nil else { return }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.networkTracker.resetBaseline() }
+        }
         monitorTask = Task {
             var iteration = 0
             while !Task.isCancelled {
                 let previous = system.cpuTicks
                 let includeProcesses = iteration % 3 == 0 && (destination == .system || destination == .optimizer)
-                var next = await Task.detached(priority: .utility) { SystemSample.collect(previous: previous, includeProcesses: includeProcesses) }.value
+                let collector = monitoringCollector
+                var next = await Task.detached(priority: .utility) { collector(previous, includeProcesses) }.value
                 if !includeProcesses { next.processes = system.processes; next.processGroups = system.processGroups }
+                if let observation = next.networkObservation {
+                    next.network = networkTracker.consume(observation, selectedInterface: networkInterface)
+                }
                 system = next
                 if !previous.isEmpty {
                     cpuHistory = Array((cpuHistory + [system.cpu]).suffix(60))
@@ -232,7 +256,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .applications: request = .init(applicationTab == .leftovers ? .leftovers : .applications)
         case .storage:
             guard let root = storageRoot else { return }
-            request = .init(.storage, root: root)
+            request = .init(.storage, root: root, ignoredPaths: ignored, storageVolumeIdentity: storageExpectedVolume)
         case .backups: request = .init(.deviceBackups, ignoredPaths: ignored)
         case .downloads:
             guard let root = downloadsRoot else { return }
@@ -250,12 +274,12 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     func startScan(_ input: ScanRequest) {
         guard !operationBusy else { return }
-        let request = [.downloads, .developerProjects, .deviceBackups].contains(input.target)
-            ? ScanRequest(input.target, root: input.root, ignoredPaths: ignored) : input
+        let request = [.downloads, .developerProjects, .deviceBackups, .storage].contains(input.target)
+            ? ScanRequest(input.target, root: input.root, ignoredPaths: ignored, storageVolumeIdentity: input.storageVolumeIdentity) : input
         if request.target == .downloads { downloadsRoot = request.root; clearDownloadPreview() }
         selected = []; reviewPlan = nil; showingReview = false
         if request.target == .developerProjects { projectRoot = request.root }
-        if request.target == .storage { storageRoot = request.root }
+        if request.target == .storage { storageRoot = request.root; storageExpectedVolume = request.storageVolumeIdentity }
         if request.target == .duplicates { duplicateRoot = request.root }
         if request.target == .overview { smartMeasurement = system; smartStartedAt = Date() }
         scanRequests[request.target] = request
@@ -303,6 +327,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .deviceBackups:
             deviceBackups = result.deviceBackups; completedScans.insert(.backups)
         case .downloads:
+            clearDuplicateComparison(); duplicateChoice = nil
+            selected.subtract(downloadsInventory?.report.items.map(\.id) ?? [])
             downloadsInventory = result.downloadsInventory; completedScans.insert(.downloads); clearDownloadPreview()
         case .developerProjects:
             projectInventory = result.projectInventory; completedScans.insert(.projects)
@@ -312,13 +338,22 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             storage = result.report.items
             let previousDirectory = storageIndex?.rootID == result.storageIndex?.rootID ? storageDirectory : nil
             storageIndex = result.storageIndex
+            if let scope = storageIndex?.scope {
+                storageExpectedVolume = scope.volume.identity
+                storageVolumes.observe(scope) { [weak self] in
+                    guard let self else { return }
+                    if scanTarget == .storage, scanSessions.isBusy { scanSessions.cancel() }
+                    invalidateStorage()
+                }
+            }
             if let previousDirectory, result.storageIndex?.nodes[previousDirectory]?.canNavigate == true {
                 storageDirectory = previousDirectory
             } else { storageDirectory = result.storageIndex?.rootID }
             storageFocus = nil; selected = []
             completedScans.insert(.storage)
         case .duplicates:
-            duplicates = result.duplicates; completedScans.insert(.duplicates)
+            clearDuplicateComparison(); duplicateChoice = nil
+            duplicates = result.duplicates; selected = []; completedScans.insert(.duplicates)
         case .footprint:
             if inspectedApp?.id == snapshot.request.application?.id {
                 footprint = result.report.items
@@ -329,11 +364,11 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     func snapshot(for target: ScanTarget) -> ScanSnapshot? { completedSnapshots[target] }
 
-    private func offMain<T: Sendable>(_ work: @escaping @Sendable () async throws -> T) async throws -> T {
+    func offMain<T: Sendable>(_ work: @escaping @Sendable () async throws -> T) async throws -> T {
         let child = Task.detached(priority: .utility, operation: work)
         return try await withTaskCancellationHandler(operation: { try await child.value }, onCancel: { child.cancel() })
     }
-    private func finish() { operationBusy = false; scanTask = nil }
+    func finish() { operationBusy = false; scanTask = nil }
     func cancel() {
         if scanSessions.isBusy { scanSessions.cancel() } else { scanTask?.cancel() }
     }
@@ -344,7 +379,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         panel.prompt = "Analyze folder"; panel.message = "Luma scans this folder locally. Nothing is selected for removal."
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        if target == .downloads { downloadsRoot = url } else if target == .projects { projectRoot = url } else if target == .storage { storageRoot = url } else { duplicateRoot = url }
+        if target == .downloads { downloadsRoot = url } else if target == .projects { projectRoot = url } else if target == .storage { storageRoot = url; storageExpectedVolume = nil } else { duplicateRoot = url }
         authorizedRoots.append(url); destination = target
         runScan(target)
     }
@@ -439,15 +474,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         }
     }
 
-    func selectDownloadKeeper(group: DuplicateGroup, keeper: CleanupItem) {
-        guard !busy, let inventory = downloadsInventory else { return }
-        do {
-            let otherCopies = try inventory.keeperSelection(groupID: group.id, keeperID: keeper.id, ignoredPaths: ignored)
-            selected.subtract(group.items.map(\.id)); selected.formUnion(otherCopies)
-        } catch { self.error = error.localizedDescription }
-    }
-
     func invalidateDownloads() {
+        clearDuplicateComparison(); duplicateChoice = nil
         selected.subtract(downloadsInventory?.report.items.map(\.id) ?? [])
         downloadsInventory = nil; completedScans.remove(.downloads); clearDownloadPreview()
         completedSnapshots.removeValue(forKey: .downloads)

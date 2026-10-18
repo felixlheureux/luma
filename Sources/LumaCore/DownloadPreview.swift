@@ -15,7 +15,11 @@ public enum DownloadPreviewReader {
         guard let item = file.item, file.kind != .incomplete else {
             return .unavailable("This excluded or possibly incomplete file cannot be previewed.")
         }
-        let ext = file.url.pathExtension.lowercased()
+        return try read(item)
+    }
+
+    public static func read(_ item: CleanupItem) throws -> DownloadPreview {
+        let ext = item.url.pathExtension.lowercased()
         let textTypes: Set<String> = ["txt", "md", "csv", "log", "json", "yaml", "yml", "swift", "rs", "js", "ts", "css"]
         let rasterTypes: Set<String> = ["png", "jpg", "jpeg"]
         guard textTypes.contains(ext) || rasterTypes.contains(ext) else {
@@ -23,11 +27,11 @@ public enum DownloadPreviewReader {
         }
         guard Date().timeIntervalSince(item.scannedAt) < 1_800 else { throw LumaError.rejected("Scan again before previewing this file.") }
         return try NonMaterializingIO.perform {
-            let pin = try PinnedPath(file.url)
+            let pin = try PinnedPath(item.url)
             guard let location = item.identity.location else { throw LumaError.rejected("Scan again before previewing this file.") }
             try pin.revalidate(expected: location)
             guard pin.value.st_mode & S_IFMT == S_IFREG, pin.value.st_nlink == 1,
-                  try Filesystem.inspect(file.url).1 == item.identity else { throw LumaError.rejected("This file changed. Scan again before previewing.") }
+                  try Filesystem.inspect(item.url).1 == item.identity else { throw LumaError.rejected("This file changed. Scan again before previewing.") }
             let limit = textTypes.contains(ext) ? 65_536 : 10_000_000
             if rasterTypes.contains(ext), pin.value.st_size > limit { return .unavailable("Image exceeds the 10 MB inline preview limit.") }
             let handle = FileHandle(fileDescriptor: try pin.openReadableRegularFile(), closeOnDealloc: true)
@@ -35,7 +39,7 @@ public enum DownloadPreviewReader {
             let data = try handle.read(upToCount: limit) ?? Data()
             try Task.checkCancellation()
             try pin.revalidate(expected: item.identity.location)
-            guard try Filesystem.inspect(file.url).1 == item.identity else { throw LumaError.rejected("The file changed while previewing. Scan again.") }
+            guard try Filesystem.inspect(item.url).1 == item.identity else { throw LumaError.rejected("The file changed while previewing. Scan again.") }
             if textTypes.contains(ext) {
                 var prefix = data
                 // A byte limit may cut the final UTF-8 scalar. Remove only that

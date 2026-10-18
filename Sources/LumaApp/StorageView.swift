@@ -30,7 +30,9 @@ struct StorageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            StorageVolumePicker()
             if let index, let current {
+                StorageVolumeSummary(scope: index.scope)
                 navigation(index, current)
                 HStack {
                     Picker("Show", selection: $filter) {
@@ -70,7 +72,7 @@ struct StorageView: View {
                     Spacer()
                     Button("Deselect all") { model.selected = [] }.buttonStyle(StorageActionStyle()).disabled(model.selected.isEmpty)
                     PrimaryButton(title: "Review selection", symbol: "arrow.right") { model.reviewStorage() }
-                        .disabled(model.selected.isEmpty || model.busy)
+                        .disabled(model.selected.isEmpty || model.busy || index.scope.inspectionOnly)
                 }.padding(16).glassEffect(.regular, in: .rect(cornerRadius: 16))
                 Text("Logical bytes count each hard-linked file once at its first path in the scanned tree, including hidden content. Filters can hide those bytes. Skipped bytes are unknown; sizes are not promised disk savings. Packages are navigation leaves. Nothing is selected automatically.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
@@ -106,7 +108,7 @@ struct StorageView: View {
         HStack(spacing: 12) {
             Toggle("Select \(node.url.lastPathComponent) for removal review", isOn: Binding(get: { model.selected.contains(node.id) }, set: {
                 if $0 { model.selected.insert(node.id) } else { model.selected.remove(node.id) }
-            })).toggleStyle(.checkbox).labelsHidden().disabled(!node.isComplete || model.busy || !SafetyEngine(ignoredPaths: model.ignored).permitsManualSelection(at: node.url, authorizedRoots: model.authorizedRoots))
+            })).toggleStyle(.checkbox).labelsHidden().disabled(index?.scope.inspectionOnly != false || !node.isComplete || model.busy || !SafetyEngine(ignoredPaths: model.ignored).permitsManualSelection(at: node.url, authorizedRoots: model.authorizedRoots))
             Button {
                 if node.canNavigate { model.navigateStorage(node.id) } else { model.storageFocus = node.id }
             } label: {

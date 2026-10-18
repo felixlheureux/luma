@@ -25,9 +25,10 @@ public struct ScanRequest: Sendable {
     public let application: ApplicationRecord?
     public let ignoredPaths: Set<String>
     public let smartScopes: [ScanTarget: URL]
-    public init(_ target: ScanTarget, root: URL? = nil, application: ApplicationRecord? = nil, ignoredPaths: Set<String> = [], smartScopes: [ScanTarget: URL] = [:]) {
+    public let storageVolumeIdentity: StorageVolumeIdentity?
+    public init(_ target: ScanTarget, root: URL? = nil, application: ApplicationRecord? = nil, ignoredPaths: Set<String> = [], smartScopes: [ScanTarget: URL] = [:], storageVolumeIdentity: StorageVolumeIdentity? = nil) {
         self.target = target; self.root = root; self.application = application; self.ignoredPaths = ignoredPaths
-        self.smartScopes = smartScopes
+        self.smartScopes = smartScopes; self.storageVolumeIdentity = storageVolumeIdentity
     }
     public var scope: String {
         if let application { return application.url.path }

@@ -35,16 +35,8 @@ struct SystemView: View {
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
-            if let battery = model.system.battery {
-                Surface {
-                    HStack(spacing: 15) {
-                        SymbolTile(symbol: model.system.charging ? "battery.100percent.bolt" : "battery.75percent", tint: Palette.mint)
-                        VStack(alignment: .leading, spacing: 5) { Text("Battery").font(.system(size: 14, weight: .semibold)); Text(model.system.charging ? "Connected to power · charging" : "Current charge · health is available in System Settings").font(.system(size: 11)).foregroundStyle(.secondary) }
-                        Spacer(); Text("\(battery)%").font(.system(size: 25, weight: .semibold))
-                        Button("Battery settings") { model.openSettings("com.apple.preference.battery") }.buttonStyle(.glass)
-                    }
-                }
-            }
+            NetworkDetailsView().id("network-details")
+            BatteryDetailsView().id("battery-details")
             ProcessList()
         }
     }
