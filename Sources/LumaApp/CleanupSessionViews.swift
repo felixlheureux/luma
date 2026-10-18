@@ -138,7 +138,7 @@ struct UndoReviewSheet: View {
                         }.padding(12)
                     }
                 }
-            }.frame(maxHeight: 330)
+            }.contentMargins(.trailing, 14, for: .scrollContent).frame(maxHeight: 330)
             HStack {
                 Button("Cancel") { model.cleanupSession.undoReview = nil }.keyboardShortcut(.cancelAction)
                 Spacer()

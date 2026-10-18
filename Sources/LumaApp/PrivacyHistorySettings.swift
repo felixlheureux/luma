@@ -138,8 +138,9 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("luma.appearance") private var appearance = "system"
     @AppStorage("luma.menuBar") private var menuBar = true
+    @ViewState private var selectedTab = 0
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             Form {
                 Section("Appearance") {
                     Picker("Theme", selection: $appearance) {
@@ -159,24 +160,26 @@ struct SettingsView: View {
                     LabeledContent("Background scanning", value: "Off — scans run on request")
                     Text("Luma does not request root access or install a background helper.").font(.caption).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).tabItem { Label("General", systemImage: "gearshape") }
+            }.formStyle(.grouped).tabItem { Label("General", systemImage: "gearshape") }.tag(0)
             VStack(alignment: .leading, spacing: 16) {
-                Text("Ignored paths").font(.headline)
-                Text("These items cannot be selected for cleanup. Remove an exclusion to include it in future reviews.").font(.system(size: 12)).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Ignored paths").font(.headline)
+                    Text("These items cannot be selected for cleanup. Remove an exclusion to include it in future reviews.").font(.system(size: 12)).foregroundStyle(.secondary)
+                }.padding(.horizontal, 24).padding(.top, 24)
                 List {
                     ForEach(model.ignored.sorted(), id: \.self) { path in
                         HStack { Text(path).font(.system(size: 10, design: .monospaced)).textSelection(.enabled); Spacer(); Button("Remove") { model.unignore(path) } }
                     }
                     if model.ignored.isEmpty { Text("No ignored paths yet.").foregroundStyle(.secondary) }
-                }.clipShape(RoundedRectangle(cornerRadius: 12))
-            }.padding(24).tabItem { Label("Ignore list", systemImage: "eye.slash") }
+                }.contentMargins(.horizontal, 24, for: .scrollContent)
+            }.tabItem { Label("Ignore list", systemImage: "eye.slash") }.tag(1)
             VStack(spacing: 16) {
                 LumaMark().frame(width: 70, height: 70)
                 Text("Luma").font(.system(size: 28, weight: .semibold))
                 Text("\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development") · Native. Transparent. Yours.").foregroundStyle(.secondary)
                 Text("An open-source foundation for understanding and maintaining your Mac.\nLicensed under GPL-3.0-or-later.").font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Text("Early development build · macOS 26+").font(.caption).foregroundStyle(.tertiary)
-            }.frame(maxWidth: .infinity, maxHeight: .infinity).tabItem { Label("About", systemImage: "info.circle") }
-        }.padding(12).frame(width: 550, height: 410)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).tabItem { Label("About", systemImage: "info.circle") }.tag(2)
+        }.frame(width: 550, height: 410)
     }
 }

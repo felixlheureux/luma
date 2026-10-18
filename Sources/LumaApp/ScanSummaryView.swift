@@ -92,7 +92,7 @@ private struct ScanCoverageView: View {
                     }
                     if rows.isEmpty { Text("No locations in this group.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40) }
                 }
-            }
+            }.contentMargins(.trailing, 14, for: .scrollContent)
         }.padding(26).frame(width: 700, height: 600)
     }
 }

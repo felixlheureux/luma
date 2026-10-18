@@ -152,7 +152,7 @@ struct AppFootprintView: View {
                             }
                         }
                     }
-                }.frame(height: resetMode ? 280 : 340)
+                }.contentMargins(.trailing, 14, for: .scrollContent).frame(height: resetMode ? 280 : 340)
                 HStack {
                     Text("\(eligibleItems.filter { model.selected.contains($0.id) }.count) selected · \(formatBytes(footprint.accounting.bytes(for: eligibleItems.filter { model.selected.contains($0.id) })))").font(.system(size: 11)).foregroundStyle(.secondary)
                     Spacer()

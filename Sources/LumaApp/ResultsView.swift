@@ -104,7 +104,7 @@ struct ReviewSheet: View {
                         }.padding(14).background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
                     }
                 }
-            }.frame(maxHeight: 280)
+            }.contentMargins(.trailing, 14, for: .scrollContent).frame(maxHeight: 280)
             Toggle("I reviewed these items and understand their removal consequences.", isOn: $confirmed).font(.system(size: 11))
             HStack {
                 Button("Go back") { dismiss() }.keyboardShortcut(.cancelAction)

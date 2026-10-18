@@ -44,6 +44,22 @@ extension LumaAppDelegate {
                         try saveScanCheckWindow(window, path: output + "-\(appearance)-\(increasedContrast ? "contrast" : "standard").png")
                     }
                 }
+                window.appearance = nil
+                let visibleBeforeSettings = Set(NSApp.windows.filter(\.isVisible).map(\.windowNumber))
+                model.showSettingsWindow?()
+                try await Task.sleep(for: .milliseconds(400))
+                if let settings = NSApp.windows.first(where: {
+                    $0.isVisible && !visibleBeforeSettings.contains($0.windowNumber)
+                        && $0.frame.width > 500 && $0.frame.height > 350
+                }) {
+                    for appearance in ["light", "dark"] {
+                        NSApp.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+                        settings.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+                        try await Task.sleep(for: .milliseconds(400))
+                        try saveScanCheckWindow(settings, path: output + "-settings-\(appearance).png")
+                    }
+                    settings.close()
+                }
                 report["pageSamples"] = samples
                 report["pageCount"] = Destination.allCases.count
                 report["monitoringContinued"] = model.cpuHistory.count > samplesBefore
