@@ -113,12 +113,18 @@ struct ProcessList: View {
                                 }.frame(maxWidth: .infinity, alignment: .leading)
                                 Text(String(format: "%.1f%%", group.cpu)).frame(width: 65, alignment: .trailing)
                                 Text(formatMemory(group.memory)).frame(width: 100, alignment: .trailing)
-                                if let pid = group.mainPID, let app = NSRunningApplication(processIdentifier: pid),
-                                   app.activationPolicy == .regular, app.bundleIdentifier != Bundle.main.bundleIdentifier,
-                                   !["com.apple.finder", "com.apple.dock", "com.apple.systemuiserver", "com.apple.loginwindow"].contains(app.bundleIdentifier ?? "") {
-                                    Button("Quit") { appToQuit = app }.buttonStyle(.bordered).controlSize(.mini).frame(width: 62)
-                                } else { Spacer().frame(width: 62) }
+                                Spacer().frame(width: 62)
                             }.font(.system(size: 11, design: .monospaced)).padding(.vertical, 9)
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            // Keep this separate from the disclosure button so
+                            // requesting Quit never also toggles the group.
+                            if let pid = group.mainPID, let app = NSRunningApplication(processIdentifier: pid),
+                               app.activationPolicy == .regular, app.bundleIdentifier != Bundle.main.bundleIdentifier,
+                               !["com.apple.finder", "com.apple.dock", "com.apple.systemuiserver", "com.apple.loginwindow"].contains(app.bundleIdentifier ?? "") {
+                                Button("Quit") { appToQuit = app }.buttonStyle(.bordered).controlSize(.mini)
+                                    .frame(width: 62).padding(.top, 16)
+                            }
                         }
                         if group.id != groups.last?.id { Divider() }
                     }

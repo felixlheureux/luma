@@ -9,6 +9,7 @@ struct LumaApp: App {
     var body: some Scene {
         Window("Luma", id: "main") {
             RootView().environment(model)
+                .disclosureGroupStyle(FullRowDisclosureStyle())
                 .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
                 .task {
                     let args = CommandLine.arguments

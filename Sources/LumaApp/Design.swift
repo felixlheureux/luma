@@ -6,6 +6,38 @@ import LumaCore
 // declares a State macro whose plugin currently ships only with full Xcode.
 typealias ViewState<Value> = SwiftUI.State<Value>
 
+/// Give the chevron, label and empty header space one native button target.
+struct FullRowDisclosureStyle: DisclosureGroupStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: configuration.isExpanded ? 8 : 0) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
+                    configuration.isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                        .frame(width: 12).foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    configuration.label
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+            if configuration.isExpanded {
+                configuration.content.padding(.leading, 18)
+            }
+        }
+    }
+}
+
 enum Palette {
     // Keep action fills deep purple in both appearances so white labels retain contrast.
     static let accent = Color(red: 0.38, green: 0.36, blue: 0.86)
