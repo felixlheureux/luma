@@ -39,7 +39,7 @@ Remaining release hardening:
 - Implemented task 006: explicit reset intent excludes bundles, separates caches/logs, preferences, saved state and other app data, checks installed ownership and live owner/helper activity at preflight and every move, and reuses reviewed Trash/Activity/Stop/Restore/Undo. Unknown process evidence blocks reset; normal quit requests never force termination.
 - Native appearance, accessibility, performance, lifecycle, and packaged-release review.
 
-Tasks 001–006, 047, 048 and 050 are implemented. Task 007 is closed by user request with release checks deferred; 0.3.0 has not been released. Task 008 delivers validated bundled rule files and contributor validation; the personal Homebrew tap remains task 009.
+Tasks 001–006, 047, 048 and 050 are implemented. Task 007 is closed by user request with release checks deferred; 0.3.0 has not been released. Task 008 delivers validated bundled rule files and contributor validation; task 009 publishes the personal Luma Homebrew tap.
 
 ## After the current queue
 
@@ -77,4 +77,4 @@ Task 007 was closed at the user’s request, with manual release checks deferred
 
 Task 008 migrates all 22 generated rules and five named ownership mappings into a versioned bundled YAML catalog without adding supported paths. Pinned Yams stays behind RuleLoader; validation is atomic and the runtime SafetyEngine remains authoritative. The validator runs locally and in CI, and installer checks verify the bundled catalog and third-party notices. See CONTRIBUTING.md for the schema, supported boundaries, fixture contribution example and validation commands.
 
-Task 009 prepares the clean `luma` Homebrew cask against the real published 0.2.0 arm64/macOS 26.0 installer. Local style/audit and actual 0.1.2→0.2.0 upgrade checks pass, with retained user data and quarantine. New public tap creation awaits explicit approval after automatic review rejected that publication. No public install command or successful first-launch guarantee is advertised; Gatekeeper rejects the current ad-hoc development build. Release-to-cask proposals verify published assets before producing a reviewed update.
+Task 009 publishes the clean `luma` Homebrew cask in [the personal tap](https://github.com/felixlheureux/homebrew-luma), pinning the real published 0.2.0 arm64/macOS 26.0 installer. Public-route installation, style/online audit, actual 0.1.2→0.2.0 upgrade and removal checks pass, with retained user data and quarantine. The current ad-hoc development build is rejected by Gatekeeper; successful first launch is not established. Release-to-cask proposals verify published assets before producing a reviewed update.

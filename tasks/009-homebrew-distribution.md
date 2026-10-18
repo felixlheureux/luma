@@ -1,6 +1,6 @@
 # 009 — Prepare a personal Homebrew tap
 
-Status: Prepared; public tap publication awaits explicit approval
+Status: Done
 Priority: P2  
 Milestone: Distribution follow-up  
 Depends on: [007](007-native-ux-and-release.md) for the intended release artifact
@@ -22,11 +22,11 @@ The user wants Homebrew distribution and currently has no paid Apple Developer m
 ## Acceptance criteria
 
 - [x] Cask metadata matches an actual published DMG, its checksum, architecture, and deployment target.
-- [ ] The documented install command works on the tested setup, and launch/security behavior is recorded accurately.
-- [ ] Upgrade and uninstall preserve user data and Activity history by default; the app's menu process is handled cleanly during replacement/removal.
+- [x] The documented install command works on the tested setup, and launch/security behavior is recorded accurately.
+- [x] Upgrade and uninstall preserve user data and Activity history by default; the normal Quit directive is verified with a matching-ID menu-process fixture (real-release launch remains blocked).
 - [x] A release with missing or mismatched assets cannot update the tap.
 - [x] Installation does not strip quarantine, change system security settings, or require enrollment as a preparation step.
-- [ ] Public installation instructions are added only after the tap exists and the documented flow has been tested.
+- [x] Public installation instructions are added only after the tap exists and the documented flow has been tested.
 
 ## Validation and references
 
@@ -52,6 +52,12 @@ Reference checkpoints: inspect the Downloads reference image's installer content
 - Local install/upgrade: the verified published 0.1.2 cask installed into a temporary app directory and upgraded through Homebrew to verified 0.2.0. The installed plist versions match both phases. A separate 0.2.0 reinstall/removal exercises the app-only artifact. Existing Activity/history, ignore list and saved appearance/menu settings are checked by hashes without exposing their contents or changing them.
 - Launch/security: the installed app retains `com.apple.quarantine`. On Apple Silicon/macOS 27.0.1, `spctl --assess --type execute` rejects it (exit 3). A normal Launch Services request returns 0 but produces no native lifecycle report, so successful first launch is **not** claimed. Quarantine and saved Luma data remain unchanged. No Gatekeeper approval or bypass was automated.
 - The cask requests normal Quit by exact bundle ID and has no force signal, zap, deletion/trash hook, script or privileged helper. Because the published app’s launch was not established, a disposable menu-only app with the matching bundle ID tests Homebrew’s Quit directive independently; it never reads Luma user data. The retention/process evidence and its limits are separate from a successful real-release launch claim.
-- A new public repository creation/push was attempted only after local style/audit validation, but automatic approval review rejected that action because explicit authorization for the exact public repository was required. No repository was created or publicly pushed. Source/tooling work continues in the existing Luma repository. Public installation instructions are withheld until approval, repository creation and the public-route test.
+- A new public repository creation/push was attempted only after local style/audit validation, but automatic approval review rejected that action because explicit authorization for the exact public repository was required. At that checkpoint no repository was created or publicly pushed, and public installation instructions were withheld. The subsequent approval and publication are recorded below.
 
-Remaining publication work: obtain explicit approval to create/publish `felixlheureux/homebrew-luma`; publish the prepared tap; test the fully qualified install route from that GitHub repository; then add its public install instructions and record the final tap commit/CI. Successful first launch without a user security decision remains unsupported for the current ad-hoc development release. Task 007’s closure did not publish 0.3.0.
+## Approved public publication and closeout
+
+The user explicitly approved creating and publishing `felixlheureux/homebrew-luma` after the earlier automatic-review rejection. The [public tap](https://github.com/felixlheureux/homebrew-luma) now exists. The exact command `brew install --cask felixlheureux/luma/luma` cloned that GitHub repository and installed 0.2.0 into a disposable app directory with a fresh trust configuration. Homebrew 7.0.9 automatically trusted only this cask; no whole-tap trust was needed. The installed version and quarantine were verified, style and full online audit passed, and uninstall preserved existing Activity/history and ignore/appearance/menu preferences. The QA app, cask and tap were removed afterward. Public instructions now describe this tested route.
+
+Upgrade and the independent menu-process Quit checks above retain their stated scope; a successful real-release first launch remains unsupported for the current ad-hoc development release. Task 007’s closure did not publish 0.3.0. The release proposal workflow verifies assets before preparing a reviewed tap update.
+
+Published tap main: `618aec9e4d976a0a30185c4fc5dca047678f4439`. Its initial [style/online-audit CI run](https://github.com/felixlheureux/homebrew-luma/actions/runs/39140504942) passed. Main source/tooling commit `8b44d9dc3ec8476ee777cb5dea0c0af41eb0b6f4` also passed [full CI](https://github.com/felixlheureux/luma/actions/runs/39140277824), including all Python/Swift tests, catalog validation, release build and signature verification.

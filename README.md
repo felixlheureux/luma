@@ -52,7 +52,13 @@ open dist/Luma.app
 
 Open `Package.swift` in Xcode for development. The bundled YAML catalog uses the MIT-licensed Yams/libyaml parser, pinned through Swift Package Manager; scanning and mutation policy remain project-owned. Third-party notices ship with the app.
 
-Builds target the local architecture, and the DMG filename includes its version and architecture. Automated releases currently target Apple Silicon. See [build and distribution details](Documentation/Distribution.md) for signing options. There is no official Homebrew cask yet.
+Builds target the local architecture, and the DMG filename includes its version and architecture. Automated releases currently target Apple Silicon. See [build and distribution details](Documentation/Distribution.md) for signing options. The personal [Luma Homebrew tap](https://github.com/felixlheureux/homebrew-luma) is available for Apple Silicon/macOS 26 or later:
+
+```sh
+brew install --cask felixlheureux/luma/luma
+```
+
+This installs the published 0.2.0 development build, which predates current main-branch changes. It is not notarized; macOS may block first launch. See the [tested distribution behavior](Documentation/Distribution.md#personal-homebrew-tap-task-009). Official Homebrew cask submission remains separate.
 
 Create a local installer after building:
 

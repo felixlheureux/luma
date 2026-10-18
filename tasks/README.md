@@ -34,7 +34,7 @@ Start [028 phase A](028-contributor-tooling.md) now: code ownership/layout conve
 | 006 | [Add explicit application reset](006-application-reset.md) | P1 | Done | 001, 002, 005 |
 | 007 | [Review native UX and ship 0.3.0](007-native-ux-and-release.md) | P1 | Closed by request; release checks deferred | 001–006, 047, 048, 050 |
 | 008 | [Move cleanup knowledge into validated rule files](008-community-rules.md) | P2 | Done | 001, 005 |
-| 009 | [Prepare a personal Homebrew tap](009-homebrew-distribution.md) | P2 | Prepared; publication awaits approval | 007; preparation can start earlier |
+| 009 | [Prepare a personal Homebrew tap](009-homebrew-distribution.md) | P2 | Done | 007; preparation can start earlier |
 
 The P0/P1 rows above define the 0.3.0 milestone. Near-term monitoring/optimization work below is a separate parallel track and does not silently expand those release gates. P2 does not block that milestone. The user brought 008 forward after explicitly closing 007 with its remaining release checks deferred. Dependency order wins over the numeric order; 003 can proceed independently of 001 and 002. Tasks 047–048 and 050 were added later but belong in this immediate milestone, before release task 007. Task 050 delivers useful cache coverage before task 031's full granular-selection UI and task 008's external catalog. Baseline UX inspection for 007 can begin immediately.
 
@@ -51,7 +51,7 @@ Ready means the task can start. Planned means its dependencies must land first. 
 | 5 | [052 — Network quality diagnostics](052-network-diagnostics.md) | P2 | 003, 017 | User-started speed, latency and loaded-responsiveness tests plus native troubleshooting handoffs. |
 | 6 | [053 — Live disk activity](053-disk-activity.md) | P2 | 003 | Distinguish supported read/write activity from capacity, hardware health and CPU/memory load. |
 
-Tasks 001–006, 047, 048 and 050 are complete. Task 007 is closed at the user’s request with release checks explicitly deferred; it does not establish a published 0.3.0 release. Task 008 is complete; continue with 009’s personal tap preparation, preserving its published-release prerequisites. Bring 017/018 forward as soon as scan lifecycle support is ready. Finish the remaining 0.3.0 storage/app/session gates before release; these parallel tasks ship only when complete and included in the release review. Task 051 does not introduce automatic app termination or a system-wide purge button. Task 052 does not turn passive monitoring into background speed testing.
+Tasks 001–006, 047, 048 and 050 are complete. Task 007 is closed at the user’s request with release checks explicitly deferred; it does not establish a published 0.3.0 release. Tasks 008 and 009 are complete; continue with 010’s developer-project inventory. The personal Luma tap pins the verified published 0.2.0 development release. Bring 017/018 forward as soon as scan lifecycle support is ready. Finish the remaining 0.3.0 storage/app/session gates before release; these parallel tasks ship only when complete and included in the release review. Task 051 does not introduce automatic app termination or a system-wide purge button. Task 052 does not turn passive monitoring into background speed testing.
 
 ## Follow-up queues
 

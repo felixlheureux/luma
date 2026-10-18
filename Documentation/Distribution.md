@@ -40,9 +40,15 @@ The current development version remains 0.2.0 after task 007’s user-directed c
 
 The app now includes `Luma_LumaCore.bundle/CleanupRules.yaml` (under the bundle's platform resource layout) and `Third-Party-Notices.txt`. The build copies both before signing. Installer verification compares the catalog and notices with source as well as the executable/icon/version. Do not distribute a bare executable without its package resource bundle; a missing or invalid catalog blocks scans and cleanup with an explicit error.
 
-## Personal Homebrew tap preparation (task 009)
+## Personal Homebrew tap (task 009)
 
-The prepared package token is `luma`; the app stays Luma. Source files are in `Distribution/Homebrew`, with a cask, a tap CI template and an exact prerelease-channel declaration. The proposed `felixlheureux/homebrew-luma` repository has not been published: automatic approval review requires explicit approval for creating that new public repository. Public installation instructions will follow its creation and a verified public-tap installation.
+The package token is `luma`; the app stays Luma. The public [Luma tap](https://github.com/felixlheureux/homebrew-luma) installs with:
+
+```sh
+brew install --cask felixlheureux/luma/luma
+```
+
+This exact command was verified from the public GitHub repository with Homebrew 7.0.9 on Apple Silicon/macOS 27.0.1, using a disposable app directory and fresh trust configuration. Homebrew automatically trusted this cask only. Source files are in `Distribution/Homebrew`, with a cask, a tap CI template and an exact prerelease-channel declaration.
 
 The cask pins the published 0.2.0 arm64 DMG, not a local development rebuild with the same filename/version. That published build predates current main-branch safety/UI/catalog work. Its declared and Mach-O minimum is macOS 26.0. Local Homebrew 7.0.9 style and online audit pass with the exact 0.2.0 prerelease declaration. This is a personal development channel; no signing/security exceptions are configured and official homebrew/cask submission remains separate.
 
@@ -59,4 +65,4 @@ Replace the example tag with the exact newly published release. The helper downl
 
 For a prerelease, review/update the tap’s exact version in `audit_exceptions/github_prerelease_allowlist.json`; remove that declaration when adopting a stable release. This declares the channel rather than bypassing signing checks. Run full Homebrew style/online audit and disposable install/upgrade/removal tests before committing/pushing the tap. The main Release workflow uploads a cask proposal only after publishing succeeds; the **Prepare Homebrew proposal** manual workflow can also verify any already-published tag. These create review artifacts without a cross-repository write token.
 
-Current Homebrew 6+ trust behavior supports trust scoped to one fully qualified cask; whole-tap trust is unnecessary. See [tap trust](https://docs.brew.sh/Tap-Trust), [tap maintenance](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap), [Cask Cookbook](https://docs.brew.sh/Cask-Cookbook), and [official cask eligibility](https://docs.brew.sh/Acceptable-Casks). Only the future public-route test will establish the final installation instructions.
+Current Homebrew 6+ trust behavior supports trust scoped to one fully qualified cask; whole-tap trust is unnecessary. See [tap trust](https://docs.brew.sh/Tap-Trust), [tap maintenance](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap), [Cask Cookbook](https://docs.brew.sh/Cask-Cookbook), and [official cask eligibility](https://docs.brew.sh/Acceptable-Casks). The public-route install, style, full online audit and uninstall pass; saved Luma data and quarantine remain intact.
