@@ -3,7 +3,7 @@ import LumaCore
 
 enum Destination: String, CaseIterable, Identifiable {
     case overview = "Overview", clean = "Clean", optimizer = "Optimizer", applications = "Applications"
-    case downloads = "Downloads", projects = "Projects", storage = "Storage", duplicates = "Duplicates", privacy = "Privacy", system = "System", history = "Activity"
+    case backups = "Backups", downloads = "Downloads", projects = "Projects", storage = "Storage", duplicates = "Duplicates", privacy = "Privacy", system = "System", history = "Activity"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -11,6 +11,7 @@ enum Destination: String, CaseIterable, Identifiable {
         case .clean: "sparkles"
         case .optimizer: "slider.horizontal.3"
         case .applications: "square.stack.3d.up"
+        case .backups: "externaldrive.badge.person.crop"
         case .downloads: "arrow.down.circle"
         case .projects: "curlybraces"
         case .storage: "internaldrive"
@@ -26,6 +27,7 @@ enum Destination: String, CaseIterable, Identifiable {
         case .clean: "Generated data, with every decision explained."
         case .optimizer: "Understand what’s running. Change what matters."
         case .applications: "See what’s installed and what it leaves behind."
+        case .backups: "Local device backups may be your only copy."
         case .downloads: "Your downloads. Keep what you still need."
         case .projects: "Build output and dependencies, reviewed project by project."
         case .storage: "Find your space. Decide what stays."
@@ -122,6 +124,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .overview: .overview
         case .clean: .generatedData
         case .applications: applicationTab == .leftovers ? .leftovers : .applications
+        case .backups: .deviceBackups
         case .downloads: .downloads
         case .projects: .developerProjects
         case .storage: .storage
@@ -151,6 +154,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var showingReview = false
     var search = ""
     var showingSearch = false
+    var deviceBackups: DeviceBackupInventory?
     var downloadsTab = DownloadsTab.files
     var downloadsRoot: URL?
     var downloadsInventory: DownloadsInventory?
@@ -217,6 +221,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .storage:
             guard let root = storageRoot else { return }
             request = .init(.storage, root: root)
+        case .backups: request = .init(.deviceBackups, ignoredPaths: ignored)
         case .downloads:
             guard let root = downloadsRoot else { return }
             request = .init(.downloads, root: root, ignoredPaths: ignored)
@@ -233,7 +238,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     func startScan(_ input: ScanRequest) {
         guard !operationBusy else { return }
-        let request = [.downloads, .developerProjects].contains(input.target)
+        let request = [.downloads, .developerProjects, .deviceBackups].contains(input.target)
             ? ScanRequest(input.target, root: input.root, ignoredPaths: ignored) : input
         if request.target == .downloads { downloadsRoot = request.root; clearDownloadPreview() }
         selected = []; reviewPlan = nil; showingReview = false
@@ -263,6 +268,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             }
         case .applications:
             applications = result.applications; completedScans.insert(.applications)
+        case .deviceBackups:
+            deviceBackups = result.deviceBackups; completedScans.insert(.backups)
         case .downloads:
             downloadsInventory = result.downloadsInventory; completedScans.insert(.downloads); clearDownloadPreview()
         case .developerProjects:

@@ -94,7 +94,7 @@ struct CompletedScanCaption: View {
                     .font(.system(size: 10)).foregroundStyle(.secondary).textSelection(.enabled)
                 if !snapshot.result.report.notices.isEmpty || !snapshot.result.report.isComplete {
                     HStack {
-                        Label("Limited coverage · excluded locations are absent from totals", systemImage: "info.circle")
+                        Label(target == .deviceBackups ? "Limited inspection · some metadata or sizes are unavailable" : "Limited coverage · excluded locations are absent from totals", systemImage: "info.circle")
                         Spacer()
                         Button("Retry same scope") { model.startScan(snapshot.request) }.disabled(!model.canStartScan)
                     }.font(.system(size: 11))
@@ -131,7 +131,7 @@ struct ScanPermissionGuidance: View {
                     Button { model.openSettings("com.apple.preference.security?Privacy_FilesAndFolders") } label: {
                         Text("Files & Folders settings").foregroundStyle(scheme == .dark ? Color.white : Color.black)
                     }
-                    if [.generatedData, .overview, .leftovers, .footprint].contains(target) {
+                    if [.generatedData, .overview, .leftovers, .footprint, .deviceBackups].contains(target) {
                         Button { model.openSettings("com.apple.preference.security?Privacy_AllFiles") } label: {
                             Text("Full Disk Access settings").foregroundStyle(scheme == .dark ? Color.white : Color.black)
                         }

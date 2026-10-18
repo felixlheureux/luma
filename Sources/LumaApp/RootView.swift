@@ -26,6 +26,7 @@ struct RootView: View {
                                     switch model.destination ?? .overview {
                                     case .overview: OverviewView()
                                     case .clean: CleanView()
+                                    case .backups: DeviceBackupsView()
                                     case .downloads: DownloadsView()
                                     case .projects: ProjectsView()
                                     case .storage: StorageView()

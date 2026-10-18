@@ -38,6 +38,9 @@ public struct SafetyEngine: Sendable {
         }
         let protectedRoots = [home] + ["Documents", "Desktop", "Pictures", "Movies", "Music", "Downloads", "Library", "Applications", ".Trash"].map { home.appendingPathComponent($0) }
         guard !protectedRoots.contains(where: { Filesystem.samePath($0, url) }), url.path != "/Applications" else { throw LumaError.rejected("This folder is protected.") }
+        if Filesystem.isWithin(url, root: DeviceBackups.location(home: home)) || item.ruleID.hasPrefix("backup.") {
+            throw LumaError.rejected(DeviceBackups.removalExplanation)
+        }
         if item.ruleID == "application.exact-bundle" {
             guard item.ownerBundleID != "app.luma.mac", item.ownerBundleID?.hasPrefix("com.apple.") == false,
                   url.pathExtension == "app", [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications")].contains(where: { Filesystem.samePath($0, url.exactDeletingLastPathComponent()) }),

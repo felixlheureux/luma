@@ -2,7 +2,7 @@
 
 Tasks 010–030 extend the original task queue with concrete implementation work. Most remain backlog, with acceptance criteria and dependencies in each file; 017–019 have been promoted to the near-term parallel track in README.md. The near-term additions 047–048 belong to the 0.3.0 milestone in [README.md](README.md), ahead of these later phases. Phase names describe product outcomes rather than promised version numbers or delivery dates. The [complete specification](../Documentation/Product-Spec.md) remains the full-product boundary.
 
-After the immediate milestone, the promoted monitoring/optimization track and follow-ups 008–009, **010: developer-project review** and **011: Downloads review** are implemented. Continue with device-backup review and Smart Check. These features make the existing storage and safety foundations useful in more everyday situations before adding advanced discovery.
+After the immediate milestone, the promoted monitoring/optimization track and follow-ups 008–009, **010: developer-project review** and **011: Downloads review** are implemented. 012 adds inspection-only device-backup review after its removal capability assessment; continue with Smart Check. These features make the existing storage and safety foundations useful in more everyday situations before adding advanced discovery.
 
 P2 is the next expansion or supporting work. P3 follows the core expansion or needs more platform validation. Dependencies determine when a task can start; cross-cutting work can land as soon as its prerequisites are complete. Task 027 is explicitly deferred to the availability of distribution credentials and blocks none of the other phases.
 
@@ -12,7 +12,7 @@ P2 is the next expansion or supporting work. P3 follows the core expansion or ne
 | --- | --- | --- | --- |
 | 010 | [Developer-project review](010-developer-projects.md) | P2 | Done: review bounded generated output/dependencies in explicitly chosen Node, Rust and Swift projects; linked/shared stores and source remain protected. |
 | 011 | [Downloads review](011-downloads-review.md) | P2 | Done: explicitly chosen local-file review, type/size/age filters, bounded previews, source metadata and verified duplicate-download keepers. |
-| 012 | [Device backups](012-device-backups.md) | P2 | Identify local iPhone/iPad backups and review supported actions as user-data decisions. |
+| 012 | [Device backups](012-device-backups.md) | P2 | Done: inspect local iPhone/iPad summary metadata and size; direct removal/Restore unsupported after activity/format assessment, with Finder guidance. |
 | 013 | [Progressive Smart Check](013-smart-check.md) | P2 | Get useful, current recommendations with evidence and coverage, linked to the right review. |
 
 Exit evidence: representative project/Downloads/backup fixtures preserve personal data and ownership boundaries, and Smart Check reports the checks that actually ran without double-counting findings or inventing a health score.

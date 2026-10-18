@@ -49,6 +49,11 @@ public enum ScanEngine {
             var result = ScanResult(report: inventory.report)
             result.projectInventory = inventory
             return result
+        case .deviceBackups:
+            let inventory = try DeviceBackups.scan(home: home, ignoredPaths: request.ignoredPaths, emit: emit)
+            var result = ScanResult(report: inventory.report)
+            result.deviceBackups = inventory
+            return result
         case .downloads:
             guard let root = request.root else { throw LumaError.rejected("Choose a Downloads folder to review.") }
             let inventory = try DownloadsScanner.scan(root: root, ignoredPaths: request.ignoredPaths, emit: emit)

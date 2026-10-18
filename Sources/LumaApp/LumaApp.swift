@@ -30,6 +30,7 @@ struct LumaApp: App {
                 Button("Clean") { model.destination = .clean }.keyboardShortcut("2")
                 Button("Optimizer") { model.destination = .optimizer }.keyboardShortcut("3")
                 Button("Applications") { model.destination = .applications }.keyboardShortcut("4")
+                Button("Backups") { model.destination = .backups }
                 Button("Downloads") { model.destination = .downloads }
                 Button("Projects") { model.destination = .projects }
                 Button("Storage") { model.destination = .storage }.keyboardShortcut("5")
@@ -71,6 +72,9 @@ struct LumaApp: App {
         }
         let arguments = CommandLine.arguments
         #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-device-backups"), arguments.indices.contains(flag + 1) {
+            checkDeviceBackups(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-downloads"), arguments.indices.contains(flag + 1) {
             checkDownloads(output: arguments[flag + 1])
         }
