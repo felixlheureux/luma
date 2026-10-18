@@ -110,6 +110,10 @@ public struct ApplicationRecord: Identifiable, Sendable {
     public let version: String
     public let bytes: Int64
     public var sizeState: ApplicationSizeState = .available
+    public init(url: URL, name: String, bundleID: String, version: String, bytes: Int64, sizeState: ApplicationSizeState = .available) {
+        self.url = url; self.name = name; self.bundleID = bundleID; self.version = version
+        self.bytes = bytes; self.sizeState = sizeState
+    }
 }
 
 public struct DuplicateGroup: Identifiable, Sendable {

@@ -209,32 +209,7 @@ public enum ApplicationScanner {
 
     public static func footprintReport(_ app: ApplicationRecord, home: URL = FileManager.default.homeDirectoryForCurrentUser,
                                        emit: @escaping ScanEmitter = { _ in }) throws -> ScanReport {
-        return try NonMaterializingIO.perform {
-            let started = Date()
-            var report = ScanReport()
-            let paths: [(URL, Bool, Bool)] = [(app.url, false, true)] + [
-                ("Library/Caches/\(app.bundleID)", true), ("Library/Preferences/\(app.bundleID).plist", false),
-                ("Library/Saved Application State/\(app.bundleID).savedState", false), ("Library/Application Support/\(app.bundleID)", false)
-            ].map { (home.appendingPathComponent($0.0), $0.1, false) }
-            for (index, entry) in paths.enumerated() {
-                try Task.checkCancellation()
-                let (url, generated, isBundle) = entry
-                let rule = isBundle ? "application.exact-bundle" : "application.exact-related"
-                emit(.progress(.init("Inspecting exact app relationships", current: url.lastPathComponent, completed: index, total: paths.count)))
-                do {
-                    let item = try Filesystem.item(url, category: isBundle ? .applications : .related, safety: generated ? .safe : .review,
-                        explanation: isBundle ? "Application bundle matched by its exact installation path and bundle identifier: \(app.bundleID)." : "Exact bundle identifier match to \(app.bundleID). No fuzzy name matching was used.",
-                        consequence: isBundle ? "The application will be uninstalled. Its documents remain in place." : generated ? "Generated data can be recreated." : "May contain preferences or app-owned documents. Review before selecting.",
-                        rule: rule, owner: app.bundleID,
-                        progress: { entries, bytes in emit(.progress(.init("Inspecting exact app relationships", current: url.lastPathComponent, completed: index, total: paths.count, entries: entries, bytes: bytes))) })
-                    report.recordItem(item, emit: emit)
-                } catch is CancellationError { throw CancellationError() }
-                catch { report.recordFailure(error, at: url, category: .related, rule: rule, emit: emit, missingIsExpected: !isBundle) }
-                report.visited += 1
-            }
-            report.duration = Date().timeIntervalSince(started)
-            return report
-        }
+        try ApplicationFootprintScanner.inspect(app, home: home, emit: emit).report
     }
 }
 

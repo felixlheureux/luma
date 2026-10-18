@@ -90,7 +90,9 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var applicationTab: ApplicationTab = .installed
     var leftovers: [CleanupItem] = []
     var didScanLeftovers = false
+    var reviewingApplicationReset = false
     var footprint: [CleanupItem] = []
+    var footprintDetails: ApplicationFootprint?
     var inspectedApp: ApplicationRecord?
     var selected: Set<String> = []
     var scanTask: Task<Void, Never>?
@@ -248,7 +250,10 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .duplicates:
             duplicates = result.duplicates; completedScans.insert(.duplicates)
         case .footprint:
-            if inspectedApp?.id == snapshot.request.application?.id { footprint = result.report.items }
+            if inspectedApp?.id == snapshot.request.application?.id {
+                footprint = result.report.items
+                footprintDetails = result.applicationFootprint
+            }
         }
     }
 
@@ -276,11 +281,12 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     func inspect(_ app: ApplicationRecord) {
         guard !operationBusy else { return }
-        footprint = []; inspectedApp = app
+        reviewingApplicationReset = false
+        footprint = []; footprintDetails = nil; selected = []; inspectedApp = app
         startScan(.init(.footprint, application: app))
     }
 
-    func review(_ items: [CleanupItem], source: CleanupSource? = nil) {
+    func review(_ items: [CleanupItem], source: CleanupSource? = nil, resetApplication: ApplicationRecord? = nil) {
         guard !busy else { return }
         let items = items.filter { selected.contains($0.id) && !isIgnored($0) }
         guard !items.isEmpty else { return }
@@ -295,7 +301,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         let target: ScanTarget
         switch source {
         case .generatedData: target = .generatedData
-        case .applications: target = .footprint
+        case .applications, .applicationReset: target = .footprint
         case .leftovers: target = .leftovers
         case .storage: target = .storage
         case .duplicates: target = .duplicates
@@ -313,7 +319,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         scanTask = Task {
             do {
                 let plan = try await offMain {
-                    try CleanupPlan(items: items, authorizedRoots: roots, ignoredPaths: exclusions, duplicateGroups: groups, source: source)
+                    try CleanupPlan(items: items, authorizedRoots: roots, ignoredPaths: exclusions, duplicateGroups: groups, source: source, resetApplication: resetApplication)
                 }
                 try Task.checkCancellation()
                 reviewPlan = plan; showingReview = true; status = "Review your selection"
@@ -334,6 +340,20 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         scanSessions.invalidateSnapshots(for: [.generatedData, .overview])
     }
 
+    func invalidateLeftovers() {
+        selected.subtract(leftovers.map(\.id))
+        leftovers = []; didScanLeftovers = false
+        completedSnapshots.removeValue(forKey: .leftovers)
+        scanSessions.invalidateSnapshots(for: [.leftovers])
+    }
+
+    func invalidateApplicationFootprint() {
+        selected.subtract(footprint.map(\.id))
+        footprint = []; footprintDetails = nil
+        completedSnapshots.removeValue(forKey: .footprint)
+        scanSessions.invalidateSnapshots(for: [.footprint])
+    }
+
     func moveToTrash() {
         guard !busy, let plan = reviewPlan else { return }
         guard let journal, !recoveryLoading, journalError == nil, recoveryNotices.isEmpty else {
@@ -341,10 +361,10 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         }
         busy = true; showingReview = false; status = "Validating selected items…"
         cleanupSession.run { [self] in
-            defer { invalidateGeneratedFindings(); invalidateStorage() }
+            defer { invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 _ = try await journal.execute(plan, context: { @MainActor [self] in
-                    .current(ignoredPaths: ignored)
+                    await .current(ignoredPaths: ignored)
                 }, onRecord: { @MainActor [self] record in
                     history.insert(record, at: 0)
                     cleanup.removeAll { $0.url == record.original }; storage.removeAll { $0.url == record.original }; footprint.removeAll { $0.url == record.original }
@@ -434,7 +454,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         cleanupSession.undoReview = nil
         busy = true; status = "Restoring reviewed items…"
         cleanupSession.run { [self] in
-            defer { invalidateGeneratedFindings(); invalidateStorage() }
+            defer { invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 try await journal.undo(review, onProgress: { @MainActor [self] in cleanupSession.update($0) })
             } catch {
@@ -451,7 +471,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         guard !busy, !recoveryLoading, journalError == nil, let journal else { return }
         busy = true; status = "Checking the item in Trash…"
         Task {
-            defer { invalidateGeneratedFindings(); invalidateStorage() }
+            defer { invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 try await journal.restore(record)
                 apply(await journal.snapshot()); status = "Restored \(record.original.lastPathComponent)"

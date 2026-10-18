@@ -42,21 +42,16 @@ public struct SafetyEngine: Sendable {
                   url.pathExtension == "app", [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications")].contains(where: { Filesystem.samePath($0, url.exactDeletingLastPathComponent()) }),
                   (try? Filesystem.applicationIdentifier(at: url)) == item.ownerBundleID else { throw LumaError.rejected("Application identity could not be validated or is protected.") }
         } else if item.ruleID == "application.exact-related" {
-            guard let owner = item.ownerBundleID, !owner.contains("/"), !owner.hasPrefix("com.apple.") else { throw LumaError.rejected("Protected application data.") }
-            let paths = ["Library/Caches/\(owner)", "Library/Preferences/\(owner).plist", "Library/Saved Application State/\(owner).savedState", "Library/Application Support/\(owner)"]
-            guard paths.contains(where: { Filesystem.samePath(home.appendingPathComponent($0), url) }) else { throw LumaError.rejected("Related path does not exactly match the bundle identifier.") }
+            guard let owner = item.ownerBundleID, item.safety == .review else { throw LumaError.rejected("Protected application data or unsupported safety classification.") }
+            _ = try ApplicationRelationships.resolve(url: url, owner: owner, home: home)
         } else if item.ruleID == "application.leftover.exact-identifier" {
             guard LeftoverScanner.matches(item, home: home), let owner = item.ownerBundleID else {
-                throw LumaError.rejected("The leftover path does not exactly match its bundle identifier.")
+                throw LumaError.rejected("The leftover path does not match its ownership evidence.")
             }
+            _ = try ApplicationRelationships.resolve(url: url, owner: owner, home: home)
             let installed = try ApplicationPresence.bundleIdentifiers(home: home)
             guard !ApplicationPresence.hasOwner(owner, installed: installed) else {
                 throw LumaError.rejected("An owning app or helper is now installed. Scan again before reviewing this data.")
-            }
-            if Filesystem.samePath(url.exactDeletingLastPathComponent(), home.appendingPathComponent("Library/Containers")) {
-                let data = try Filesystem.readMetadata(url.appendingPathComponent(".com.apple.containermanagerd.metadata.plist"))
-                let metadata = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-                guard metadata?["MCMMetadataIdentifier"] as? String == owner else { throw LumaError.rejected("Container ownership evidence has changed.") }
             }
         } else if let rule = Rules.generated.first(where: { $0.id == item.ruleID }) {
             guard rule.matches(url, home: home), item.ownerBundleID == rule.owner, item.safety == rule.safety else { throw LumaError.rejected("Path or ownership no longer matches the cleanup rule.") }
@@ -85,6 +80,15 @@ public struct SafetyEngine: Sendable {
                   permitsManualSelection(at: url, authorizedRoots: authorizedRoots) else {
                 throw LumaError.rejected("This item requires an explicitly chosen folder inside your home directory.")
             }
+        }
+        if ["application.exact-bundle", "application.exact-related", "application.leftover.exact-identifier"].contains(item.ruleID),
+           let owner = item.ownerBundleID, !runningBundleIDs.isEmpty {
+            let helpers = try ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: owner)
+            let running = Set(runningBundleIDs.map { $0.lowercased() })
+            let normalized = owner.lowercased()
+            guard helpers.isDisjoint(with: running), !running.contains(where: {
+                $0 == normalized || $0.hasPrefix(normalized + ".") || normalized.hasPrefix($0 + ".")
+            }) else { throw LumaError.rejected("Quit the owning app and its helpers before cleaning these files.") }
         }
         let a = try Filesystem.attributes(url)
         guard (a[.ownerAccountID] as? NSNumber)?.uint32Value == getuid() else { throw LumaError.rejected("This item belongs to another user.") }

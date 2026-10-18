@@ -35,10 +35,11 @@ Remaining release hardening:
 - Implemented task 003: isolated scan sessions, metadata-first application inventory, read-only streaming previews, queued replacement, stopping/stall/timeout states, per-feature completed snapshots and scoped permission retry. Native light/dark checks cover navigation, Settings, window reopening, monitoring and cancelled app inspection.
 - Implemented task 050: four verified VS Code 1.142.0 cache/log units, installed-product and helper/process guards, app/category grouping, hard-link-aware logical totals, and post-mutation snapshot invalidation. The support matrix explicitly leaves unverified Electron, sandbox and additional Xcode targets unavailable; broader coverage remains task 031/008.
 - Implemented task 004: bounded transient hierarchy, cached folder navigation and breadcrumbs, synchronized map/list details, honest remainder/partial-size accounting, current-folder filters, and fresh explicit manual review through the existing plan/journal. Native fixture checks cover three-level navigation, empty/partial/selected states and stale review rejection in both appearances.
-- Shared application ownership evidence, clearer footprint categories, and explicit application reset.
+- Implemented task 005: shared exact/named/container ownership resolver across footprints, leftovers and mutation validation; categorized unique inspected totals, partial/absent read states, scoped search/sorting and explicit bundle/data selection.
+- Implemented task 006: explicit reset intent excludes bundles, separates caches/logs, preferences, saved state and other app data, checks installed ownership and live owner/helper activity at preflight and every move, and reuses reviewed Trash/Activity/Stop/Restore/Undo. Unknown process evidence blocks reset; normal quit requests never force termination.
 - Native appearance, accessibility, performance, lifecycle, and packaged-release review.
 
-Tasks 001–004, 047, 048 and 050 are implemented. Tasks 005–007 remain queued; 0.3.0 has not been released. Validated community rule files and a personal Homebrew tap follow as tasks 008–009.
+Tasks 001–006, 047, 048 and 050 are implemented. Task 007 remains queued; 0.3.0 has not been released. Validated community rule files and a personal Homebrew tap follow as tasks 008–009.
 
 ## After the current queue
 

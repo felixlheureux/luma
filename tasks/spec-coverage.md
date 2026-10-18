@@ -17,7 +17,7 @@ Planning baseline: Luma 0.2.0, commit `d471bbcee58d816b5c5cc8ec0036fcdc1546d6e9`
 | 30–31: Purgeable storage/snapshots | Available capacity shown; no dedicated reclaimability/snapshot inspection | [033](033-purgeable-snapshots.md) with conditional supported actions |
 | 32–35: Maintenance | No general maintenance runner | [026](026-maintenance-tools.md), [033](033-purgeable-snapshots.md); each operation needs separate platform evidence |
 | 36–41: App inventory, footprint, uninstall, relationships | Inventory, four exact identifier data paths, reviewed uninstall, and separate named leftover mappings | [003](003-scan-sessions.md), [005](005-application-footprints.md), [008](008-community-rules.md) |
-| 42: App reset | No dedicated reset review | [006](006-application-reset.md) |
+| 42: App reset | Explicit reviewed reset, separate data groups, bundle exclusion, owner/helper guards, normal quit and journal recovery | [006](006-application-reset.md) |
 | 43: Leftovers | Exact identifiers, explicit named mappings, installed/helper/Launch Services owner checks | [005](005-application-footprints.md), [008](008-community-rules.md) refine shared evidence without fuzzy deletion |
 | 44: Unused apps | No usage-evidence review | [032](032-unused-applications.md) |
 | 45: Third-party app updates | No source-backed update discovery | [020](020-application-updates.md), separate from Luma's updater |

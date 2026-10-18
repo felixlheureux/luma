@@ -116,6 +116,7 @@ struct CompletedScanCaption: View {
 }
 
 struct ScanPermissionGuidance: View {
+    @Environment(\.colorScheme) private var scheme
     @Environment(AppModel.self) private var model
     let target: ScanTarget
     let blocked: Bool
@@ -127,11 +128,15 @@ struct ScanPermissionGuidance: View {
                      : "You can continue with readable results. Grant access only to the locations you want included, then retry this scope.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 HStack {
-                    Button("Files & Folders settings") { model.openSettings("com.apple.preference.security?Privacy_FilesAndFolders") }
-                    if [.generatedData, .overview, .leftovers, .footprint].contains(target) {
-                        Button("Full Disk Access settings") { model.openSettings("com.apple.preference.security?Privacy_AllFiles") }
+                    Button { model.openSettings("com.apple.preference.security?Privacy_FilesAndFolders") } label: {
+                        Text("Files & Folders settings").foregroundStyle(scheme == .dark ? Color.white : Color.black)
                     }
-                }.buttonStyle(.glass).controlSize(.small)
+                    if [.generatedData, .overview, .leftovers, .footprint].contains(target) {
+                        Button { model.openSettings("com.apple.preference.security?Privacy_AllFiles") } label: {
+                            Text("Full Disk Access settings").foregroundStyle(scheme == .dark ? Color.white : Color.black)
+                        }
+                    }
+                }.buttonStyle(.glass).controlSize(.small).foregroundStyle(scheme == .dark ? Color.white : Color.black)
             }
         }
     }

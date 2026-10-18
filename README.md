@@ -13,13 +13,15 @@ Every proposed cleanup has a path, an explanation, an ownership rule, and a cons
 
 - **Review generated data.** Inspect Chrome, Safari, Firefox, Zen, Brave, and Edge caches; npm, Yarn Classic, and pnpm metadata caches; developer build files; simulator caches and logs; and verified VS Code 1.142.0 cache/log units. Cookies, sessions, project dependencies, shared stores, and device contents stay separate.
 - **Find app leftovers.** Review data whose exact bundle identifier has no installed owner. Luma checks application folders, embedded helpers, and macOS Launch Services. Exact identifiers and explicit rules cover supported named support folders. Ownership is checked again before Trash.
-- **Understand app footprints.** Inventory apps and inspect exact matches for caches, preferences, saved state, and application support. Uninstall selections are explicit.
+- **Understand app footprints.** Inventory apps, then inspect exact identifiers, explicit named ownership mappings and metadata-verified containers. Bundle, generated data, settings/state and potential user data have separate totals. Unreadable paths retain unknown sizes; bundle uninstall and related-data selections are separate and explicit.
 - **Explore storage.** Choose a folder, drill into its hierarchy with breadcrumbs, compare a synchronized map and list, show hidden entries, sort by size/name, and filter the current folder by size, age, or installer type. Personal files are never classified as junk.
 - **Verify duplicates.** Compare sizes, partial hashes, and full SHA-256 content. Hard-linked copies count once, and at least one copy must remain per group.
 - **Read meaningful system metrics.** See CPU, memory pressure, app/wired/compressed memory, reusable file cache, swap, thermals, battery charge, and resource consumers grouped by app.
 - **Follow and cancel scans.** Application rows appear before bundle sizing finishes. Every scan and app inspection has tracked progress and cancellation; replacement scans queue until the old worker stops. Previews stay read-only, completed snapshots retain their timestamps, and permission retries keep the chosen scope.
 - **Stop cleanup and review Undo.** Cleanup has its own progress and Stop control. Activity groups reviewed sessions, separates moved and remaining items, and previews eligible Undo items alongside changed, missing and occupied paths. Interrupted moves are reconciled before recovery; Restore verifies identities and preserves occupied destinations.
 - **Keep useful information nearby.** Open the compact menu-bar companion for live metrics and shortcuts. Expand an app’s resource row to inspect its helper processes.
+
+For troubleshooting, open an application's footprint and choose **Review reset**. Nothing starts selected. Review caches/logs, preferences, saved state and other app data separately; the bundle stays installed. Request a normal quit and check again if the app or its helpers are running. Other app data may include documents or sign-in state. Cleanup uses the same confirmed Trash, Activity, Stop and non-overwriting Restore/Undo flow. Inspect again afterward to refresh results.
 
 The interface follows **System appearance by default**, with optional Light and Dark overrides. Purple controls retain their deeper fill and white labels. Menu-bar visibility is enabled by default and can be changed in Settings. Closing the main window keeps the menu monitor running; choose Quit Luma to stop it. RAM usage and macOS memory pressure are shown separately: high usage alone does not mean high pressure.
 
@@ -28,7 +30,7 @@ The interface follows **System appearance by default**, with optional Light and 
 | Area | Current scope | Remaining work |
 | --- | --- | --- |
 | Clean | 22 bounded rules; verified VS Code cache/log units, app/category grouping, unique logical totals, browser/package caches, simulator diagnostics and scan coverage | More cache versions and ecosystems, finer selection, device backups |
-| Applications | Inventory, exact footprints, reviewed uninstall, potential leftovers | App reset, broader ownership evidence, and update discovery |
+| Applications | Inventory, categorized footprints, shared ownership evidence, reviewed uninstall/reset, potential leftovers | Update discovery |
 | Storage | Cached hierarchical browser, breadcrumbs, map/list details, current-folder filters and explicit manual review | Volumes, developer projects, and persistent incremental indexing |
 | Duplicates | Exact content verification | Similar-photo analysis and comparison |
 | Optimizer | Grouped resource consumers and normal quit requests | Measured recommendations and audited maintenance |

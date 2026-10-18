@@ -1,6 +1,6 @@
 # 007 — Review native UX and ship 0.3.0
 
-Status: Planned; baseline review can start now  
+Status: Ready
 Priority: P1  
 Milestone: 0.3.0  
 Depends on: [001](001-cleanup-plans.md), [002](002-filesystem-identity.md), [003](003-scan-sessions.md), [004](004-storage-browser.md), [005](005-application-footprints.md), [006](006-application-reset.md), [047](047-provider-aware-filesystem.md), [048](048-cleanup-session-undo.md), [050](050-expanded-cache-discovery.md)

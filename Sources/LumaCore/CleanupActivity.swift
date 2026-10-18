@@ -38,6 +38,11 @@ public struct CleanupActivity: Sendable {
         return CleanupActivity(tools: tools, simulatorsBooted: booted)
     }
 
+    public static func processPaths() -> [String]? {
+        guard let result = output("/bin/ps", ["-ww", "-axo", "comm="]), !result.isEmpty else { return nil }
+        return result.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
     private static func output(_ path: String, _ arguments: [String]) -> String? {
         let process = Process(); process.executableURL = URL(fileURLWithPath: path); process.arguments = arguments
         let pipe = Pipe(); process.standardOutput = pipe; process.standardError = FileHandle.nullDevice; process.standardInput = FileHandle.nullDevice

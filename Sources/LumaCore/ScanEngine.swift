@@ -27,7 +27,7 @@ public enum ScanEngine {
             return ScanResult(report: try await LeftoverScanner(home: home, applicationRoots: applicationRoots, emit: emit).scan())
         case .footprint:
             guard let app = request.application else { throw LumaError.rejected("Choose an application to inspect.") }
-            return ScanResult(report: try ApplicationScanner.footprintReport(app, home: home, emit: emit))
+            return try ApplicationFootprintScanner.inspect(app, home: home, emit: emit)
         case .storage:
             guard let root = request.root else { throw LumaError.rejected("Choose a folder to analyze.") }
             let index = try StorageIndex.scan(root: root, emit: emit)

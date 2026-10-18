@@ -31,7 +31,7 @@ struct ApplicationsView: View {
                 HStack(spacing: 16) {
                     summary("APPLICATIONS", value: "\(model.visibleApplications.count)")
                     summary("MEASURED BUNDLE STORAGE", value: measuredStorage)
-                    summary("RELATIONSHIP MATCHING", value: "Exact identifiers")
+                    summary("RELATIONSHIP MATCHING", value: "Exact paths and mappings")
                 }
                 if model.scanSessions.isBusy && [.applications, .overview].contains(model.scanTarget) {
                     Text("Live inventory preview · sizes may still be pending · inspection is available when this scan finishes.").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -134,51 +134,6 @@ struct LeftoversView: View {
                 Text("Checks Applications folders, embedded helpers, and macOS Launch Services. Named support folders require an explicit ownership rule. Shared groups, Apple data, fuzzy matches, and symbolic links are excluded.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             }
-        }
-    }
-}
-
-struct AppFootprintView: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let app: ApplicationRecord
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 16) {
-                Image(systemName: "macwindow").resizable().scaledToFit().foregroundStyle(.secondary).frame(width: 58, height: 58)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(app.name).font(.system(size: 24, weight: .semibold))
-                    Text(app.bundleID).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if model.scanSessions.isBusy && model.scanTarget == .footprint {
-                    Button("Cancel inspection") { model.cancel() }.buttonStyle(.glass)
-                }
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
-            }
-            HStack { Eyebrow(text: "Matched footprint"); Spacer(); Text(model.scanSessions.isBusy && model.scanTarget == .footprint ? "Inspecting…" : formatBytes(model.footprint.reduce(0) { $0 + $1.bytes })).font(.system(size: 24, weight: .semibold)) }
-            Text("Only exact bundle identifier matches are shown. Other app data may remain. Review preferences and support files carefully; they can contain personal data.").font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(4)
-            if model.scanSessions.isBusy && model.scanTarget == .footprint {
-                ScanSessionPanel(onlyTarget: .footprint)
-                Text("Preview only. Selection becomes available after inspection finishes.").font(.system(size: 11)).foregroundStyle(.secondary)
-            } else {
-                CompletedScanCaption(target: .footprint)
-                ScrollView { ItemList(items: model.footprint) }.frame(maxHeight: 360)
-            }
-            HStack {
-                Button("Open application") { NSWorkspace.shared.open(app.url) }
-                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([app.url]) }
-                Spacer()
-                PrimaryButton(title: "Review selection", symbol: "arrow.right") {
-                    let selected = model.footprint.filter { model.selected.contains($0.id) }
-                    dismiss()
-                    Task { try? await Task.sleep(for: .milliseconds(250)); model.review(selected, source: .applications) }
-                }.disabled(!model.footprint.contains { model.selected.contains($0.id) } || model.busy)
-            }
-        }.padding(28).frame(width: 760)
-        .onAppear { model.selected = [] }
-        .onDisappear {
-            if model.scanSessions.isBusy && model.scanTarget == .footprint { model.cancel() }
         }
     }
 }

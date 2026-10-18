@@ -91,6 +91,7 @@ extension CleanupSource {
         switch self {
         case .generatedData: "Generated data cleanup"
         case .applications: "Application cleanup"
+        case .applicationReset: "Application reset"
         case .leftovers: "Leftover cleanup"
         case .storage: "Storage cleanup"
         case .duplicates: "Duplicate cleanup"

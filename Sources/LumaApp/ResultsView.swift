@@ -81,11 +81,14 @@ struct ReviewSheet: View {
             HStack(spacing: 15) {
                 SymbolTile(symbol: "trash", size: 48)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("A final look before Trash").font(.system(size: 22, weight: .semibold))
+                    Text(model.reviewPlan?.source == .applicationReset ? "Review application reset" : "A final look before Trash").font(.system(size: 22, weight: .semibold))
                     Text("\(model.reviewItems.count) items · \(formatBytes(model.reviewPlan?.logicalBytes ?? 0))").foregroundStyle(.secondary)
                 }
             }
             Text("Luma will validate each path again, then move your selection to the macOS Trash. Space is reclaimed when Trash is emptied in Finder.").font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(4)
+            if model.reviewPlan?.source == .applicationReset {
+                Text("The app bundle stays installed. Quit the app and its helpers before continuing. Active apps may recreate these paths; Restore and Undo never overwrite a recreated destination. Review completed moves in Activity and inspect again afterward.").font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            }
             Text("Logical size counts hard-linked content once across this selection.").font(.system(size: 10)).foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {

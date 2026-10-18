@@ -2,18 +2,21 @@ import AppKit
 import Foundation
 
 public enum CleanupSource: String, Codable, Sendable {
-    case generatedData, applications, leftovers, storage, duplicates
+    case generatedData, applications, applicationReset, leftovers, storage, duplicates
 }
 
 public struct CleanupExecutionContext: Sendable {
     public let ignoredPaths: Set<String>
     public let runningBundleIDs: Set<String>
-    public init(ignoredPaths: Set<String> = [], runningBundleIDs: Set<String> = []) {
-        self.ignoredPaths = ignoredPaths; self.runningBundleIDs = runningBundleIDs
+    public let processPaths: [String]?
+    public init(ignoredPaths: Set<String> = [], runningBundleIDs: Set<String> = [], processPaths: [String]? = nil) {
+        self.ignoredPaths = ignoredPaths; self.runningBundleIDs = runningBundleIDs; self.processPaths = processPaths
     }
 
-    @MainActor public static func current(ignoredPaths: Set<String> = []) -> Self {
-        Self(ignoredPaths: ignoredPaths, runningBundleIDs: Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)))
+    @MainActor public static func current(ignoredPaths: Set<String> = []) async -> Self {
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let paths = await Task.detached(priority: .utility) { CleanupActivity.processPaths() }.value
+        return Self(ignoredPaths: ignoredPaths, runningBundleIDs: running, processPaths: paths)
     }
 }
 
@@ -22,6 +25,7 @@ public struct CleanupExecutionContext: Sendable {
 public struct CleanupPlan: Identifiable, Sendable {
     public let id: UUID
     public let source: CleanupSource
+    public let resetApplication: ApplicationRecord?
     public let createdAt: Date
     public let items: [CleanupItem]
     public let authorizedRoots: [URL]
@@ -36,7 +40,12 @@ public struct CleanupPlan: Identifiable, Sendable {
     }
 
     public init(items: [CleanupItem], authorizedRoots: [URL] = [], ignoredPaths: Set<String> = [],
-                duplicateGroups: [DuplicateGroup] = [], source: CleanupSource = .storage) throws {
+                duplicateGroups: [DuplicateGroup] = [], source: CleanupSource = .storage, resetApplication: ApplicationRecord? = nil) throws {
+        if source == .applicationReset {
+            guard let app = resetApplication else { throw LumaError.rejected("Reset requires a verified application.") }
+            try ApplicationReset.validateSelection(items, app: app)
+        } else if resetApplication != nil { throw LumaError.rejected("Application reset requires a reset plan.") }
+        self.resetApplication = resetApplication
         guard !items.isEmpty else { throw LumaError.rejected("Choose at least one item to review.") }
         guard items.allSatisfy({ $0.url.isFileURL && $0.bytes >= 0 }), authorizedRoots.allSatisfy(\.isFileURL) else {
             throw LumaError.rejected("The selection contains an invalid path or size.")
@@ -135,6 +144,10 @@ public struct CleanupPlan: Identifiable, Sendable {
 
     func validate(_ item: CleanupItem, home: URL, context: CleanupExecutionContext, checkDuplicateContent: Bool = true) throws {
         try Task.checkCancellation()
+        if let app = resetApplication {
+            try ApplicationReset.validateSelection(items, app: app)
+            try ApplicationReset.validateActivity(app: app, home: home, context: context)
+        }
         let engine = SafetyEngine(home: home, ignoredPaths: ignoredPaths.union(context.ignoredPaths))
         try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs)
         guard item.ruleID == "duplicates.sha256", checkDuplicateContent else { return }
