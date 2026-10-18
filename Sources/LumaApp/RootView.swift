@@ -26,6 +26,7 @@ struct RootView: View {
                                     switch model.destination ?? .overview {
                                     case .overview: OverviewView()
                                     case .clean: CleanView()
+                                    case .projects: ProjectsView()
                                     case .storage: StorageView()
                                     case .applications: ApplicationsView()
                                     case .duplicates: DuplicatesView()
@@ -161,10 +162,12 @@ struct SidebarView: View {
                 Text("luma").font(.system(size: 25, weight: .semibold, design: .rounded)).tracking(-1.0)
             }.padding(.horizontal, 21).padding(.top, 20).padding(.bottom, 30)
             Eyebrow(text: "Workspace").padding(.horizontal, 23).padding(.bottom, 12)
-            ForEach(Array(Destination.allCases.dropLast())) { destination in
-                navRow(destination)
-            }
-            Spacer(minLength: 28)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(Destination.allCases.dropLast())) { destination in navRow(destination) }
+                }
+            }.scrollIndicators(.hidden)
+            Spacer(minLength: 12)
             SidebarDiskCard()
             navRow(.history)
             SettingsLink {

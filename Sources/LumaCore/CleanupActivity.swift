@@ -1,7 +1,7 @@
 import Foundation
 
 public enum CleanupTool: String, Sendable, Codable {
-    case packageManager, simulator, xcode, visualStudioCode
+    case packageManager, simulator, xcode, visualStudioCode, projectBuild
 }
 
 public struct CleanupActivity: Sendable {
@@ -20,6 +20,7 @@ public struct CleanupActivity: Sendable {
             let names = tokens.map { URL(fileURLWithPath: $0).lastPathComponent.lowercased() }
             if names.contains(where: { ["npm", "npx", "pnpm", "yarn", "corepack", "brew", "brew.rb", "npm-cli.js", "npx-cli.js", "pnpm.cjs", "pnpm.mjs", "yarn.js", "yarn.cjs"].contains($0) || $0.range(of: "^yarn-[0-9.]+\\.c?js$", options: .regularExpression) != nil }) { result.insert(.packageManager) }
             if names.contains(where: { ["xcode", "xcodebuild", "swift-build", "swift-package", "swift-test"].contains($0) }) { result.insert(.xcode) }
+            if names.contains(where: { ["node", "nodejs", "cargo", "rustc", "rustdoc", "rust-analyzer", "swift", "swiftc", "swift-frontend", "swift-driver", "swift-run", "swift-build", "swift-test", "swift-package", "sourcekit-lsp", "clang", "clang++", "cc", "c++", "make", "gmake", "ninja", "cmake", "bun", "deno"].contains($0) }) { result.insert(.projectBuild) }
             if line.contains("/Visual Studio Code.app/Contents/") { result.insert(.visualStudioCode) }
             if names.contains(where: { ["simulator", "simctl"].contains($0) }) { result.insert(.simulator) }
         }

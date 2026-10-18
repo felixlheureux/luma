@@ -43,6 +43,12 @@ public enum ScanEngine {
             report.visited = index.nodes.count
             report.duration = index.duration
             return ScanResult(report: report, storageIndex: index)
+        case .developerProjects:
+            guard let root = request.root else { throw LumaError.rejected("Choose a project folder to inspect.") }
+            let inventory = try DeveloperProjects.scan(root: root, ignoredPaths: request.ignoredPaths, emit: emit)
+            var result = ScanResult(report: inventory.report)
+            result.projectInventory = inventory
+            return result
         case .duplicates:
             guard let root = request.root else { throw LumaError.rejected("Choose a folder to compare.") }
             return try DuplicateScanner(root: root, emit: emit).scanResult()

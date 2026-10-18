@@ -54,6 +54,7 @@ public struct CleanupItem: Identifiable, Codable, Sendable, Equatable {
     public let ownerBundleID: String?
     public let identity: FileIdentity
     public let scannedAt: Date
+    public var projectEvidence: ProjectEvidence? = nil
     public var name: String {
         guard let rule = Rules.generated.first(where: { $0.id == ruleID }) else { return url.lastPathComponent }
         if url.lastPathComponent == "startupCache" { return rule.title.replacingOccurrences(of: "web caches", with: "startup cache") }

@@ -54,6 +54,8 @@ public struct SafetyEngine: Sendable {
             guard !ApplicationPresence.hasOwner(owner, installed: installed) else {
                 throw LumaError.rejected("An owning app or helper is now installed. Scan again before reviewing this data.")
             }
+        } else if item.ruleID.hasPrefix("project.") {
+            try DeveloperProjects.validate(item, authorizedRoots: authorizedRoots, ignoredPaths: ignoredPaths, home: home, activity: activity)
         } else if let rule = Rules.generated.first(where: { $0.id == item.ruleID }) {
             guard rule.matches(url, home: home), item.ownerBundleID == rule.owner, item.safety == rule.safety else { throw LumaError.rejected("Path or ownership no longer matches the cleanup rule.") }
             try VerifiedGeneratedOwner.validate(rule, home: home)

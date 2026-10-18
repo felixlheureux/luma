@@ -131,7 +131,7 @@ private struct CacheFixture {
 
     @Test func packageManagerScriptsAndSimulatorProcessesAreRecognized() {
         let active = CleanupActivity.classify("/usr/local/bin/node /usr/local/lib/node_modules/npm/bin/npm-cli.js install\n/Applications/Xcode.app/Contents/MacOS/Xcode\n/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app/Contents/MacOS/Simulator")
-        #expect(active == [.packageManager, .xcode, .simulator])
+        #expect(active == [.packageManager, .xcode, .simulator, .projectBuild])
         #expect(CleanupActivity.classify("/usr/bin/other /tmp/npm-project/document").isEmpty)
     }
 }

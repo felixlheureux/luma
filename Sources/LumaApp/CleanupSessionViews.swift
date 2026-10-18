@@ -95,6 +95,7 @@ extension CleanupSource {
         case .leftovers: "Leftover cleanup"
         case .storage: "Storage cleanup"
         case .duplicates: "Duplicate cleanup"
+        case .developerProjects: "Project cleanup"
         }
     }
 }

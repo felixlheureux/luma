@@ -3,7 +3,7 @@ import LumaCore
 
 enum Destination: String, CaseIterable, Identifiable {
     case overview = "Overview", clean = "Clean", optimizer = "Optimizer", applications = "Applications"
-    case storage = "Storage", duplicates = "Duplicates", privacy = "Privacy", system = "System", history = "Activity"
+    case projects = "Projects", storage = "Storage", duplicates = "Duplicates", privacy = "Privacy", system = "System", history = "Activity"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -11,6 +11,7 @@ enum Destination: String, CaseIterable, Identifiable {
         case .clean: "sparkles"
         case .optimizer: "slider.horizontal.3"
         case .applications: "square.stack.3d.up"
+        case .projects: "curlybraces"
         case .storage: "internaldrive"
         case .duplicates: "square.on.square"
         case .privacy: "hand.raised"
@@ -24,6 +25,7 @@ enum Destination: String, CaseIterable, Identifiable {
         case .clean: "Generated data, with every decision explained."
         case .optimizer: "Understand what’s running. Change what matters."
         case .applications: "See what’s installed and what it leaves behind."
+        case .projects: "Build output and dependencies, reviewed project by project."
         case .storage: "Find your space. Decide what stays."
         case .duplicates: "Identical content. Verified locally."
         case .privacy: "Your data and permissions, on your terms."
@@ -118,6 +120,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .overview: .overview
         case .clean: .generatedData
         case .applications: applicationTab == .leftovers ? .leftovers : .applications
+        case .projects: .developerProjects
         case .storage: .storage
         case .duplicates: .duplicates
         default: nil
@@ -145,6 +148,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var showingReview = false
     var search = ""
     var showingSearch = false
+    var projectRoot: URL?
+    var projectInventory: ProjectInventory?
     var storageRoot: URL?
     var duplicateRoot: URL?
     var authorizedRoots: [URL] = []
@@ -203,6 +208,9 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .storage:
             guard let root = storageRoot else { return }
             request = .init(.storage, root: root)
+        case .projects:
+            guard let root = projectRoot else { return }
+            request = .init(.developerProjects, root: root, ignoredPaths: ignored)
         case .duplicates:
             guard let root = duplicateRoot else { return }
             request = .init(.duplicates, root: root)
@@ -214,6 +222,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     func startScan(_ request: ScanRequest) {
         guard !operationBusy else { return }
         selected = []; reviewPlan = nil; showingReview = false
+        if request.target == .developerProjects { projectRoot = request.root }
         if request.target == .storage { storageRoot = request.root }
         if request.target == .duplicates { duplicateRoot = request.root }
         scanRequests[request.target] = request
@@ -239,6 +248,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             }
         case .applications:
             applications = result.applications; completedScans.insert(.applications)
+        case .developerProjects:
+            projectInventory = result.projectInventory; completedScans.insert(.projects)
         case .leftovers:
             leftovers = result.report.items; didScanLeftovers = true
         case .storage:
@@ -274,7 +285,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         panel.prompt = "Analyze folder"; panel.message = "Luma scans this folder locally. Nothing is selected for removal."
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        if target == .storage { storageRoot = url } else { duplicateRoot = url }
+        if target == .projects { projectRoot = url } else if target == .storage { storageRoot = url } else { duplicateRoot = url }
         authorizedRoots.append(url); destination = target
         runScan(target)
     }
@@ -294,6 +305,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             switch destination {
             case .overview, .clean: CleanupSource.generatedData
             case .applications: applicationTab == .leftovers ? .leftovers : .applications
+            case .projects: .developerProjects
             case .duplicates: .duplicates
             default: .storage
             }
@@ -305,6 +317,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .leftovers: target = .leftovers
         case .storage: target = .storage
         case .duplicates: target = .duplicates
+        case .developerProjects: target = .developerProjects
         }
         guard let snapshot = completedSnapshots[target] else {
             error = "Finish a scan before reviewing cleanup. Preview results cannot be selected."; return
@@ -340,6 +353,13 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         scanSessions.invalidateSnapshots(for: [.generatedData, .overview])
     }
 
+    func invalidateProjects() {
+        selected.subtract(projectInventory?.report.items.map(\.id) ?? [])
+        projectInventory = nil; completedScans.remove(.projects)
+        completedSnapshots.removeValue(forKey: .developerProjects)
+        scanSessions.invalidateSnapshots(for: [.developerProjects])
+    }
+
     func invalidateLeftovers() {
         selected.subtract(leftovers.map(\.id))
         leftovers = []; didScanLeftovers = false
@@ -361,7 +381,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         }
         busy = true; showingReview = false; status = "Validating selected items…"
         cleanupSession.run { [self] in
-            defer { invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
+            defer { invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 _ = try await journal.execute(plan, context: { @MainActor [self] in
                     await .current(ignoredPaths: ignored)
@@ -454,7 +474,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         cleanupSession.undoReview = nil
         busy = true; status = "Restoring reviewed items…"
         cleanupSession.run { [self] in
-            defer { invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
+            defer { invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 try await journal.undo(review, onProgress: { @MainActor [self] in cleanupSession.update($0) })
             } catch {
@@ -471,7 +491,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         guard !busy, !recoveryLoading, journalError == nil, let journal else { return }
         busy = true; status = "Checking the item in Trash…"
         Task {
-            defer { invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
+            defer { invalidateProjects(); invalidateGeneratedFindings(); invalidateStorage(); invalidateApplicationFootprint(); invalidateLeftovers() }
             do {
                 try await journal.restore(record)
                 apply(await journal.snapshot()); status = "Restored \(record.original.lastPathComponent)"

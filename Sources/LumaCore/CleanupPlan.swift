@@ -2,21 +2,23 @@ import AppKit
 import Foundation
 
 public enum CleanupSource: String, Codable, Sendable {
-    case generatedData, applications, applicationReset, leftovers, storage, duplicates
+    case generatedData, applications, applicationReset, leftovers, storage, duplicates, developerProjects
 }
 
 public struct CleanupExecutionContext: Sendable {
     public let ignoredPaths: Set<String>
     public let runningBundleIDs: Set<String>
+    public let activity: CleanupActivity?
     public let processPaths: [String]?
-    public init(ignoredPaths: Set<String> = [], runningBundleIDs: Set<String> = [], processPaths: [String]? = nil) {
-        self.ignoredPaths = ignoredPaths; self.runningBundleIDs = runningBundleIDs; self.processPaths = processPaths
+    public init(ignoredPaths: Set<String> = [], runningBundleIDs: Set<String> = [], processPaths: [String]? = nil, activity: CleanupActivity? = nil) {
+        self.ignoredPaths = ignoredPaths; self.runningBundleIDs = runningBundleIDs; self.processPaths = processPaths; self.activity = activity
     }
 
     @MainActor public static func current(ignoredPaths: Set<String> = []) async -> Self {
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         let paths = await Task.detached(priority: .utility) { CleanupActivity.processPaths() }.value
-        return Self(ignoredPaths: ignoredPaths, runningBundleIDs: running, processPaths: paths)
+        let activity = await Task.detached(priority: .utility) { CleanupActivity.collect() }.value
+        return Self(ignoredPaths: ignoredPaths, runningBundleIDs: running, processPaths: paths, activity: activity)
     }
 }
 
@@ -41,6 +43,9 @@ public struct CleanupPlan: Identifiable, Sendable {
 
     public init(items: [CleanupItem], authorizedRoots: [URL] = [], ignoredPaths: Set<String> = [],
                 duplicateGroups: [DuplicateGroup] = [], source: CleanupSource = .storage, resetApplication: ApplicationRecord? = nil) throws {
+        if source == .developerProjects {
+            guard items.allSatisfy({ ProjectRule(rawValue: $0.ruleID) != nil && $0.projectEvidence != nil }) else { throw LumaError.rejected("Project review requires manifest-backed project findings.") }
+        }
         if source == .applicationReset {
             guard let app = resetApplication else { throw LumaError.rejected("Reset requires a verified application.") }
             try ApplicationReset.validateSelection(items, app: app)
@@ -149,7 +154,7 @@ public struct CleanupPlan: Identifiable, Sendable {
             try ApplicationReset.validateActivity(app: app, home: home, context: context)
         }
         let engine = SafetyEngine(home: home, ignoredPaths: ignoredPaths.union(context.ignoredPaths))
-        try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs)
+        try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs, activity: ProjectRule(rawValue: item.ruleID) == nil ? nil : context.activity)
         guard item.ruleID == "duplicates.sha256", checkDuplicateContent else { return }
         guard let proof = duplicateProofs[Data(item.id.utf8)] else { throw LumaError.rejected("The duplicate group is missing. Scan again.") }
         try engine.validate(proof.keeper, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs)

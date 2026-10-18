@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 public enum ScanTarget: String, Sendable, Hashable, CaseIterable {
-    case overview, generatedData, applications, leftovers, footprint, storage, duplicates
+    case overview, generatedData, applications, leftovers, footprint, storage, duplicates, developerProjects
     public var title: String {
         switch self {
         case .overview: "Local check"
@@ -12,6 +12,7 @@ public enum ScanTarget: String, Sendable, Hashable, CaseIterable {
         case .footprint: "Application inspection"
         case .storage: "Folder analysis"
         case .duplicates: "Duplicate analysis"
+        case .developerProjects: "Developer projects"
         }
     }
 }
@@ -20,8 +21,9 @@ public struct ScanRequest: Sendable {
     public let target: ScanTarget
     public let root: URL?
     public let application: ApplicationRecord?
-    public init(_ target: ScanTarget, root: URL? = nil, application: ApplicationRecord? = nil) {
-        self.target = target; self.root = root; self.application = application
+    public let ignoredPaths: Set<String>
+    public init(_ target: ScanTarget, root: URL? = nil, application: ApplicationRecord? = nil, ignoredPaths: Set<String> = []) {
+        self.target = target; self.root = root; self.application = application; self.ignoredPaths = ignoredPaths
     }
     public var scope: String { application?.url.path ?? root?.path ?? target.title }
 }
@@ -54,6 +56,7 @@ public struct ScanResult: Sendable {
     public var applications: [ApplicationRecord]
     public var duplicates: [DuplicateGroup]
     public var applicationFootprint: ApplicationFootprint?
+    public var projectInventory: ProjectInventory? = nil
     public var storageIndex: StorageIndex?
     public init(report: ScanReport = ScanReport(), applications: [ApplicationRecord] = [], duplicates: [DuplicateGroup] = [], storageIndex: StorageIndex? = nil, applicationFootprint: ApplicationFootprint? = nil) {
         self.report = report; self.applications = applications; self.duplicates = duplicates; self.storageIndex = storageIndex; self.applicationFootprint = applicationFootprint
