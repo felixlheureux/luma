@@ -29,7 +29,7 @@ The interface follows **System appearance by default**, with optional Light and 
 
 | Area | Current scope | Remaining work |
 | --- | --- | --- |
-| Clean | 22 bounded rules; verified VS Code cache/log units, app/category grouping, unique logical totals, browser/package caches, simulator diagnostics and scan coverage | More cache versions and ecosystems, finer selection, device backups |
+| Clean | 22 validated catalog rules; verified VS Code cache/log units, app/category grouping, unique logical totals, browser/package caches, simulator diagnostics and scan coverage | More cache versions and ecosystems, finer selection, device backups |
 | Applications | Inventory, categorized footprints, shared ownership evidence, reviewed uninstall/reset, potential leftovers | Update discovery |
 | Storage | Cached hierarchical browser, breadcrumbs, map/list details, current-folder filters and explicit manual review | Volumes, developer projects, and persistent incremental indexing |
 | Duplicates | Exact content verification | Similar-photo analysis and comparison |
@@ -50,7 +50,7 @@ bash Scripts/build-app.sh
 open dist/Luma.app
 ```
 
-Open `Package.swift` in Xcode for development. There are no third-party runtime dependencies.
+Open `Package.swift` in Xcode for development. The bundled YAML catalog uses the MIT-licensed Yams/libyaml parser, pinned through Swift Package Manager; scanning and mutation policy remain project-owned. Third-party notices ship with the app.
 
 Builds target the local architecture, and the DMG filename includes its version and architecture. Automated releases currently target Apple Silicon. See [build and distribution details](Documentation/Distribution.md) for signing options. There is no official Homebrew cask yet.
 
@@ -96,6 +96,7 @@ Provider-aware access skips reported cloud/provider scopes, dataless content, ne
 ```sh
 bash Scripts/build-app.sh debug
 bash Scripts/test.sh
+bash Scripts/validate-rules.sh
 bash Scripts/check-window-lifecycle.sh
 bash Scripts/check-native-ux.sh
 bash Scripts/preview.sh
@@ -125,4 +126,6 @@ Debug native cleanup QA: after a debug build, run `bash Scripts/check-cleanup-se
 
 Debug native storage QA: after a debug build, run `bash Scripts/check-storage-browser.sh`. It checks cached three-level navigation, selection clearing, map remainder totals, partial/provider/empty states, actual review-sheet presentation and stale-selection rejection in both appearances using 1,030 generated nodes. It never executes cleanup. `LUMA_STORAGE_QA_OUTPUT_DIR` retains synthetic reports and own-window captures in a temporary directory.
 
-Task 007 is in progress. The debug native UX smoke review visits all nine pages in Light, Dark and System appearance with standard and high-contrast window appearances, retains optional own-window captures, and samples layout latency while monitoring continues. Set `LUMA_UX_QA_OUTPUT_DIR` to retain its temporary report. This does not verify VoiceOver, keyboard traversal, system accessibility preference changes or GPU frame performance. Manual accessibility and release review remain required before 0.3.0.
+Task 007 was closed at the user’s request with manual release checks deferred. The debug native UX smoke review visits all nine pages in Light, Dark and System appearance with standard and high-contrast window appearances, retains optional own-window captures, and samples layout latency while monitoring continues. Set `LUMA_UX_QA_OUTPUT_DIR` to retain its temporary report. This does not verify VoiceOver, keyboard traversal, system accessibility preference changes or GPU frame performance. Manual accessibility and release review remain required before claiming a fully reviewed 0.3.0 release.
+
+Cleanup knowledge and named ownership mappings ship in a versioned YAML catalog. Invalid catalogs fail as a whole, and current filesystem/ownership/provider/activity checks remain in Swift. Contributors can validate catalog edits with `bash Scripts/validate-rules.sh`; see [CONTRIBUTING.md](CONTRIBUTING.md#contributing-cleanup-catalog-entries). No rule downloads or runtime catalog overrides are enabled.

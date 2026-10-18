@@ -20,12 +20,13 @@ public struct GeneratedDataScanner: Scanner {
     }
 
     private func scanLocal() throws -> ScanReport {
+        let rules = try Rules.catalog().generated
         let started = Date()
         var report = ScanReport()
-        for (index, rule) in Rules.generated.enumerated() {
+        for (index, rule) in rules.enumerated() {
             try Task.checkCancellation()
             let root = home.appendingPathComponent(rule.relativePath)
-            progress(.init(completedRules: index, totalRules: Rules.generated.count, current: rule.title, entries: 0, bytes: report.items.reduce(0) { $0 + $1.bytes }))
+            progress(.init(completedRules: index, totalRules: rules.count, current: rule.title, entries: 0, bytes: report.items.reduce(0) { $0 + $1.bytes }))
             do {
                 _ = try Filesystem.attributes(root)
                 try Filesystem.validatePath(root)
@@ -56,7 +57,7 @@ public struct GeneratedDataScanner: Scanner {
                         _ = try Filesystem.attributes(url)
                         let item = try report.generatedAccounting.inspect(url, rule: rule,
                             progress: { entries, bytes in
-                                progress(.init(completedRules: index, totalRules: Rules.generated.count, current: rule.title, entries: entries, bytes: previousBytes + bytes))
+                                progress(.init(completedRules: index, totalRules: rules.count, current: rule.title, entries: entries, bytes: previousBytes + bytes))
                             })
                         if item.bytes > 0 { report.items.append(item); emit(.item(item)) }
                         let row = coverage(rule, url: url, state: item.bytes > 0 ? .found : .empty, bytes: item.bytes, detail: rule.consequence)
@@ -67,7 +68,7 @@ public struct GeneratedDataScanner: Scanner {
                 }
             } catch is CancellationError { throw CancellationError() }
             catch { appendFailure(error, rule: rule, url: root, report: &report) }
-            progress(.init(completedRules: index + 1, totalRules: Rules.generated.count, current: rule.title, entries: 0, bytes: report.items.reduce(0) { $0 + $1.bytes }))
+            progress(.init(completedRules: index + 1, totalRules: rules.count, current: rule.title, entries: 0, bytes: report.items.reduce(0) { $0 + $1.bytes }))
         }
         report.duration = Date().timeIntervalSince(started)
         report.items.sort { $0.bytes > $1.bytes }

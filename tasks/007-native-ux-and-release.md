@@ -1,6 +1,6 @@
 # 007 — Review native UX and ship 0.3.0
 
-Status: In progress
+Status: Closed at user request (release verification deferred)
 Priority: P1  
 Milestone: 0.3.0  
 Depends on: [001](001-cleanup-plans.md), [002](002-filesystem-identity.md), [003](003-scan-sessions.md), [004](004-storage-browser.md), [005](005-application-footprints.md), [006](006-application-reset.md), [047](047-provider-aware-filesystem.md), [048](048-cleanup-session-undo.md), [050](050-expanded-cache-discovery.md)
@@ -54,7 +54,7 @@ Implemented the automated review/release-preparation slice against baseline `95d
 - Native light/dark scan, cleanup Stop/session Undo, storage and application footprint/reset regressions pass. Scan inventory: 6,000 files in 0.950/0.961 seconds; maximum sampled main-actor delay 0.072/0.085 seconds. Storage: 1,030 nodes in 1.639/1.620 seconds. Lifecycle verifies window closing/reopening, menu visibility, monitoring and explicit Quit.
 - Packaging uses fresh temporary staging. `Scripts/verify-dmg.sh`, also invoked by Release CI, mounts the installer read-only and checks app metadata, executable, shared icon, licenses, installer text, Applications shortcut and signature against the current build/source before ejecting it.
 
-Remaining release gates (task stays **In progress**, version stays **0.2.0**):
+Deferred release gates (task closed by user request; version stays **0.2.0**):
 
 - Perform a complete keyboard-only and VoiceOver session through scan/cancel, selection, confirmation, failure, partial cleanup, restart recovery and Restore/Undo. The fixture reset focus check is narrower than this gate.
 - Review Settings and the menu companion, all sheets and below-fold content in System/Light/Dark, with actual Increase Contrast, Reduce Transparency and Reduce Motion settings. The checker records the current system flags (both reduction flags were false); high-contrast window appearances do not prove system-preference behavior. Own-window fallback captures omit native/layer-backed button fills and toolbar content, so full glass composition/contrast remains unverified.
@@ -63,3 +63,7 @@ Remaining release gates (task stays **In progress**, version stays **0.2.0**):
 - After those reviews pass, update app version/build and installer heading together, publish the tag-triggered 0.3.0 prerelease, download its public DMG/checksum, and verify them. A locally verified 0.2.0 development installer does not satisfy the published 0.3.0 criterion.
 
 Final local packaging evidence: the release configuration builds and its strict signature passes. The generated 0.2.0 arm64 DMG passes image integrity, read-only mounted payload/signature verification and SHA-256 round-trip checking. Its reference image and installer mount are ejected. Generated installer/checksum files remain untracked under `dist/`.
+
+## User-directed closeout — 2026-10-18
+
+Closed at the user’s explicit request to move to the next task. The implemented accessibility and release tooling is committed as `ea11b37`; the automated checks above passed. Unchecked acceptance criteria remain unverified, not passed. The deferred gates above remain prerequisites for claiming a fully reviewed 0.3.0 release. No 0.3.0 tag or public release was created by this closeout. Task 008 may proceed because its actual dependencies (001 and 005) are complete.

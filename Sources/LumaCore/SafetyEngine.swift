@@ -22,6 +22,7 @@ public struct SafetyEngine: Sendable {
     }
 
     public func validate(_ item: CleanupItem, authorizedRoots: [URL] = [], runningBundleIDs: Set<String> = [], activity: CleanupActivity? = nil) throws {
+        _ = try Rules.catalog()
         let url = item.url.exactStandardizedFileURL
         try Filesystem.validatePath(item.url)
         guard Date().timeIntervalSince(item.scannedAt) < 1800 else { throw LumaError.rejected("Scan is over 30 minutes old. Scan again before cleaning.") }
@@ -59,9 +60,7 @@ public struct SafetyEngine: Sendable {
             if let owner = rule.owner, runningBundleIDs.contains(where: { $0 == owner || $0.hasPrefix(owner + ".") }) {
                 throw LumaError.rejected("Quit the owning application and its helpers before cleaning these files.")
             }
-            var requiredTools = rule.tools
-            if rule.id == "developer.homebrew.cache" { requiredTools.insert(.packageManager) }
-            if rule.id.hasPrefix("developer.xcode.") || rule.id == "developer.swiftpm.cache" { requiredTools.insert(.xcode) }
+            let requiredTools = rule.tools
             if !requiredTools.isEmpty {
                 let snapshot = activity ?? CleanupActivity.collect(checkSimulators: requiredTools.contains(.simulator))
                 guard let tools = snapshot.tools else { throw LumaError.rejected("Running tools could not be checked. No cleanup was performed.") }

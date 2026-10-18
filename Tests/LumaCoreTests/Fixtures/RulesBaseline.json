@@ -1,0 +1,420 @@
+{
+  "generated": [
+    {
+      "id": "developer.xcode.derived-data",
+      "relativePath": "Library/Developer/Xcode/DerivedData",
+      "category": "developer",
+      "explanation": "Xcode build products and indexes. Source projects and archives are excluded.",
+      "consequence": "Xcode will rebuild these files. Your next build and indexing pass may take longer.",
+      "owner": "com.apple.dt.Xcode",
+      "name": "Xcode Derived Data",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.swiftpm.cache",
+      "relativePath": "Library/Caches/org.swift.swiftpm",
+      "category": "developer",
+      "explanation": "Downloaded Swift package build caches.",
+      "consequence": "Packages may need to be downloaded and built again.",
+      "owner": "com.apple.dt.Xcode",
+      "name": "Swift package cache",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "browser.chrome.cache",
+      "relativePath": "Library/Caches/Google/Chrome",
+      "category": "caches",
+      "explanation": "Google Chrome generated cache. Cookies, history, passwords and sessions are excluded.",
+      "consequence": "Web content will be fetched again. Close Chrome before cleaning.",
+      "owner": "com.google.Chrome",
+      "name": "Chrome cache",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "app.spotify.cache",
+      "relativePath": "Library/Caches/com.spotify.client",
+      "category": "caches",
+      "explanation": "Spotify's generated application cache. Offline downloads in Application Support are excluded.",
+      "consequence": "Spotify may download cached content again.",
+      "owner": "com.spotify.client",
+      "name": "Spotify cache",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "browser.safari.cache",
+      "relativePath": "Library/Caches/com.apple.Safari",
+      "category": "caches",
+      "explanation": "Safari generated cache. Browser history and website data are excluded.",
+      "consequence": "Pages may load more slowly on their next visit. Close Safari first.",
+      "owner": "com.apple.Safari",
+      "name": "Safari cache",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.homebrew.cache",
+      "relativePath": "Library/Caches/Homebrew",
+      "category": "developer",
+      "explanation": "Downloaded Homebrew package artifacts, separate from installed packages.",
+      "consequence": "Future installs may download packages again. Do not clean during a Homebrew operation.",
+      "owner": null,
+      "name": "Homebrew downloads",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "browser.firefox.profile-cache",
+      "relativePath": "Library/Caches/Firefox/Profiles",
+      "category": "caches",
+      "explanation": "Firefox generated local profile caches. Only named cache folders are included; cookies, sessions, history, passwords, and website storage are excluded.",
+      "consequence": "Web content and scripts will be fetched or compiled again. Close Firefox before cleaning.",
+      "owner": "org.mozilla.firefox",
+      "name": "Firefox web caches",
+      "profileLeaves": [
+        "cache2",
+        "startupCache"
+      ],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "browser.zen.profile-cache",
+      "relativePath": "Library/Caches/zen/Profiles",
+      "category": "caches",
+      "explanation": "Zen generated local profile caches. Only named cache folders are included; cookies, sessions, history, passwords, and website storage are excluded.",
+      "consequence": "Web content and scripts will be fetched or compiled again. Close Zen before cleaning.",
+      "owner": "app.zen-browser.zen",
+      "name": "Zen web caches",
+      "profileLeaves": [
+        "cache2",
+        "startupCache"
+      ],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "browser.brave.profile-cache",
+      "relativePath": "Library/Caches/BraveSoftware/Brave-Browser",
+      "category": "caches",
+      "explanation": "Brave generated local profile caches. Only named cache folders are included; cookies, sessions, history, passwords, and website storage are excluded.",
+      "consequence": "Web content and scripts will be fetched or compiled again. Close Brave before cleaning.",
+      "owner": "com.brave.Browser",
+      "name": "Brave web caches",
+      "profileLeaves": [
+        "Cache",
+        "Code Cache",
+        "GPUCache"
+      ],
+      "chromiumProfiles": true,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "browser.edge.profile-cache",
+      "relativePath": "Library/Caches/Microsoft Edge",
+      "category": "caches",
+      "explanation": "Microsoft Edge generated local profile caches. Only named cache folders are included; cookies, sessions, history, passwords, and website storage are excluded.",
+      "consequence": "Web content and scripts will be fetched or compiled again. Close Microsoft Edge before cleaning.",
+      "owner": "com.microsoft.edgemac",
+      "name": "Microsoft Edge web caches",
+      "profileLeaves": [
+        "Cache",
+        "Code Cache",
+        "GPUCache"
+      ],
+      "chromiumProfiles": true,
+      "safety": "safe",
+      "tools": [],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.npm.cache",
+      "relativePath": ".npm/_cacache",
+      "category": "developer",
+      "explanation": "npm's content-addressed download cache. Project dependencies and npm configuration are excluded.",
+      "consequence": "Future installs may download packages again. Offline installs may be unavailable until the cache is rebuilt.",
+      "owner": null,
+      "name": "npm downloads",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "packageManager"
+      ],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.npm.npx",
+      "relativePath": ".npm/_npx",
+      "category": "developer",
+      "explanation": "Temporary packages downloaded by npx. Project node_modules and configuration are excluded.",
+      "consequence": "The next npx invocation may download its tools again. Offline use may be affected.",
+      "owner": null,
+      "name": "npx tools",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "packageManager"
+      ],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.npm.logs",
+      "relativePath": ".npm/_logs",
+      "category": "logs",
+      "explanation": "npm diagnostic logs from previous commands.",
+      "consequence": "Previous install diagnostics will no longer be available here.",
+      "owner": null,
+      "name": "npm logs",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "packageManager"
+      ],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.yarn.classic",
+      "relativePath": "Library/Caches/Yarn/v6",
+      "category": "developer",
+      "explanation": "Yarn Classic's global package cache. Project .yarn/cache, offline mirrors, configuration, and installed dependencies are excluded.",
+      "consequence": "Yarn may download packages again. Offline installs may need the cache restored.",
+      "owner": null,
+      "name": "Yarn Classic downloads",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "packageManager"
+      ],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.pnpm.metadata",
+      "relativePath": "Library/Caches/pnpm/metadata-v1.3",
+      "category": "developer",
+      "explanation": "pnpm registry metadata cache. Its shared package store and project links are excluded.",
+      "consequence": "pnpm will fetch registry metadata again. No shared package store is removed.",
+      "owner": null,
+      "name": "pnpm registry metadata",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "packageManager"
+      ],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.pnpm.metadata-v1.4",
+      "relativePath": "Library/Caches/pnpm/metadata-v1.4",
+      "category": "developer",
+      "explanation": "pnpm registry metadata cache. Its shared package store and project links are excluded.",
+      "consequence": "Registry metadata will be fetched again; offline installs may be affected.",
+      "owner": null,
+      "name": "pnpm registry metadata",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "packageManager"
+      ],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.simulator.caches",
+      "relativePath": "Library/Developer/CoreSimulator/Caches",
+      "category": "developer",
+      "explanation": "Generated CoreSimulator caches. Devices, installed runtimes, app documents, and device backups are excluded.",
+      "consequence": "Simulator startup may take longer while caches rebuild. All simulators and developer tools must be stopped first.",
+      "owner": "com.apple.iphonesimulator",
+      "name": "Simulator caches",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "review",
+      "tools": [
+        "simulator",
+        "xcode"
+      ],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "developer.simulator.logs",
+      "relativePath": "Library/Logs/CoreSimulator",
+      "category": "logs",
+      "explanation": "CoreSimulator diagnostic logs. Device contents and runtimes are excluded.",
+      "consequence": "Previous Simulator diagnostics will no longer be available here. Stop simulators before cleaning.",
+      "owner": "com.apple.iphonesimulator",
+      "name": "Simulator logs",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "simulator",
+        "xcode"
+      ],
+      "appName": null,
+      "requiredApplication": null
+    },
+    {
+      "id": "app.vscode.http-cache",
+      "relativePath": "Library/Application Support/Code/Cache",
+      "category": "caches",
+      "explanation": "Electron's HTTP cache in VS Code's verified default data layout. Cookies, session storage, service workers and offline application data are excluded.",
+      "consequence": "Network resources may need downloading again, and offline access to cached resources may be unavailable. Quit VS Code and its helpers first.",
+      "owner": "com.microsoft.VSCode",
+      "name": "Network cache",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "visualStudioCode"
+      ],
+      "appName": "Visual Studio Code",
+      "requiredApplication": {
+        "bundleName": "Visual Studio Code.app",
+        "bundleID": "com.microsoft.VSCode",
+        "productName": "Code",
+        "version": "1.142.0",
+        "commit": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1"
+      }
+    },
+    {
+      "id": "app.vscode.gpu-cache",
+      "relativePath": "Library/Application Support/Code/GPUCache",
+      "category": "caches",
+      "explanation": "Electron's generated GPU shader cache in VS Code's verified default data layout. Editor state, credentials and extensions are excluded.",
+      "consequence": "Graphics caches will rebuild; initial rendering may take longer. Quit VS Code and its helpers first.",
+      "owner": "com.microsoft.VSCode",
+      "name": "Graphics cache",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "visualStudioCode"
+      ],
+      "appName": "Visual Studio Code",
+      "requiredApplication": {
+        "bundleName": "Visual Studio Code.app",
+        "bundleID": "com.microsoft.VSCode",
+        "productName": "Code",
+        "version": "1.142.0",
+        "commit": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1"
+      }
+    },
+    {
+      "id": "app.vscode.bytecode",
+      "relativePath": "Library/Application Support/Code/CachedData",
+      "category": "caches",
+      "explanation": "VS Code's generated compiled-code cache in its verified default data layout. Settings, credentials, extensions, backups and session storage are excluded.",
+      "consequence": "VS Code will compile this cache again. The next launch may be slower. Quit the app and its helpers first.",
+      "owner": "com.microsoft.VSCode",
+      "name": "Compiled code cache",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "safe",
+      "tools": [
+        "visualStudioCode"
+      ],
+      "appName": "Visual Studio Code",
+      "requiredApplication": {
+        "bundleName": "Visual Studio Code.app",
+        "bundleID": "com.microsoft.VSCode",
+        "productName": "Code",
+        "version": "1.142.0",
+        "commit": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1"
+      }
+    },
+    {
+      "id": "app.vscode.logs",
+      "relativePath": "Library/Application Support/Code/logs",
+      "category": "logs",
+      "explanation": "VS Code's diagnostic session logs in its verified default data layout. Workspace files, local history and editor backups are excluded.",
+      "consequence": "Previous app and extension diagnostics will be unavailable unless restored. New sessions create new logs. Logs may contain private paths or diagnostic content.",
+      "owner": "com.microsoft.VSCode",
+      "name": "Diagnostic logs",
+      "profileLeaves": [],
+      "chromiumProfiles": false,
+      "safety": "review",
+      "tools": [
+        "visualStudioCode"
+      ],
+      "appName": "Visual Studio Code",
+      "requiredApplication": {
+        "bundleName": "Visual Studio Code.app",
+        "bundleID": "com.microsoft.VSCode",
+        "productName": "Code",
+        "version": "1.142.0",
+        "commit": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1"
+      }
+    }
+  ],
+  "ownership": [
+    {
+      "relativePath": "Library/Application Support/Spotify",
+      "owner": "com.spotify.client"
+    },
+    {
+      "relativePath": "Library/Application Support/Slack",
+      "owner": "com.tinyspeck.slackmacgap"
+    },
+    {
+      "relativePath": "Library/Application Support/discord",
+      "owner": "com.hnc.Discord"
+    },
+    {
+      "relativePath": "Library/Application Support/obsidian",
+      "owner": "md.obsidian"
+    },
+    {
+      "relativePath": "Library/Application Support/Code",
+      "owner": "com.microsoft.VSCode"
+    }
+  ]
+}

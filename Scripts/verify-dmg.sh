@@ -32,11 +32,15 @@ for packaged, source in [
     (mount / "Read Me.txt", Path("Resources/Installer-ReadMe.txt")),
     (mount / "License.txt", Path("LICENSE")),
     (app / "Contents/Resources/LICENSE", Path("LICENSE")),
+    (app / "Contents/Resources/Third-Party-Notices.txt", Path("Resources/Third-Party-Notices.txt")),
     (app / "Contents/Resources/Luma.icns", Path("Resources/Luma.icns")),
     (app / "Contents/MacOS/Luma", Path("dist/Luma.app/Contents/MacOS/Luma")),
 ]:
     assert packaged.is_file() and source.is_file(), f"Missing payload: {packaged.name}"
     assert hashlib.sha256(packaged.read_bytes()).digest() == hashlib.sha256(source.read_bytes()).digest(), f"Stale payload: {packaged.name}"
+catalogs = list((app / "Contents/Resources/Luma_LumaCore.bundle").rglob("CleanupRules.yaml"))
+assert len(catalogs) == 1, "Missing or ambiguous bundled rule catalog"
+assert catalogs[0].read_bytes() == Path("Sources/LumaCore/Resources/CleanupRules.yaml").read_bytes(), "Stale rule catalog"
 print(f'Passed: mounted Luma {actual["CFBundleShortVersionString"]} build {actual["CFBundleVersion"]}, executable, icon, license and installer text match the build.')
 PY
 codesign --verify --deep --strict "$mount/Luma.app"

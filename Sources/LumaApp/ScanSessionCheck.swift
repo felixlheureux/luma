@@ -33,6 +33,8 @@ extension LumaAppDelegate {
             var report: [String: Any] = ["mutationInvoked": false]
             do {
                 try await Task.sleep(for: .seconds(2))
+                model.showMainWindow?()
+                try await waitForScanCheck { NSApp.windows.contains { $0.isVisible && $0.canBecomeMain } }
                 let preparation = Task.detached(priority: .utility) {
                     try FileManager.default.createDirectory(at: denied, withIntermediateDirectories: true)
                     try Data("readable fixture".utf8).write(to: data.appendingPathComponent("Readable"))
@@ -201,6 +203,12 @@ extension LumaAppDelegate {
                 model.invalidateGeneratedFindings()
                 report["cacheSnapshotInvalidated"] = model.cleanupReport == nil && model.cleanup.isEmpty && !model.completedScans.contains(.clean) && model.snapshot(for: .generatedData) == nil && model.scanSessions.snapshots[.generatedData] == nil && model.scanSessions.session == nil && model.selected.isEmpty
             } catch { report["error"] = error.localizedDescription }
+            // Let SwiftUI detach review/error sheets before requesting application
+            // termination; otherwise AppKit may defer Quit after the report succeeds.
+            model.showingReview = false
+            model.inspectedApp = nil
+            model.error = nil
+            try? await Task.sleep(for: .milliseconds(400))
             do { try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output)) }
             catch { FileHandle.standardError.write(Data("Scan QA report failed: \(error.localizedDescription)\n".utf8)) }
         }

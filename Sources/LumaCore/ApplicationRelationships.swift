@@ -13,8 +13,10 @@ public struct ApplicationRelationship: Identifiable, Sendable {
     public let owner: String
     public let category: FootprintCategory
     public let evidence: String
+    public var mappedConsequence: String? = nil
     public var consequence: String {
-        switch category {
+        if let mappedConsequence { return mappedConsequence }
+        return switch category {
         case .bundle: "Uninstalls this application bundle. Related data is a separate choice."
         case .generated: "Caches may need to be rebuilt or downloaded. Logs may contain diagnostics worth keeping."
         case .settings: "Removes preferences or saved state. Custom settings and session recovery may be lost."
@@ -26,13 +28,7 @@ public struct ApplicationRelationship: Identifiable, Sendable {
 /// The same exact-path policy is used for discovery and final mutation checks.
 /// No folder-name similarity or shared group entitlement grants removal authority.
 public enum ApplicationRelationships {
-    public static let knownPaths: [KnownLeftoverPath] = [
-        .init(relativePath: "Library/Application Support/Spotify", owner: "com.spotify.client"),
-        .init(relativePath: "Library/Application Support/Slack", owner: "com.tinyspeck.slackmacgap"),
-        .init(relativePath: "Library/Application Support/discord", owner: "com.hnc.Discord"),
-        .init(relativePath: "Library/Application Support/obsidian", owner: "md.obsidian"),
-        .init(relativePath: "Library/Application Support/Code", owner: "com.microsoft.VSCode")
-    ]
+    public static var knownPaths: [KnownLeftoverPath] { (try? Rules.catalog().ownership) ?? [] }
     public static let locations: [LeftoverLocation] = [
         .init(directory: "Library/Caches", suffix: ""),
         .init(directory: "Library/Application Support", suffix: ""),
@@ -48,6 +44,7 @@ public enum ApplicationRelationships {
         }
     }
     public static func supports(_ id: String) -> Bool {
+        guard (try? Rules.catalog()) != nil else { return false }
         let lower = id.lowercased()
         guard !lower.hasPrefix("com.apple."), lower != "app.luma.mac", !lower.hasPrefix("app.luma.mac."), !lower.hasPrefix("group.") else { return false }
         return knownPaths.contains { $0.owner == id }
@@ -61,7 +58,7 @@ public enum ApplicationRelationships {
         }
         let named = namedPaths.filter { $0.owner == owner }.map { path in
             ApplicationRelationship(url: home.appendingPathComponent(path.relativePath), owner: owner,
-                category: category(path.relativePath), evidence: "Explicit ownership mapping: \(path.relativePath) → \(owner).")
+                category: category(path.relativePath), evidence: path.explanation ?? "Explicit ownership mapping: \(path.relativePath) → \(owner).", mappedConsequence: path.consequence)
         }
         var seen: Set<Data> = []
         return (named + exact).filter { relationship in
@@ -82,6 +79,7 @@ public enum ApplicationRelationships {
         return .userData
     }
     public static func resolve(url: URL, owner: String, home: URL) throws -> ApplicationRelationship {
+        _ = try Rules.catalog()
         guard let relationship = candidates(owner: owner, home: home).first(where: { Filesystem.samePath($0.url, url) }) else {
             throw LumaError.rejected("No unambiguous exact ownership relationship matches this path.")
         }
@@ -132,6 +130,7 @@ public enum ApplicationFootprintScanner {
     public static func inspect(_ app: ApplicationRecord, home: URL, emit: @escaping ScanEmitter = { _ in },
                                checkAccess: @Sendable (URL) throws -> Void = { _ in }) throws -> ScanResult {
         try NonMaterializingIO.perform {
+            _ = try Rules.catalog()
             let started = Date()
             var footprint = ApplicationFootprint()
             var report = ScanReport()

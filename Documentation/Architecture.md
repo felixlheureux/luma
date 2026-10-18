@@ -10,7 +10,7 @@ The main growth risks are responsibility rather than file size: AppModel still c
 
 ## Target layout
 
-Keep the current two Swift package targets initially. Introduce another target only when dependency direction or a practical testing requirement warrants it. Swift Package Manager can discover nested source folders; folder reorganization does not need a new framework per feature.
+The app and core remain separate Swift package targets; task 008 adds a small core-dependent `LumaRuleValidator` executable for contributor/CI validation. Introduce another target only when dependency direction or a practical testing requirement warrants it. Swift Package Manager can discover nested source folders; folder reorganization does not need a new framework per feature.
 
 ```text
 Sources/
@@ -34,7 +34,7 @@ Sources/
     Filesystem/          identity, traversal, hashing, provider policy
     Scanning/            session lifecycle, coverage, progress
     Applications/        relationship evidence, inventory, leftovers
-    Rules/               bounded rule definitions and future loader
+    Rules/               bounded rule values, bundled catalog and loader
     Monitoring/          typed samples, accounting, grouping, trends
     Platform/macOS/      narrow system API adapters
 Tests/
@@ -101,3 +101,5 @@ ApplicationRelationships owns exact locations, named mappings, classifications, 
 
 
 ApplicationReset.swift owns reset categories, supported selection and installed owner/helper activity checks. CleanupPlan captures reset intent and app identity; CleanupJournal remains the only executor. AppFootprintView composes the reset review and ordinary footprint from the same completed snapshot. Process collection runs off the main actor, and no thread I/O policy spans an await.
+
+Task 008 moves generated rule data and named ownership mappings to the bundled versioned YAML catalog. `RuleLoader.swift` alone imports pinned Yams and validates its node tree/schema before constructing a `RuleCatalog`; parser types never cross that boundary. `Rules.catalog()` returns the atomically loaded immutable catalog or its actionable error. Display-only compatibility accessors return no findings on failure; generated/leftover/footprint scans, relationship resolution and SafetyEngine require a successful catalog, so missing/invalid resources cannot become partial cleanup authority. The catalog’s resource is bundled before signing and verified in the mounted installer. The internal task-local override accepts only an already validated catalog or an explicit failure for synthetic tests; no app setting/environment/remote download selects a runtime catalog. Core protected roots and filesystem/provider/identity/owner/activity/journal checks remain independent Swift policy. Existing implicit build/package guards are explicit catalog fields; the loader enforces their path-specific minimums and SafetyEngine enforces current tool activity.

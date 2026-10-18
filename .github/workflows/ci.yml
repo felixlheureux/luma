@@ -24,6 +24,8 @@ jobs:
         run: swift --version
       - name: Test release validation
         run: python3 -m unittest discover -s Scripts -p test_release.py
+      - name: Validate bundled cleanup catalog
+        run: bash Scripts/validate-rules.sh
       - name: Test filesystem safety and monitoring
         run: bash Scripts/test.sh
       - name: Build app

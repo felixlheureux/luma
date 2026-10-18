@@ -6,7 +6,7 @@ Pick work from [tasks/README.md](tasks/README.md), respecting its dependencies a
 
 Run `bash Scripts/test.sh` before submitting changes. Add regression fixtures for new filesystem behavior. Never test cleanup against real user data. Use `bash Scripts/preview.sh` to inspect the native interface in both appearances.
 
-Generated-data rules belong in `Sources/LumaCore/Rules.swift`; explicit named application ownership mappings belong in `Sources/LumaCore/ApplicationRelationships.swift` until the planned external rule loader is implemented. Each rule must have an exact bounded path, stable identifier, category, explanation, removal consequences, and owning app identifier when known. Do not use unrestricted globs or infer that old personal files are junk.
+Generated-data rules and explicit named ownership mappings belong in `Sources/LumaCore/Resources/CleanupRules.yaml`, validated through `RuleLoader`. Relationship resolution and protected/runtime policy remain in Swift. Each rule must have an exact bounded path, stable identifier, category, explanation, removal consequences, and owning app identifier when known. Do not use unrestricted globs or infer that old personal files are junk.
 
 No scanner may mutate the filesystem. All cleanup builds an immutable `CleanupPlan` and calls `CleanupJournal.execute`; the journal preflights the whole plan and revalidates each move through SafetyEngine. Individual Trash moves are private. Preserve full-content duplicate keeper checks, unique logical totals, and durable per-item plan metadata. Restore must use the journal's verified recovery path. New paths must include rejection tests for protected folders, symlink escapes, stale identities, and ignore rules. Never add a permanent-delete fallback to make a failing operation succeed.
 
@@ -29,3 +29,50 @@ For storage changes, run `bash Scripts/check-storage-browser.sh` after a debug b
 For application ownership/footprint changes, run `bash Scripts/check-application-footprint.sh` after a debug build. It creates a disposable app/home, checks native groups, partial/absent reads, separate bundle/data selection, review totals, retry and snapshot invalidation in both appearances without executing cleanup. Ownership paths belong in ApplicationRelationships; do not add per-view path matching or infer disposal permission from the footprint category.
 
 Reset changes must preserve the distinct applicationReset plan intent and bundle exclusion. Run the application-footprint native checker for both modes. Add generated fixtures for selected subsets, helpers/unknown activity, partial outcomes and recreated Restore destinations. Never test reset against a personal application. Normal quit is user-started, may require save prompts, and must not become force termination.
+
+## Contributing cleanup catalog entries
+
+Generated rules and named ownership mappings live in `Sources/LumaCore/Resources/CleanupRules.yaml`. `Rules.swift` owns the runtime rule type and bundled-catalog boundary; `RuleLoader.swift` owns parsing/validation. Scanners and SafetyEngine never consume YAML types. Schema 1 is a single local UTF-8 YAML mapping of at most 1 MiB with `schemaVersion: 1`, a reviewable `catalogVersion`, `locale: en`, and `generated`/`ownership` arrays. Increment the catalog version when changing its content. There are no downloaded catalogs or user-supplied runtime overrides.
+
+Validate the source catalog (or a proposed local file) and its fixtures with:
+
+```sh
+bash Scripts/validate-rules.sh
+bash Scripts/validate-rules.sh /path/to/proposed-catalog.yaml
+bash Scripts/test.sh --filter RuleCatalogTests
+bash Scripts/test.sh
+```
+
+Both CI workflows validate the catalog and run the negative/equivalence fixtures as part of the Swift suite. The standalone validator reads metadata only; it does not scan or clean target paths. Validation does not install a proposed file into the app. All records must pass before any catalog becomes available. A missing/invalid bundled catalog reports an error at scan, relationship resolution and mutation validation; it cannot partially activate its valid entries. Rebuild the app after changing the bundled YAML.
+
+A generated record requires `id`, `relativePath`, `category`, `safety`, `name`, `explanation`, `consequence`, `regeneration`, `profileLeaves`, `chromiumProfiles`, `tools`, `provenance`, and `reviewedOn`. `owner`, `appName`, and `requiredApplication` are optional (app caches require an owner). Names/explanations/consequences/regeneration are inline English display text; schema 1 does not resolve localization keys. Keep stable IDs and precise consequences. Record real source URLs or versioned source-history evidence in `provenance`, and quote `reviewedOn` as `YYYY-MM-DD`.
+
+For example, a **synthetic fixture only**, appended to a test catalog, can use:
+
+```yaml
+- id: app.fixture.cache
+  relativePath: Library/Caches/com.example.fixture
+  category: caches
+  safety: safe
+  name: Fixture cache
+  explanation: Generated test data in an exact disposable fixture folder.
+  consequence: The fixture app must regenerate this data.
+  regeneration: The fixture writer creates fresh data.
+  owner: com.example.fixture
+  profileLeaves: []
+  chromiumProfiles: false
+  tools: []
+  provenance:
+  - Disposable fixture; not evidence for a real product.
+  reviewedOn: '2026-10-18'
+```
+
+Do not add this example to the shipping catalog. Real additions need supported-product path/lifecycle evidence and fixture tests proving adjacent personal/session/shared data is excluded. `RuleCatalogTests.contributorRuleUsesUnchangedScannerAndRuntimeSafety` demonstrates adding a validated fixture rule without changing scanner control flow. The baseline JSON fixture records the pre-migration 22-rule decision fields and five named mappings; do not rewrite it to make a migration regression pass. Add new expectations separately for deliberate scope changes.
+
+Generated categories are `caches`, `logs`, or `developer`; safety is `safe` or `review`. Paths are exact home-relative paths: no `~`, environment substitutions, traversal, empty components, absolute paths, globs or includes. App caches/logs, the existing explicit developer units and the verified VS Code units are the supported generated scopes. Personal files, containers, provider roots and arbitrary application support are outside this schema’s generated authority. Chromium profile leaves are exactly Cache/Code Cache/GPUCache; Mozilla leaves are exactly cache2/startupCache. Arbitrary profile-leaf names and profile-root cleanup are unsupported. The existing four profile roots must retain their audited leaves; direct targets inside those profiles are rejected. Existing package/build/simulator/VS Code tool guards are required by path, including descendants of supported package/build caches. Unknown tool names fail validation.
+
+`requiredApplication` is the existing VS Code verifier contract: `bundleName`, `bundleID`, `productName`, exact `version` and `commit`. Other app-specific support-data verifiers require a separately reviewed Swift boundary; a YAML record cannot invent one. The installed product and activity checks still run at execution. Catalog provenance is review evidence, not cryptographic ownership attestation.
+
+An ownership record requires `relativePath`, exact `owner`, `classification: review`, `explanation`, `consequence`, `provenance`, and `reviewedOn`. Its explanation and consequence appear in the named relationship review; preserve existing wording during migrations. Ownership mappings never grant generated-data status or permission to discard data. Duplicate IDs/paths, reserved runtime IDs, overlapping generated roots, conflicting owners (including parent/child paths), unknown fields, missing text and unsupported versions reject the whole catalog. YAML aliases, anchors, merge keys, multiple documents and custom tags are unsupported.
+
+Yams 6.2.2 is pinned by exact version and `Package.resolved`. Its current upstream release/maintenance and MIT licensing were reviewed during task 008: https://github.com/jpsim/Yams/releases/tag/6.2.2. Yams/libyaml are statically linked parsing dependencies; only the loader imports Yams. Their notices ship in `Resources/Third-Party-Notices.txt`. `build-app.sh` copies the package resource bundle into the app before signing, and the DMG verifier checks the packaged YAML and notices against source. Core protected-path, provider, identity, ownership, activity and journal policy remain in Swift.

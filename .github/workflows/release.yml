@@ -33,6 +33,8 @@ jobs:
         run: |
           version="$(python3 Scripts/release_version.py --tag "$RELEASE_TAG")"
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Validate bundled cleanup catalog
+        run: bash Scripts/validate-rules.sh
       - name: Test filesystem safety and monitoring
         run: bash Scripts/test.sh
       - name: Build Apple Silicon app

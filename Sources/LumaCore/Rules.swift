@@ -16,6 +16,10 @@ public struct CleanupRule: Sendable {
     public var appName: String? = nil
     public var requiredApplication: GeneratedOwnerRequirement? = nil
 
+    public var regeneration: String = ""
+    public var provenance: [String] = []
+    public var reviewedOn: String = ""
+
     public func matches(_ url: URL, home: URL) -> Bool {
         let root = home.appendingPathComponent(relativePath).exactStandardizedFileURL
         let candidate = url.exactStandardizedFileURL
@@ -32,84 +36,14 @@ public struct CleanupRule: Sendable {
 }
 
 public enum Rules {
-    public static let generated: [CleanupRule] = [
-        .init(id: "developer.xcode.derived-data", relativePath: "Library/Developer/Xcode/DerivedData", category: .developer,
-              explanation: "Xcode build products and indexes. Source projects and archives are excluded.",
-              consequence: "Xcode will rebuild these files. Your next build and indexing pass may take longer.", owner: "com.apple.dt.Xcode", name: "Xcode Derived Data"),
-        .init(id: "developer.swiftpm.cache", relativePath: "Library/Caches/org.swift.swiftpm", category: .developer,
-              explanation: "Downloaded Swift package build caches.", consequence: "Packages may need to be downloaded and built again.", owner: "com.apple.dt.Xcode", name: "Swift package cache"),
-        .init(id: "browser.chrome.cache", relativePath: "Library/Caches/Google/Chrome", category: .caches,
-              explanation: "Google Chrome generated cache. Cookies, history, passwords and sessions are excluded.",
-              consequence: "Web content will be fetched again. Close Chrome before cleaning.", owner: "com.google.Chrome", name: "Chrome cache"),
-        .init(id: "app.spotify.cache", relativePath: "Library/Caches/com.spotify.client", category: .caches,
-              explanation: "Spotify's generated application cache. Offline downloads in Application Support are excluded.",
-              consequence: "Spotify may download cached content again.", owner: "com.spotify.client", name: "Spotify cache"),
-        .init(id: "browser.safari.cache", relativePath: "Library/Caches/com.apple.Safari", category: .caches,
-              explanation: "Safari generated cache. Browser history and website data are excluded.",
-              consequence: "Pages may load more slowly on their next visit. Close Safari first.", owner: "com.apple.Safari", name: "Safari cache"),
-        .init(id: "developer.homebrew.cache", relativePath: "Library/Caches/Homebrew", category: .developer,
-              explanation: "Downloaded Homebrew package artifacts, separate from installed packages.",
-              consequence: "Future installs may download packages again. Do not clean during a Homebrew operation.", owner: nil, name: "Homebrew downloads")
-    ] + expanded + earlyAppCaches
-
-    private static let expanded: [CleanupRule] = [
-        browser("firefox", name: "Firefox", path: "Firefox/Profiles", owner: "org.mozilla.firefox"),
-        browser("zen", name: "Zen", path: "zen/Profiles", owner: "app.zen-browser.zen"),
-        browser("brave", name: "Brave", path: "BraveSoftware/Brave-Browser", owner: "com.brave.Browser", chromium: true),
-        browser("edge", name: "Microsoft Edge", path: "Microsoft Edge", owner: "com.microsoft.edgemac", chromium: true),
-        .init(id: "developer.npm.cache", relativePath: ".npm/_cacache", category: .developer,
-              explanation: "npm's content-addressed download cache. Project dependencies and npm configuration are excluded.",
-              consequence: "Future installs may download packages again. Offline installs may be unavailable until the cache is rebuilt.", owner: nil, name: "npm downloads", tools: [.packageManager]),
-        .init(id: "developer.npm.npx", relativePath: ".npm/_npx", category: .developer,
-              explanation: "Temporary packages downloaded by npx. Project node_modules and configuration are excluded.",
-              consequence: "The next npx invocation may download its tools again. Offline use may be affected.", owner: nil, name: "npx tools", tools: [.packageManager]),
-        .init(id: "developer.npm.logs", relativePath: ".npm/_logs", category: .logs,
-              explanation: "npm diagnostic logs from previous commands.", consequence: "Previous install diagnostics will no longer be available here.", owner: nil, name: "npm logs", tools: [.packageManager]),
-        .init(id: "developer.yarn.classic", relativePath: "Library/Caches/Yarn/v6", category: .developer,
-              explanation: "Yarn Classic's global package cache. Project .yarn/cache, offline mirrors, configuration, and installed dependencies are excluded.",
-              consequence: "Yarn may download packages again. Offline installs may need the cache restored.", owner: nil, name: "Yarn Classic downloads", tools: [.packageManager]),
-        .init(id: "developer.pnpm.metadata", relativePath: "Library/Caches/pnpm/metadata-v1.3", category: .developer,
-              explanation: "pnpm registry metadata cache. Its shared package store and project links are excluded.",
-              consequence: "pnpm will fetch registry metadata again. No shared package store is removed.", owner: nil, name: "pnpm registry metadata", tools: [.packageManager]),
-        .init(id: "developer.pnpm.metadata-v1.4", relativePath: "Library/Caches/pnpm/metadata-v1.4", category: .developer,
-              explanation: "pnpm registry metadata cache. Its shared package store and project links are excluded.",
-              consequence: "Registry metadata will be fetched again; offline installs may be affected.", owner: nil, name: "pnpm registry metadata", tools: [.packageManager]),
-        .init(id: "developer.simulator.caches", relativePath: "Library/Developer/CoreSimulator/Caches", category: .developer,
-              explanation: "Generated CoreSimulator caches. Devices, installed runtimes, app documents, and device backups are excluded.",
-              consequence: "Simulator startup may take longer while caches rebuild. All simulators and developer tools must be stopped first.", owner: "com.apple.iphonesimulator", name: "Simulator caches", safety: .review, tools: [.simulator, .xcode]),
-        .init(id: "developer.simulator.logs", relativePath: "Library/Logs/CoreSimulator", category: .logs,
-              explanation: "CoreSimulator diagnostic logs. Device contents and runtimes are excluded.",
-              consequence: "Previous Simulator diagnostics will no longer be available here. Stop simulators before cleaning.", owner: "com.apple.iphonesimulator", name: "Simulator logs", tools: [.simulator, .xcode])
-    ]
-
-    // Provenance and unsupported families: Documentation/Cache-Support.md.
-    // Exact released product metadata bounds this first batch; no session root
-    // or arbitrary descendant can inherit authority from these rule IDs.
-    private static let vscode = GeneratedOwnerRequirement(bundleName: "Visual Studio Code.app", bundleID: "com.microsoft.VSCode",
-        productName: "Code", version: "1.142.0", commit: "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1")
-    private static let earlyAppCaches: [CleanupRule] = [
-        .init(id: "app.vscode.http-cache", relativePath: "Library/Application Support/Code/Cache", category: .caches,
-              explanation: "Electron's HTTP cache in VS Code's verified default data layout. Cookies, session storage, service workers and offline application data are excluded.",
-              consequence: "Network resources may need downloading again, and offline access to cached resources may be unavailable. Quit VS Code and its helpers first.",
-              owner: "com.microsoft.VSCode", name: "Network cache", tools: [.visualStudioCode], appName: "Visual Studio Code", requiredApplication: vscode),
-        .init(id: "app.vscode.gpu-cache", relativePath: "Library/Application Support/Code/GPUCache", category: .caches,
-              explanation: "Electron's generated GPU shader cache in VS Code's verified default data layout. Editor state, credentials and extensions are excluded.",
-              consequence: "Graphics caches will rebuild; initial rendering may take longer. Quit VS Code and its helpers first.",
-              owner: "com.microsoft.VSCode", name: "Graphics cache", tools: [.visualStudioCode], appName: "Visual Studio Code", requiredApplication: vscode),
-        .init(id: "app.vscode.bytecode", relativePath: "Library/Application Support/Code/CachedData", category: .caches,
-              explanation: "VS Code's generated compiled-code cache in its verified default data layout. Settings, credentials, extensions, backups and session storage are excluded.",
-              consequence: "VS Code will compile this cache again. The next launch may be slower. Quit the app and its helpers first.",
-              owner: "com.microsoft.VSCode", name: "Compiled code cache", tools: [.visualStudioCode], appName: "Visual Studio Code", requiredApplication: vscode),
-        .init(id: "app.vscode.logs", relativePath: "Library/Application Support/Code/logs", category: .logs,
-              explanation: "VS Code's diagnostic session logs in its verified default data layout. Workspace files, local history and editor backups are excluded.",
-              consequence: "Previous app and extension diagnostics will be unavailable unless restored. New sessions create new logs. Logs may contain private paths or diagnostic content.",
-              owner: "com.microsoft.VSCode", name: "Diagnostic logs", safety: .review, tools: [.visualStudioCode], appName: "Visual Studio Code", requiredApplication: vscode)
-    ]
-
-    private static func browser(_ id: String, name: String, path: String, owner: String, chromium: Bool = false) -> CleanupRule {
-        .init(id: "browser.\(id).profile-cache", relativePath: "Library/Caches/\(path)", category: .caches,
-              explanation: "\(name) generated local profile caches. Only named cache folders are included; cookies, sessions, history, passwords, and website storage are excluded.",
-              consequence: "Web content and scripts will be fetched or compiled again. Close \(name) before cleaning.", owner: owner, name: "\(name) web caches",
-              profileLeaves: chromium ? ["Cache", "Code Cache", "GPUCache"] : ["cache2", "startupCache"], chromiumProfiles: chromium)
-    }
+    private static let bundled: Result<RuleCatalog, RuleCatalogError> = {
+        do { return .success(try RuleLoader.bundled()) }
+        catch let error as RuleCatalogError { return .failure(error) }
+        catch { return .failure(RuleCatalogError(error.localizedDescription)) }
+    }()
+    // Tests can exercise alternate validated catalogs without a production override.
+    @TaskLocal static var catalogOverride: Result<RuleCatalog, RuleCatalogError>?
+    public static func catalog() throws -> RuleCatalog { try (catalogOverride ?? bundled).get() }
+    /// Read-only display compatibility. Scanners and mutation entry points require catalog().
+    public static var generated: [CleanupRule] { (try? catalog().generated) ?? [] }
 }

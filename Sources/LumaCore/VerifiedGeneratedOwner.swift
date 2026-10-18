@@ -1,7 +1,7 @@
 import Foundation
 
 /// Supported default layout for one named product; no arbitrary app-name matching.
-public struct GeneratedOwnerRequirement: Sendable {
+public struct GeneratedOwnerRequirement: Sendable, Codable, Equatable {
     public let bundleName: String
     public let bundleID: String
     public let productName: String

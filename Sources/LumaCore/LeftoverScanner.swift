@@ -92,6 +92,8 @@ public struct LeftoverLocation: Sendable {
 public struct KnownLeftoverPath: Sendable {
     public let relativePath: String
     public let owner: String
+    public var explanation: String? = nil
+    public var consequence: String? = nil
 }
 
 public struct LeftoverScanner: Scanner {
@@ -122,6 +124,7 @@ public struct LeftoverScanner: Scanner {
     }
 
     private func scanLocal() throws -> ScanReport {
+        _ = try Rules.catalog()
         let started = Date()
         let installed = try ApplicationPresence.bundleIdentifiers(home: home, roots: applicationRoots, emit: emit)
         var report = ScanReport()
