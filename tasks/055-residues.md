@@ -15,15 +15,16 @@ Open Residues, see what is available, select items and click Move to Trash in th
 - Separate read-only saved/partial observations from executable evidence. Selection captures exact items; obtain fresh ownership/identity evidence internally through 054's direct action path. Do not require the user to run Scan again. A reinstalled owner invalidates that item and gives one inline explanation.
 - Group residues by the exact full owning bundle identifier, for example `com.vendor.app`, using the existing `LeftoverGroup`/ownership resolver. Show that identifier as the group title, plus item count and unique logical total. Similar identifiers such as `com.vendor.app2` remain separate; a shared `com.vendor` prefix is not ownership evidence. Unresolved owners are explicitly separate and never gain cleanup eligibility from grouping.
 - Each group header has an accessible three-state checkbox (none, some, all). Selecting it selects all currently known eligible children of that exact group, including collapsed/offscreen rows; deselecting clears them. Child checkboxes update the group state. Filtering finds groups without silently changing the selected set; the action summary includes selected hidden groups. Refresh arrivals do not inherit an earlier group selection. No automatic initial selection.
+- Keep a fixed in-view selection/action footer visible while the residue list scrolls; selecting an early group must not require scrolling past every other group to reach Move to Trash.
 - Provide inline paths, ownership explanation and removal consequences. Initial selection is empty. Row/group selection and Move to Trash live together; only the selected items are authorized. No ReviewSheet, extra checkbox or navigation transition follows.
-- Preserve filters, scroll, unaffected findings and valid remaining selection after a subset succeeds. Show stable compact pending/outcome feedback, durable partial results and optional Activity/Undo. Failure never broadens selection or silently retries.
+- Preserve filters, scroll, unaffected findings and valid remaining selection after a subset succeeds. Show stable compact pending/outcome feedback, durable partial results and optional Activity/Undo. Failure never broadens selection or silently retries. Background scans and cleanup in unrelated features cannot clear this feature's selections; dirty only affected identifiers/roots after an actual outcome.
 - Bound refresh work and invalidation after app install/uninstall, cleanup and restore. Refresh changed supported roots instead of repeating unrelated full application sizing. Do not create a general background daemon or scheduler.
 
 ## Acceptance
 
 - [ ] First entry automatically discovers residues; later opens and relaunches show saved findings before background work completes.
 - [ ] Exact bundle-identifier groups have count/size and selectable headers; mixed child selection, collapse, scrolling, filtering and refresh preserve a predictable selected set without prefix-based owner merges.
-- [ ] Selected local residues or whole groups move to Trash with one action from the list and no second view or confirmation.
+- [ ] Selected local residues or whole groups move to Trash through a fixed visible footer, with one action from the list and no second view, long scroll or confirmation.
 - [ ] Stale observations, installed/embedded owners, shared/Apple data, links, provider paths and unreadable roots remain correctly protected; incomplete coverage is visible.
 - [ ] Reopening, refreshing and partial cleanup do not blank, jump or reset the list; display observations never bypass current core checks.
 
