@@ -40,8 +40,14 @@ extension LumaAppDelegate {
                     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try Data(content.utf8).write(to: url)
                 }
-                let id = "org.lumatest.direct"
-                try file("Applications/Fixture.app/Contents/Info.plist", "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>\(id)</string></dict></plist>")
+                let id = "org.direct"
+                try file("Applications/Vendor/Fixture.app/Contents/Info.plist", "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>\(id)</string><key>CFBundleIconFile</key><string>Fixture.png</string></dict></plist>")
+                let icon = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 64, pixelsHigh: 64, bitsPerSample: 8,
+                    samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 256, bitsPerPixel: 32)!
+                for x in 0..<64 { for y in 0..<64 { icon.setColor(NSColor(deviceRed: 0.4, green: 0.2, blue: 0.8, alpha: 1), atX: x, y: y) } }
+                let iconURL = home.appendingPathComponent("Applications/Vendor/Fixture.app/Contents/Resources/Fixture.png")
+                try FileManager.default.createDirectory(at: iconURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try icon.representation(using: .png, properties: [:])!.write(to: iconURL)
                 try file("Library/Caches/\(id)/cache", "cache")
                 try file("Library/Preferences/\(id).plist", "settings")
                 try file("Library/Application Support/\(id)/document", "keep this document")
@@ -72,6 +78,20 @@ extension LumaAppDelegate {
                 model.ensureApplicationInventory()
                 try await waitDirectUninstall { !model.visibleApplications.isEmpty }
                 let app = model.visibleApplications[0]
+                report["vendorInventoryAndIcon"] = app.url.path.contains("/Vendor/") && app.iconPNG != nil
+                let metadataOnly = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: app.bytes)
+                model.mergeApplicationInventory(ScanResult(report: ScanReport(), applications: [metadataOnly]))
+                report["metadataMergeKeepsIcon"] = model.visibleApplications.first { $0.id == app.id }?.iconPNG == app.iconPNG && app.iconPNG != nil
+                let oldRow = ApplicationRecord(url: home.appendingPathComponent("Applications/Unavailable.app"), name: "Unavailable", bundleID: "org.unavailable", version: "1", bytes: 0)
+                model.applications.append(oldRow)
+                var partial = ScanReport(); partial.isComplete = false
+                partial.coverage = [.init(ruleID: "inventory", title: "Unavailable", path: oldRow.url.path, category: .applications, state: .blocked, bytes: 0, detail: "Injected denied metadata")]
+                model.mergeApplicationInventory(ScanResult(report: partial, applications: [metadataOnly]))
+                report["partialInventoryRetainsUnavailableRow"] = model.visibleApplications.count == 2
+                partial.coverage = [.init(ruleID: "inventory.size", title: app.name, path: app.url.path, category: .applications, state: .blocked, bytes: 0, detail: "Injected denied sizing")]
+                model.mergeApplicationInventory(ScanResult(report: partial, applications: [metadataOnly]))
+                report["sizeFailureDoesNotKeepDeletedRows"] = model.visibleApplications.count == 1
+                report["twoComponentEligible"] = model.uninstallUnavailableReason(app) == nil
                 report["automaticProgressiveInventory"] = model.applicationInventory.isBusy && !model.visibleApplications.isEmpty
                 report["noScanOrDetailsRequired"] = model.inspectedApp == nil && model.reviewPlan == nil && !model.showingReview
                 guard let window = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }) else { throw LumaError.rejected("No main window") }
@@ -115,6 +135,8 @@ extension LumaAppDelegate {
                 try await waitDirectUninstall { !model.cleanupSession.isRunning }
                 report["directUndoWithoutSheet"] = window.attachedSheet == nil && model.history.allSatisfy(\.restored)
                 try await Task.sleep(for: .milliseconds(2200))
+                report["restoredIcon"] = model.visibleApplications.first { $0.id == app.id }?.iconPNG == app.iconPNG && app.iconPNG != nil
+                report["bundleOnlyRetainsOptionalData"] = FileManager.default.fileExists(atPath: home.appendingPathComponent("Library/Caches/\(id)/cache").path)
                 report["restoredRowReturns"] = model.visibleApplications.contains { $0.id == app.id }
                 report["staleInventoryCannotHideRestore"] = !model.applicationInventory.isBusy && model.visibleApplications.contains { $0.id == app.id }
                 report["restoredOutcome"] = model.cleanupSession.undoAttempts.last?.phase == .completed && model.status.contains("restored")

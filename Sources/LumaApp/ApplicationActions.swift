@@ -39,7 +39,7 @@ extension AppModel {
     }
 
     func uninstallUnavailableReason(_ app: ApplicationRecord) -> String? {
-        if !ApplicationRelationships.supports(app.bundleID) { return "Protected or unsupported application." }
+        if !ApplicationUninstall.supportsBundle(app.bundleID) { return "Protected or unsupported application." }
         let owner = app.bundleID.lowercased()
         if runningApplicationIDs.contains(where: { $0.lowercased() == owner || $0.lowercased().hasPrefix(owner + ".") })
             || runningApplicationURLs.contains(where: { Filesystem.isWithin($0, root: app.url) }) {
@@ -93,6 +93,8 @@ extension AppModel {
             if let plan = capturedPlan, let session = cleanupSession.sessions.first(where: { $0.id == plan.id }) {
                 let moved = history.filter { $0.planID == plan.id }.count
                 uninstallOutcome = "\(app.name): \(session.phase.label) · \(moved) moved · \(plan.items.count - moved) remaining"
+                let retained = plan.retainedApplicationData
+                if !retained.isEmpty { uninstallOutcome = (uninstallOutcome ?? "") + " · Retained: " + retained.joined(separator: "; ") }
                 uninstallMessages[app.id] = session.detail ?? uninstallOutcome
             } else {
                 uninstallOutcome = "\(app.name): \(preparationPhase.label) · \(uninstallMessages[app.id] ?? "Uninstall unavailable")"

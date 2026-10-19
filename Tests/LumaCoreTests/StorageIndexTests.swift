@@ -28,13 +28,47 @@ import Testing
         let index = try StorageIndex.scan(root: f.downloads)
         let children = index.children(of: index.rootID)
         let map = StorageMapEntry.entries(for: children)
-        #expect(map.count == 13)
+        #expect(map.count == children.prefix(12).filter { $0.bytes > 0 }.count + 1)
         #expect(map.last?.isRemainder == true)
         #expect(map.reduce(0) { $0 + $1.bytes } == index.nodes[index.rootID]?.bytes)
         #expect(throws: (any Error).self) { _ = try index.reviewItems(ids: ["storage-remainder"], directory: index.rootID) }
         #expect(!SafetyEngine(home: f.home).permitsManualSelection(at: f.downloads, authorizedRoots: [f.home]))
         #expect(SafetyEngine(home: f.home).permitsManualSelection(at: children[0].url, authorizedRoots: [f.downloads]))
         #expect(!SafetyEngine(home: f.home).permitsManualSelection(at: children[0].url, authorizedRoots: []))
+    }
+
+    @Test func mapAndListShareSortedFilteredMembershipAndReveal() throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        for i in 0..<220 {
+            let url = try f.file("item-\(i)", content: String(repeating: "x", count: i % 17))
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: Double(i % 7))], ofItemAtPath: url.path)
+        }
+        let index = try StorageIndex.scan(root: f.downloads)
+        // Mix in an explicit unknown observation; it remains a row without invented area.
+        let unknownURL = f.downloads.appendingPathComponent("item-unknown")
+        let unknown = StorageNode(url: unknownURL, parentID: index.rootID, isDirectory: false, isPackage: false,
+            hidden: false, observedAt: Date(), modified: nil, created: nil, bytes: 0, aggregateBytes: 0,
+            issue: "Unavailable fixture", accessCapability: nil, coverageState: .skipped, children: [], device: nil, inode: nil)
+        for sort in ["Size", "Name", "Modified"] {
+            for search in ["", "item-1"] {
+                let query = StorageListingQuery(largestFiles: false, directory: index.rootID, filter: "All items",
+                    showHidden: true, search: search, location: "All locations", sort: sort, selection: [])
+                let rows = try index.listing(query) + [unknown]
+                let partition = StorageExploreListing(nodes: rows)
+                let map = StorageMapEntry.entries(for: rows)
+                #expect(map.filter { !$0.isRemainder }.map(\.id) == partition.primary.filter { $0.bytes > 0 }.map(\.id))
+                #expect(map.last?.bytes == partition.remainder.reduce(0) { $0 + $1.bytes })
+                #expect((partition.primary + partition.remainder).map(\.id) == rows.map(\.id))
+                #expect(map.reduce(0) { $0 + $1.bytes } == rows.reduce(0) { $0 + $1.bytes })
+                #expect(!map.contains { $0.id == unknown.id })
+                var reveal = StorageListReveal()
+                reveal.reveal("storage-remainder", in: rows)
+                #expect(reveal.showOther)
+                reveal.reveal(rows.last!.id, in: rows)
+                #expect(reveal.displayLimit >= rows.count)
+                #expect(throws: (any Error).self) { try index.prepare(ids: ["storage-remainder"], home: f.home, ignoredPaths: []) }
+            }
+        }
     }
 
     @Test func excludedAndUnreadableArePartialRatherThanEmpty() throws {

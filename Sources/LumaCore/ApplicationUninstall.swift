@@ -1,5 +1,6 @@
 import Foundation
 import CoreServices
+import Darwin
 
 /// A negative/incomplete inventory never establishes exclusive data ownership.
 public enum ApplicationUninstall {
@@ -7,6 +8,26 @@ public enum ApplicationUninstall {
     @TaskLocal static var fixtureRegisteredURLs: [URL]?
 
     public enum Multiplicity: Sendable { case exclusive, shared, unknown }
+
+    public static func supportsBundle(_ id: String) -> Bool {
+        let lower = id.lowercased()
+        return lower != "com.apple" && !lower.hasPrefix("com.apple.") && lower != "app.luma.mac" && !lower.hasPrefix("app.luma.mac.")
+            && !lower.hasPrefix("group.")
+            && id.range(of: "^[A-Za-z0-9][A-Za-z0-9-]*(\\.[A-Za-z0-9][A-Za-z0-9-]*)+$", options: .regularExpression) != nil
+    }
+
+    /// Ordinary native deletion rights only. No authorization helper or chmod.
+    static func validateTrashRights(_ url: URL) throws {
+        let pinned = try PinnedPath(url)
+        guard pinned.value.st_uid == getuid() || pinned.value.st_uid == 0 else {
+            throw LumaError.rejected("This application belongs to another user; ordinary Trash is unsupported.")
+        }
+        guard pinned.value.st_flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE | UF_APPEND | SF_APPEND) == 0,
+              FileManager.default.isDeletableFile(atPath: url.path) else {
+            throw LumaError.rejected("macOS does not grant ordinary Trash rights for this application. Luma cannot request administrator privileges.")
+        }
+        try pinned.revalidate()
+    }
 
     public static let scopeDescription = "Moves this bundle and verified exclusive caches, logs, preferences and saved state to Trash. Documents, support data and containers stay. Shared or unverified ownership keeps all related data."
 
@@ -70,27 +91,36 @@ public enum ApplicationUninstall {
 
     public static func prepare(_ app: ApplicationRecord, home: URL, ignoredPaths: Set<String> = []) throws -> CleanupPlan {
         try NonMaterializingIO.perform {
-            guard ApplicationRelationships.supports(app.bundleID) else { throw LumaError.rejected("This application is protected or has an unsupported identifier.") }
+            guard supportsBundle(app.bundleID) else { throw LumaError.rejected("This application is protected or has an unsupported identifier.") }
             guard try Filesystem.applicationIdentifier(at: app.url) == app.bundleID else { throw LumaError.rejected("The application changed. Refresh Applications and try again.") }
+            guard ApplicationInventory.contains(app.url, home: home) else { throw LumaError.rejected("This application is outside the supported Applications inventory.") }
+            try validateTrashRights(app.url)
             var items: [CleanupItem] = []
-            if try multiplicity(app: app, home: home) == .exclusive {
+            var retained: [String] = []
+            if ApplicationRelationships.supports(app.bundleID), try multiplicity(app: app, home: home) == .exclusive {
                 let candidates = ApplicationRelationships.candidates(owner: app.bundleID, home: home).filter { [.generated, .settings].contains($0.category) }
                 let roots = candidates.filter { candidate in !candidates.contains { $0.id != candidate.id && Filesystem.isWithin(candidate.url, root: $0.url) } }
                 for relationship in roots {
                     do {
                         _ = try ApplicationRelationships.resolve(url: relationship.url, owner: app.bundleID, home: home)
-                        items.append(try Filesystem.item(relationship.url, category: .related, safety: .review,
+                        try SafetyEngine.validateIgnores(relationship.url, ignoredPaths: ignoredPaths)
+                        let item = try Filesystem.item(relationship.url, category: .related, safety: .review,
                             explanation: relationship.evidence, consequence: relationship.consequence,
-                            rule: "application.exact-related", owner: app.bundleID))
+                            rule: "application.exact-related", owner: app.bundleID)
+                        // Optional roots are included whole, or retained whole. Never split around unsafe descendants.
+                        try SafetyEngine(home: home, ignoredPaths: ignoredPaths).validate(item)
+                        items.append(item)
                     } catch is CancellationError { throw CancellationError() }
-                    catch { if GeneratedDataScanner.failureState(error) != .missing { throw error } }
+                    catch { if GeneratedDataScanner.failureState(error) != .missing { retained.append("\(relationship.url.path): \(error.localizedDescription)") } }
                 }
+            } else {
+                retained.append("Related data retained: exclusive ownership or exact data matching is unavailable.")
             }
             // Bundle last: all related-data checks can still verify its installation and helpers.
             items.append(try Filesystem.item(app.url, category: .applications, safety: .review,
                 explanation: "Chosen installation with exact bundle identifier: \(app.bundleID).",
                 consequence: "Uninstalls this application bundle.", rule: "application.exact-bundle", owner: app.bundleID))
-            return try CleanupPlan(items: items, ignoredPaths: ignoredPaths, source: .applications, uninstallApplication: app)
+            return try CleanupPlan(items: items, ignoredPaths: ignoredPaths, source: .applications, uninstallApplication: app, retainedApplicationData: retained)
         }
     }
 

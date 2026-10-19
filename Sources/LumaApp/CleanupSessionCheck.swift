@@ -52,6 +52,9 @@ extension LumaAppDelegate {
                 try await Task.sleep(for: .milliseconds(600))
                 report["stoppingRetainsBusy"] = model.busy && model.cleanupSession.stopping
                 try saveCleanupCheck(output, suffix: "stopping")
+                // View rendering may finish before the next two-second sample.
+                // Prove monitoring continues while the fixture mutation is gated.
+                try await waitCleanupCheck { model.cpuHistory.count > samples }
                 gate.release.signal()
                 try await waitCleanupCheck { !model.busy && !model.cleanupSession.isRunning }
                 report["partialCleanupRecorded"] = model.history.count == 1 && model.cleanupSession.sessions.first?.phase == .partial && model.recoveryNotices.isEmpty

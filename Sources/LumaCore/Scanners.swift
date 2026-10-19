@@ -154,8 +154,11 @@ public enum ApplicationScanner {
         try NonMaterializingIO.perform {
             let metadata = try Filesystem.applicationMetadata(at: url)
             let identifier = try Filesystem.applicationIdentifier(at: url)
+            if let type = metadata["CFBundlePackageType"] as? String, type != "APPL" {
+                throw LumaError.rejected("This bundle is not an application.")
+            }
             return ApplicationRecord(url: url, name: metadata["CFBundleDisplayName"] as? String ?? url.deletingPathExtension().lastPathComponent,
-                bundleID: identifier, version: metadata["CFBundleShortVersionString"] as? String ?? "Unknown", bytes: verifiedBytes ?? 0, sizeState: verifiedBytes == nil ? .pending : .available)
+                bundleID: identifier, version: metadata["CFBundleShortVersionString"] as? String ?? "Unknown", bytes: verifiedBytes ?? 0, sizeState: verifiedBytes == nil ? .pending : .available, iconPNG: try ApplicationIcon.png(bundle: url, metadata: metadata))
         }
     }
 
@@ -174,20 +177,16 @@ public enum ApplicationScanner {
                 emit(.progress(.init("Discovering application metadata", current: root.lastPathComponent)))
                 do {
                     try Filesystem.validatePath(root)
-                    let children = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-                    guard children.count <= 10_000 else { throw LumaError.rejected("This Applications folder exceeds the inventory limit.") }
-                    for url in children where url.pathExtension == "app" {
-                        try Task.checkCancellation()
-                        do {
-                            try Filesystem.validatePath(url)
-                            let identifier = try Filesystem.applicationIdentifier(at: url)
-                            let metadata = try Filesystem.applicationMetadata(at: url)
-                            let app = ApplicationRecord(url: url,
-                                name: metadata["CFBundleDisplayName"] as? String ?? url.deletingPathExtension().lastPathComponent,
-                                bundleID: identifier, version: metadata["CFBundleShortVersionString"] as? String ?? "Unknown", bytes: 0, sizeState: .pending, iconPNG: try ApplicationIcon.png(bundle: url, metadata: metadata))
-                            apps.append(app); emit(.application(app))
-                        } catch is CancellationError { throw CancellationError() }
+                    var records: [ApplicationRecord] = []
+                    for url in try ApplicationInventory.urls(in: root, onFailure: { url, error in
+                        report.recordFailure(error, at: url, category: .applications, rule: "inventory", emit: emit)
+                    }) {
+                        do { records.append(try restoredRecord(at: url)) }
+                        catch is CancellationError { throw CancellationError() }
                         catch { report.recordFailure(error, at: url, category: .applications, rule: "inventory", emit: emit) }
+                    }
+                    for app in records where !ApplicationInventory.isCompanion(app, among: records) {
+                        apps.append(app); emit(.application(app))
                     }
                 } catch is CancellationError { throw CancellationError() }
                 catch { report.recordFailure(error, at: root, category: .applications, rule: "inventory", emit: emit, missingIsExpected: true) }
@@ -201,7 +200,7 @@ public enum ApplicationScanner {
                 do {
                     let bytes = try Filesystem.inspect(app.url, progress: { entries, bytes in
                         emit(.progress(.init("Measuring application bundles", current: app.name, completed: index, total: appCount, entries: entries, bytes: bytes)))
-                    }).0
+                    }, applicationBundle: true).0
                     apps[index] = ApplicationRecord(url: app.url, name: app.name, bundleID: app.bundleID, version: app.version, bytes: bytes, iconPNG: app.iconPNG)
                 } catch is CancellationError { throw CancellationError() }
                 catch {

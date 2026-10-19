@@ -57,8 +57,8 @@ public struct SafetyEngine: Sendable {
             throw LumaError.rejected(DeviceBackups.removalExplanation)
         }
         if item.ruleID == "application.exact-bundle" {
-            guard item.ownerBundleID != "app.luma.mac", item.ownerBundleID?.hasPrefix("com.apple.") == false,
-                  url.pathExtension == "app", [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications")].contains(where: { Filesystem.samePath($0, url.exactDeletingLastPathComponent()) }),
+            guard item.ownerBundleID.map(ApplicationUninstall.supportsBundle) == true,
+                  ApplicationInventory.contains(url, home: home),
                   (try? Filesystem.applicationIdentifier(at: url)) == item.ownerBundleID else { throw LumaError.rejected("Application identity could not be validated or is protected.") }
         } else if item.ruleID == "application.exact-related" {
             guard let owner = item.ownerBundleID, item.safety == .review else { throw LumaError.rejected("Protected application data or unsupported safety classification.") }
@@ -108,9 +108,9 @@ public struct SafetyEngine: Sendable {
             // Absence above already searched all apps and embedded helpers.
             // A second owner-specific walk cannot find an absent owner's helpers.
             let helpers: Set<String> = item.ruleID == "application.leftover.exact-identifier" ? []
-                : try preflightHelpers ?? ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: owner, emit: { event in
-                    if case .progress(let pulse) = event { progress(pulse) }
-                })
+                : try preflightHelpers ?? (item.ruleID == "application.exact-bundle"
+                    ? ApplicationPresence.selectedInstallation(url)
+                    : ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: owner))
             let running = Set(runningBundleIDs.map { $0.lowercased() })
             let normalized = owner.lowercased()
             guard helpers.isDisjoint(with: running), !running.contains(where: {
@@ -118,14 +118,18 @@ public struct SafetyEngine: Sendable {
             }) else { throw LumaError.rejected("Quit the owning app and its helpers before cleaning these files.") }
         }
         let a = try Filesystem.attributes(url)
-        guard (a[.ownerAccountID] as? NSNumber)?.uint32Value == getuid() else { throw LumaError.rejected("This item belongs to another user.") }
+        if item.ruleID == "application.exact-bundle" {
+            try ApplicationUninstall.validateTrashRights(url)
+        } else {
+            guard (a[.ownerAccountID] as? NSNumber)?.uint32Value == getuid() else { throw LumaError.rejected("This item belongs to another user.") }
+        }
         guard let location = item.identity.location else { throw LumaError.rejected("This scan uses older identity evidence. Scan again before cleanup.") }
         let pinned = try PinnedPath(url)
         try pinned.revalidate(expected: location)
         progress(.init("Verifying current files", current: item.name))
         let current = try Filesystem.inspect(url, progress: { entries, bytes in
             progress(.init("Verifying current files", current: item.name, entries: entries, bytes: bytes))
-        }).1
+        }, applicationBundle: item.ruleID == "application.exact-bundle").1
         try pinned.revalidate(expected: location)
         guard current == item.identity else { throw LumaError.rejected("Files changed since scanning. Scan again to review their current contents.") }
         let homeDevice = (try Filesystem.attributes(home)[.systemNumber] as? NSNumber)?.uint64Value

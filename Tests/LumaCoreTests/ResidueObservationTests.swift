@@ -57,7 +57,7 @@ private final class ResidueInventoryRows: @unchecked Sendable {
         #expect(report.items.map(\.id) == [item.id])
         #expect(report.visited == 1)
     }
-    @Test func ownershipDiscoverySharesPendingAppRowsWithoutSizing() throws {
+    @Test func ownershipDiscoveryDoesNotPublishUnboundedDisplayRows() throws {
         let (home, _) = try fixture(); defer { try? FileManager.default.removeItem(at: home) }
         let app = home.appendingPathComponent("Applications/Fixture.app/Contents")
         try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
@@ -66,8 +66,8 @@ private final class ResidueInventoryRows: @unchecked Sendable {
         let rows = ResidueInventoryRows()
         let owners = try ApplicationPresence.bundleIdentifiers(home: home, roots: [home.appendingPathComponent("Applications")], emit: { rows.receive($0) })
         #expect(owners.contains("org.lumatest.installed"))
-        #expect(rows.applications.count == 1)
-        #expect(rows.applications.first?.sizeState == .pending)
+        #expect(rows.applications.isEmpty)
+        #expect(try ApplicationScanner.inventory(home: home, roots: [home.appendingPathComponent("Applications")]).applications.count == 1)
     }
     @Test func corruptSavedObservationsDoNotBecomeResults() async throws {
         let (home, _) = try fixture(); defer { try? FileManager.default.removeItem(at: home) }

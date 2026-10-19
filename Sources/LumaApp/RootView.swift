@@ -14,69 +14,72 @@ struct RootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView().navigationSplitViewColumnWidth(min: 205, ideal: 216, max: 250)
         } detail: {
-            ZStack {
-                AmbientBackground()
-                VStack(spacing: 0) {
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 28) {
-                                pageHeader.id("page-top")
-                                if model.uninstallingApp == nil && !model.residueMoving && !model.storageMoving { CleanupProgressPanel() }
-                                if model.destination != .storage { ScanSessionPanel() }
-                                if let target = model.currentScanTarget, target != .overview, target != .storage { CompletedScanCaption(target: target) }
-                                Group {
-                                    switch model.destination ?? .overview {
-                                    case .overview: OverviewView()
-                                    case .residues: LeftoversView().task { if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) { model.ensureResidues() } }
-                                    case .maintenance: MaintenanceEntryView()
-                                    case .clean: CleanView()
-                                    case .backups: DeviceBackupsView()
-                                    case .downloads: DownloadsView()
-                                    case .projects: ProjectsView()
-                                    case .storage: StorageView()
-                                    case .applications: ApplicationsView()
-                                    case .duplicates: DuplicatesView()
-                                    case .optimizer: OptimizerView()
-                                    case .system: SystemView()
-                                    case .privacy: PrivacyView()
-                                    case .history: HistoryView()
+            GeometryReader { geometry in
+                ZStack {
+                    AmbientBackground()
+                    VStack(spacing: 0) {
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 28) {
+                                    pageHeader.id("page-top")
+                                    if model.uninstallingApp == nil && !model.residueMoving && !model.storageMoving { CleanupProgressPanel() }
+                                    if model.destination != .storage { ScanSessionPanel() }
+                                    if let target = model.currentScanTarget, target != .overview, target != .storage { CompletedScanCaption(target: target) }
+                                    Group {
+                                        switch model.destination ?? .overview {
+                                        case .overview: OverviewView()
+                                        case .residues: LeftoversView().task { if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) { model.ensureResidues() } }
+                                        case .maintenance: MaintenanceEntryView()
+                                        case .clean: CleanView()
+                                        case .backups: DeviceBackupsView()
+                                        case .downloads: DownloadsView()
+                                        case .projects: ProjectsView()
+                                        case .storage: StorageView()
+                                        case .applications: ApplicationsView()
+                                        case .duplicates: DuplicatesView()
+                                        case .optimizer: OptimizerView()
+                                        case .system: SystemView()
+                                        case .privacy: PrivacyView()
+                                        case .history: HistoryView()
+                                        }
                                     }
+                                }.padding(.horizontal, 36).padding(.top, 22).padding(.bottom, 30).frame(maxWidth: 1160)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .scrollPosition($scrollPosition)
+                            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
+                                if let page = model.destination { pageOffsets[page] = y }
+                            }
+                            .onChange(of: model.destination) { _, page in
+                                let y = page.flatMap { pageOffsets[$0] } ?? 0
+                                DispatchQueue.main.async { scrollPosition.scrollTo(y: y) }
+                            }
+                            .onChange(of: model.monitoringFocus) { _, id in
+                                guard let id else { return }
+                                DispatchQueue.main.async {
+                                    if model.destination == .system, model.monitoringFocus == id { proxy.scrollTo(id, anchor: .top) }
                                 }
-                            }.padding(.horizontal, 36).padding(.top, 22).padding(.bottom, 30).frame(maxWidth: 1160)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .scrollPosition($scrollPosition)
-                        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
-                            if let page = model.destination { pageOffsets[page] = y }
-                        }
-                        .onChange(of: model.destination) { _, page in
-                            let y = page.flatMap { pageOffsets[$0] } ?? 0
-                            DispatchQueue.main.async { scrollPosition.scrollTo(y: y) }
-                        }
-                        .onChange(of: model.monitoringFocus) { _, id in
-                            guard let id else { return }
-                            DispatchQueue.main.async {
-                                if model.destination == .system, model.monitoringFocus == id { proxy.scrollTo(id, anchor: .top) }
                             }
-                        }
-                        .onChange(of: model.duplicateComparisonGroup) { _, id in
-                            if let id { proxy.scrollTo("duplicate-group-" + id, anchor: .top) }
-                        }
-                        .onChange(of: model.downloadsTab) { _, _ in
-                            if model.destination == .downloads { proxy.scrollTo("page-top", anchor: .top) }
-                        }
-                        .onChange(of: model.downloadFocus) { _, id in
-                            if model.destination == .downloads, id != nil {
-                                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo("downloads-details", anchor: .bottom) }
+                            .onChange(of: model.duplicateComparisonGroup) { _, id in
+                                if let id { proxy.scrollTo("duplicate-group-" + id, anchor: .top) }
                             }
-                        }
+                            .onChange(of: model.downloadsTab) { _, _ in
+                                if model.destination == .downloads { proxy.scrollTo("page-top", anchor: .top) }
+                            }
+                            .onChange(of: model.downloadFocus) { _, id in
+                                if model.destination == .downloads, id != nil {
+                                    withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo("downloads-details", anchor: .bottom) }
+                                }
+                            }
 
+                        }.frame(minHeight: 0, maxHeight: .infinity)
+                        if model.destination == .applications && model.applicationTab == .installed { ApplicationActionBar() }
+                        if model.destination == .residues || (model.destination == .applications && model.applicationTab == .leftovers) { ResidueActionBar() }
+                        if model.destination == .storage { StorageActionBar() }
+                        WindowStatusBar()
                     }
-                    if model.destination == .applications && model.applicationTab == .installed { ApplicationActionBar() }
-                    if model.destination == .residues || (model.destination == .applications && model.applicationTab == .leftovers) { ResidueActionBar() }
-                    if model.destination == .storage { StorageActionBar() }
-                    WindowStatusBar()
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
             .navigationTitle("")
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
@@ -97,6 +100,8 @@ struct RootView: View {
                 }
             }
         }
+        .background(MainWindowReader(model: model))
+        .background(ClickAwayEditing())
         .tint(Palette.accent)
         .frame(minWidth: 640, minHeight: 540)
         .sheet(isPresented: $model.showingReview) { ReviewSheet() }
@@ -113,7 +118,13 @@ struct RootView: View {
         .onChange(of: model.applicationTab) { _, _ in model.cancelPendingReview() }
         .onChange(of: model.downloadsTab) { _, _ in model.cancelPendingReview() }
         .task {
-            model.showMainWindow = { openWindow(id: "main"); NSApplication.shared.activate() }
+            model.showMainWindow = {
+                if let window = model.mainWindow {
+                    if window.isMiniaturized { window.deminiaturize(nil) }
+                    window.makeKeyAndOrderFront(nil)
+                } else { openWindow(id: "main") }
+                NSApplication.shared.activate()
+            }
             model.showSettingsWindow = { openSettings(); NSApplication.shared.activate() }
             model.startMonitoring()
             await model.loadJournal()
@@ -130,7 +141,7 @@ struct RootView: View {
             if model.canCancel {
                 Button { model.cancel() } label: { Label(model.scanSessions.isBusy ? "Cancel scan" : "Cancel review", systemImage: "stop.circle") }.buttonStyle(.glass)
             }
-            if [.overview, .clean, .applications].contains(model.destination ?? .overview) {
+            if [.clean, .applications].contains(model.destination ?? .overview) {
                 Button { if model.destination == .applications { if model.applicationTab == .installed { model.ensureApplicationInventory(refresh: true) } else { model.ensureResidues(refresh: true) } } else { model.runScan() } } label: { Label(model.scanSessions.isBusy ? "Queue new scan" : model.destination == .overview ? "Smart Check" : model.destination == .applications && model.applicationTab == .installed ? "Refresh inventory" : "Scan again", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") }
                     .buttonStyle(.glass).controlSize(.large).font(.system(size: 11, weight: .medium)).keyboardShortcut("r", modifiers: .command).disabled(!model.canStartScan)
             }
@@ -204,14 +215,15 @@ struct SearchView: View {
                                     }
                                     Spacer()
                                 }.padding(8).background(highlighted == i ? Palette.accent.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 8))
-                            }.buttonStyle(.plain).id(i)
+                            }.buttonStyle(.plain).id(i).nativeCheckTarget("search-" + match.id)
                         }
                         if matches.isEmpty { Text("No matches in available observations.").font(.caption) }
-                        if model.storageIndex == nil { Text("Files are not indexed yet. Open Storage to discover readable locations.").font(.caption).foregroundStyle(.secondary) }
+                        if model.storageIndex == nil { Text("Files are not indexed yet. Open Storage and choose Scan accessible Mac.").font(.caption).foregroundStyle(.secondary) }
                     }
                 }.onChange(of: highlighted) { _, i in proxy.scrollTo(i) }
             }
         }.padding(18).frame(width: 400, height: 400)
+            .background(ClickAwayEditing())
             .defaultFocus($typing, true)
             .onChange(of: model.search) { _, _ in highlighted = 0 }
             .onExitCommand { model.showingSearch = false }
@@ -299,6 +311,11 @@ struct WindowStatusBar: View {
 
 private struct SidebarDiskCard: View {
     @Environment(AppModel.self) private var model
+    private var availability: String {
+        guard model.system.diskAvailable else { return model.system.sampledAt == nil ? "Collecting…" : "Unavailable" }
+        let stale = model.system.sampledAt.map { Date().timeIntervalSince($0) > 10 } ?? false
+        return (stale ? "Stale · " : "") + "\(formatBytes(model.system.availableDisk)) available"
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -308,10 +325,25 @@ private struct SidebarDiskCard: View {
                 }
                 GeometryReader { proxy in
                     Capsule().fill(.primary.opacity(0.07))
-                    Capsule().fill(LinearGradient(colors: [Palette.accent.opacity(0.6), Palette.accent], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: proxy.size.width * CGFloat(1 - Double(model.system.availableDisk) / Double(max(1, model.system.totalDisk))))
+                    if model.system.diskAvailable {
+                        Capsule().fill(LinearGradient(colors: [Palette.accent.opacity(0.6), Palette.accent], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: proxy.size.width * CGFloat(min(1, max(0, 1 - Double(model.system.availableDisk) / Double(max(1, model.system.totalDisk))))))
+                    }
                 }.frame(height: 5)
-                Text("\(formatBytes(model.system.availableDisk)) available").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(availability).font(.system(size: 10)).foregroundStyle(.secondary).help("Available for important usage")
             }.padding(16).background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal, 14).padding(.bottom, 18)
+    }
+}
+
+/// Capture the actual SwiftUI main window without mistaking Settings or the panel for it.
+private struct MainWindowReader: NSViewRepresentable {
+    let model: AppModel
+    func makeNSView(context: Context) -> WindowView { WindowView(model: model) }
+    func updateNSView(_ view: WindowView, context: Context) {}
+    final class WindowView: NSView {
+        let model: AppModel
+        init(model: AppModel) { self.model = model; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); if let window { model.mainWindow = window } }
     }
 }

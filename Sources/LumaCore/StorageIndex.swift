@@ -26,6 +26,8 @@ public struct StorageNode: Identifiable, Codable, Sendable {
     public var isComplete: Bool { issue == nil && cloud == nil }
 }
 
+public enum StorageDiscoveryBound: String, Codable, Sendable { case entries, time, depth }
+
 public struct StorageIndex: Codable, Sendable {
     @TaskLocal static var discoveryClock: (@Sendable () -> Date)?
     public let rootID: String
@@ -34,6 +36,18 @@ public struct StorageIndex: Codable, Sendable {
     public let scannedAt: Date
     public let duration: TimeInterval
     public var discoveryScopes: [StorageScope] = []
+    // Optional for compatibility with saved observations from earlier versions.
+    public var discoveryBounds: Set<StorageDiscoveryBound>? = nil
+    public var discoveryEntryLimit: Int? = nil
+    public var discoveryRootCount: Int? = nil
+
+    public func largerScanLimit(current: Int) -> Int? {
+        guard current == discoveryEntryLimit, isDiscovery, let bounds = discoveryBounds, bounds == [.entries], current > 0, current < 200_000 else { return nil }
+        let next = min(200_000, current * 2)
+        guard let roots = discoveryRootCount, roots > 0,
+              max(128, next / roots) > max(128, current / roots) else { return nil }
+        return next
+    }
 
     public func children(of id: String, showHidden: Bool = false) -> [StorageNode] {
         (nodes[id]?.children ?? []).compactMap { nodes[$0] }.filter { showHidden || !$0.hidden }
@@ -100,6 +114,7 @@ public struct StorageIndex: Codable, Sendable {
             var nodes: [String: StorageNode] = [:]
             var activeDirectories: [String: StorageNode] = [:]
             var count = 0
+            var bounds: Set<StorageDiscoveryBound> = []
             var lastPublication = Date()
             let clock = discoveryClock ?? { Date() }
             let deadline = clock().addingTimeInterval(15)
@@ -126,7 +141,12 @@ public struct StorageIndex: Codable, Sendable {
                     guard !ignoredPaths.contains(where: { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }) else {
                         throw LumaError.rejected("Ignored location; contents were not inspected.")
                     }
-                    guard count <= min(limit, stopAt), depth <= 128, !discovery || clock() < until else { throw LumaError.rejected("Discovery bound reached; remaining contents have unknown size. Continue discovery for more observations.") }
+                    if count > min(limit, stopAt) { bounds.insert(.entries) }
+                    if depth > 128 { bounds.insert(.depth) }
+                    if discovery && clock() >= until { bounds.insert(.time) }
+                    guard count <= min(limit, stopAt), depth <= 128, !discovery || clock() < until else {
+                        throw LumaError.rejected("Discovery bound reached; remaining contents have unknown size.")
+                    }
                     if discovery && (url.path == home.appendingPathComponent(".Trash").path || url.path == home.appendingPathComponent("Library/Application Support/Luma").path) {
                         throw LumaError.rejected("Luma persistence and Trash contents are excluded from automatic discovery.")
                     }
@@ -194,7 +214,10 @@ public struct StorageIndex: Codable, Sendable {
                         }
                         var remainingDirectories = entries.filter(\.directory).count
                         for entry in entries {
-                            guard count < min(limit, stopAt), !discovery || clock() < until else { issue = "Bounded discovery: remaining children have unknown size. Continue discovery for more."; break }
+                            let entryBound = count >= min(limit, stopAt), timeBound = discovery && clock() >= until
+                            if entryBound { bounds.insert(.entries) }
+                            if timeBound { bounds.insert(.time) }
+                            if entryBound || timeBound { issue = "Bounded discovery: remaining children have unknown size."; break }
                             // Divide both time and entries among sibling branches.
                             // Cheap branches return their unused time to the next one.
                             let now = clock()
@@ -244,7 +267,7 @@ public struct StorageIndex: Codable, Sendable {
                     for (id, value) in display where value.isDirectory && !value.isPackage {
                         display[id] = value.replacing(children: (children[id] ?? []).map(\.id).sorted())
                     }
-                    publish(Self(rootID: root.path, scope: scope, nodes: display, scannedAt: started, duration: Date().timeIntervalSince(started)))
+                    publish(Self(rootID: root.path, scope: scope, nodes: display, scannedAt: started, duration: Date().timeIntervalSince(started), discoveryBounds: bounds))
                 }
                 if count % 128 == 0 || parent == nil {
                     emit(.progress(.init("Indexing folder hierarchy", current: url.lastPathComponent, entries: count, bytes: bytes)))
@@ -254,7 +277,7 @@ public struct StorageIndex: Codable, Sendable {
             _ = try visit(root, parent: nil, depth: 0, stopAt: limit, until: deadline)
             try rootPin.revalidate()
             try scope.validate()
-            return Self(rootID: root.path, scope: scope, nodes: nodes, scannedAt: started, duration: Date().timeIntervalSince(started))
+            return Self(rootID: root.path, scope: scope, nodes: nodes, scannedAt: started, duration: Date().timeIntervalSince(started), discoveryBounds: bounds)
         }
     }
 }
@@ -265,18 +288,39 @@ public struct StorageMapEntry: Identifiable, Codable, Sendable {
     public let bytes: Int64
     public let isRemainder: Bool
 
-    /// Largest positive observations plus an explicitly synthetic remainder.
-    /// Unknown/zero nodes stay in the accessible list, never padded into the map.
+    /// Follow the list's membership and order; zero/unknown rows stay accessible in the list.
     public static func entries(for nodes: [StorageNode], limit: Int = 12) -> [Self] {
-        let sized = nodes.filter { $0.bytes > 0 }.sorted {
-            $0.bytes == $1.bytes ? $0.id < $1.id : $0.bytes > $1.bytes
+        let partition = StorageExploreListing(nodes: nodes, primaryLimit: limit)
+        var entries = partition.primary.filter { $0.bytes > 0 }.map {
+            Self(id: $0.id, name: $0.url.lastPathComponent, bytes: $0.bytes, isRemainder: false)
         }
-        let count = max(1, limit)
-        var entries = sized.prefix(count).map { Self(id: $0.id, name: $0.url.lastPathComponent, bytes: $0.bytes, isRemainder: false) }
-        if sized.count > count {
-            entries.append(Self(id: "storage-remainder", name: "Other matching items (\(sized.count - count))",
-                bytes: sized.dropFirst(count).reduce(0) { $0 + $1.bytes }, isRemainder: true))
+        let bytes = partition.remainder.reduce(Int64(0)) { $0 + $1.bytes }
+        if bytes > 0 {
+            entries.append(Self(id: "storage-remainder", name: "Other items (\(partition.remainder.count))",
+                bytes: bytes, isRemainder: true))
         }
         return entries
+    }
+}
+
+/// One membership decision for both the Explore list and its map, after filtering/sorting.
+public struct StorageExploreListing: Sendable {
+    public let primary: [StorageNode]
+    public let remainder: [StorageNode]
+    public init(nodes: [StorageNode], primaryLimit: Int = 12) {
+        let count = max(1, primaryLimit)
+        primary = Array(nodes.prefix(count)); remainder = Array(nodes.dropFirst(count))
+    }
+}
+
+public struct StorageListReveal: Sendable {
+    public var displayLimit = 200
+    public var showOther = false
+    public init() {}
+    public mutating func reveal(_ id: String, in rows: [StorageNode]) {
+        if id == "storage-remainder" { showOther = true; displayLimit = max(displayLimit, 13); return }
+        guard let position = rows.firstIndex(where: { $0.id == id }) else { return }
+        if position >= 12 { showOther = true }
+        displayLimit = max(displayLimit, position + 1)
     }
 }

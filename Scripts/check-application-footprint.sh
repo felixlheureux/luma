@@ -28,7 +28,7 @@ with context as directory:
                         "-luma.appearance", appearance, "-luma.menuBar", "YES"], check=True, timeout=60)
         direct = json.loads(direct_output.read_text())
         assert "error" not in direct, direct
-        checks = ["automaticProgressiveInventory", "noScanOrDetailsRequired", "narrowWindow", "windowSizeRestored",
+        checks = ["partialInventoryRetainsUnavailableRow", "sizeFailureDoesNotKeepDeletedRows", "metadataMergeKeepsIcon", "vendorInventoryAndIcon", "twoComponentEligible", "restoredIcon", "bundleOnlyRetainsOptionalData", "automaticProgressiveInventory", "noScanOrDetailsRequired", "narrowWindow", "windowSizeRestored",
                   "unrelatedScanAllowsUninstall", "unrelatedQueuedScanPreserved", "promptFeedback", "bundleRetainedUntilConfirmedMove",
                   "navigationKeepsMutation", "completedWithoutSheets", "onlyConfirmedBundleRemoved",
                   "retainedDocuments", "selectionPreserved", "directUndoWithoutSheet", "restoredRowReturns",

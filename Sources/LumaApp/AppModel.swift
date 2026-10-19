@@ -5,7 +5,7 @@ enum Destination: String, CaseIterable, Identifiable {
     case overview = "Overview", clean = "Clean", optimizer = "Optimizer", applications = "Apps"
     case backups = "Backups", downloads = "Downloads", projects = "Projects", storage = "Storage", duplicates = "Duplicates", privacy = "Privacy", system = "System", history = "Activity"
     case residues = "Residues", maintenance = "Maintenance"
-    static let core: [Destination] = [.storage, .applications, .residues, .maintenance, .system]
+    static let core: [Destination] = [.overview, .storage, .applications, .residues, .maintenance, .system]
     static let allCases: [Destination] = core + [.history]
     var id: String { rawValue }
     var symbol: String {
@@ -51,9 +51,17 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 @MainActor @Observable final class AppModel {
     static let shared = AppModel()
     let computerName = Host.current().localizedName ?? "This Mac"
+    @ObservationIgnored weak var mainWindow: NSWindow?
+    var processDetailsVisible: Bool {
+        mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false && mainWindow?.occlusionState.contains(.visible) == true && (destination == .system || destination == .optimizer)
+    }
+    func openMain(_ target: Destination? = nil) {
+        if let target { openCore(target) }
+        showMainWindow?()
+    }
     @ObservationIgnored var showMainWindow: (() -> Void)?
     @ObservationIgnored var showSettingsWindow: (() -> Void)?
-    var destination: Destination? = Destination.core.first { $0.rawValue == UserDefaults.standard.string(forKey: "luma.lastCorePage") } ?? .storage
+    var destination: Destination? = .overview
     var system = SystemSample()
     var runningApplicationIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
     var runningApplicationURLs = NSWorkspace.shared.runningApplications.compactMap(\.bundleURL)
@@ -89,6 +97,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var storageLoading = false
     var storageSelection: Set<String> = []
     var storageMode = "Largest files"
+    var storageSort = "Size"
     var storageFilter = "All items"
     var storageShowHidden = false
     var storageSearch = ""
@@ -218,13 +227,25 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var canCancel: Bool { scanSessions.isBusy || scanTask != nil }
     let cleanupSession = CleanupSessionModel()
     var scanTarget: ScanTarget? { scanSessions.session?.request.target }
+    func mergeApplicationInventory(_ result: ScanResult) {
+        let previous = Dictionary(applications.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        let refreshed = result.applications.map { $0.preservingIcon(from: previous[$0.id]) }
+        if result.report.isComplete { applications = refreshed }
+        else {
+            let unavailable = result.report.coverage.filter { $0.ruleID == "inventory" && $0.state != .missing }
+                .map { URL(fileURLWithPath: $0.path) }
+            var rows = previous.filter { _, app in unavailable.contains { Filesystem.isWithin(app.url, root: $0) } }
+            for app in refreshed { rows[app.id] = app }
+            applications = Array(rows.values)
+        }
+    }
+
     var visibleApplications: [ApplicationRecord] {
         var rows = Dictionary(uniqueKeysWithValues: applications.map { ($0.id, $0) })
         let previews = applicationInventory.isBusy ? applicationInventory.session?.preview.applications ?? [] : []
         let scanPreviews = scanSessions.isBusy && [.applications, .overview].contains(scanTarget)
             ? scanSessions.session?.preview.applications ?? [] : []
-        for app in residueDiscovery.session?.preview.applications ?? [] where rows[app.id] == nil { rows[app.id] = app }
-        for app in previews + scanPreviews { rows[app.id] = app }
+        for app in previews + scanPreviews { rows[app.id] = app.preservingIcon(from: rows[app.id]) }
         return rows.values.filter { !removedApplicationPaths.contains($0.id) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
@@ -295,7 +316,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             let oldOwners = Set(self.applications.map(\.bundleID))
             let newOwners = Set(snapshot.result.applications.map(\.bundleID))
             self.dirtyResidueOwners(oldOwners.symmetricDifference(newOwners))
-            self.applications = snapshot.result.applications
+            self.mergeApplicationInventory(snapshot.result)
             self.completedScans.insert(.applications)
         }
         residueDiscovery.onChange = { [weak self] in
@@ -315,10 +336,6 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         residueDiscovery.onComplete = { [weak self] snapshot in
             guard let self else { return }
             let report = snapshot.result.report
-            let existing = Set(self.applications.map(\.id))
-            for app in self.residueDiscovery.session?.preview.applications ?? [] where !existing.contains(app.id) && !self.removedApplicationPaths.contains(app.id) {
-                self.applications.append(app)
-            }
             if let owners = snapshot.request.residueOwners {
                 self.leftovers.removeAll { $0.ownerBundleID.map(owners.contains) == true }
                 self.leftovers.append(contentsOf: report.items)
@@ -346,7 +363,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             var iteration = 0
             while !Task.isCancelled {
                 let previous = system.cpuTicks
-                let includeProcesses = iteration % 3 == 0 && (destination == .system || destination == .optimizer)
+                let includeProcesses = iteration % 3 == 0 && processDetailsVisible
                 let collector = monitoringCollector
                 var next = await Task.detached(priority: .utility) { collector(previous, includeProcesses) }.value
                 if !includeProcesses { next.processes = system.processes; next.processGroups = system.processGroups }
@@ -357,10 +374,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                 let running = NSWorkspace.shared.runningApplications
                 runningApplicationIDs = Set(running.compactMap(\.bundleIdentifier))
                 runningApplicationURLs = running.compactMap(\.bundleURL)
-                if !previous.isEmpty {
-                    cpuHistory = Array((cpuHistory + [system.cpu]).suffix(60))
-                    memoryHistory = Array((memoryHistory + [Double(system.usedMemory) / Double(max(1, system.physicalMemory)) * 100]).suffix(60))
-                }
+                if system.cpuAvailable { cpuHistory = Array((cpuHistory + [system.cpu]).suffix(60)) }
+                if system.memoryAvailable { memoryHistory = Array((memoryHistory + [system.memoryUsagePercent]).suffix(60)) }
                 iteration += 1
                 try? await Task.sleep(for: .seconds(2))
             }
@@ -455,7 +470,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             cleanup = result.report.items; cleanupReport = result.report
             completedSnapshots[.generatedData] = snapshot; completedScans.insert(.clean)
         case .applications:
-            applications = result.applications; completedScans.insert(.applications)
+            mergeApplicationInventory(result); completedScans.insert(.applications)
         case .deviceBackups:
             deviceBackups = result.deviceBackups; completedScans.insert(.backups)
         case .downloads:

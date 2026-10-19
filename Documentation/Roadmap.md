@@ -6,7 +6,7 @@ The owner reset scope on 2026-10-19 after reviewing the app. [Product-Spec.md](P
 
 Main at `c03e185` implements 054–057: automatic app inventory and direct row uninstall, compact Undo and safe mutation draining, automatic residue observations, requested Storage discovery with saved browsing/direct Trash, and read-only iCloud metadata with owner-reported manual acceptance. Storage remains idle on opening; the owner's explicit Scan and optional picker decisions stand. Earlier app footprints/reset, verified cache rules, exact duplicates, analysis cache, central cleanup journal/recovery, and System/menu monitoring remain foundations.
 
-The follow-up review found uninstall/inventory/icon gaps, missing Overview, crowded residue/footer layouts, absent click-away focus, Storage selection/map inconsistencies and incomplete battery reporting. Tasks 060–063 correct these; they do not reopen completed implementation records or restart the deleted expansion backlog. Finish the in-progress menu task and corrections before new Maintenance work.
+The follow-up review found uninstall/inventory/icon gaps, missing Overview, crowded residue/footer layouts, absent click-away focus, Storage selection/map inconsistencies and incomplete battery reporting. Task 060 corrects app eligibility, inventory and local-resource icon handling. Task 061 restores Overview and simplifies layout/focus. Task 062 corrects Storage selection, map membership and bounded rescan behavior; task 063 corrects battery reporting; they do not reopen completed implementation records or restart the deleted expansion backlog. Task 058 now implements the focused Liquid Glass companion and two-action footer. Finish correction 063 before new Maintenance work.
 
 Task records 001–006, 008–017, 047, 048 and 050 retain implementation evidence. Task 007 remains closed with manual release checks deferred. The published personal Homebrew tap pins the 0.2.0 development release; this reset does not claim a new released version.
 
@@ -18,10 +18,10 @@ Task records 001–006, 008–017, 047, 048 and 050 retain implementation eviden
 | [055](../tasks/055-residues.md) | Implemented: automatic saved residue observations, exact selectable groups and in-place Trash/Undo |
 | [056](../tasks/056-storage-discovery.md) | Implemented: requested local discovery, saved Largest files/Explore browsing and direct selected-file Trash/Undo |
 | [057](../tasks/057-icloud-discovery.md) | Implemented: read-only iCloud metadata browsing; owner reports manual integration acceptance |
-| [058](../tasks/058-menu-panel.md) | In progress: flat focused menu with only Open Luma and Maintenance as primary footer actions |
-| [060](../tasks/060-app-inventory-and-uninstall-corrections.md) | Planned: stable app inventory, correct icons, companion filtering and supported bundle-only uninstall |
-| [061](../tasks/061-overview-layout-and-input-focus.md) | Planned: Overview first, residue hierarchy/spacing, click-away focus and compact Storage footer |
-| [062](../tasks/062-storage-selection-map-and-continuation.md) | Planned: visible Selected targets, consistent map/list membership and honest continuation |
+| [058](../tasks/058-menu-panel.md) | Implemented: focused native Liquid Glass menu, flush below the menu bar, with Open Luma and Maintenance footer actions |
+| [060](../tasks/060-app-inventory-and-uninstall-corrections.md) | Implemented: bounded vendor inventory, supported bundle-only uninstall, optional-data retention, narrow companion filtering and local icon preservation; root-native/asset limits recorded |
+| [061](../tasks/061-overview-layout-and-input-focus.md) | Implemented: Overview first, residue hierarchy/spacing, click-away focus and compact Storage footer |
+| [062](../tasks/062-storage-selection-map-and-continuation.md) | Implemented: cross-folder Selected, shared map/list membership, local row reveal and truthful larger fresh scans |
 | [063](../tasks/063-m2-battery-reporting.md) | Planned: verified M2 battery readings and accurate compact partial-state presentation |
 | [059](../tasks/059-maintenance.md) | Small approved cache/Trash actions and honest memory help |
 

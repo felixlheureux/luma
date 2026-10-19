@@ -34,14 +34,14 @@ public enum Filesystem {
         }
     }
 
-    public static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil) throws -> (Int64, FileIdentity) {
-        try inspect(url, limit: limit, progress: progress, onFile: nil)
+    public static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil, applicationBundle: Bool = false) throws -> (Int64, FileIdentity) {
+        try inspect(url, limit: limit, progress: progress, onFile: nil, applicationBundle: applicationBundle)
     }
 
     /// The plan uses the same inspection to count content once across separate
     /// selected trees. This callback is synchronous and never escapes inspection.
     static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil,
-                        onFile: ((FileObjectID, Int64) throws -> Void)?, legacyFingerprint: Bool = false) throws -> (Int64, FileIdentity) {
+                        onFile: ((FileObjectID, Int64) throws -> Void)?, legacyFingerprint: Bool = false, applicationBundle: Bool = false) throws -> (Int64, FileIdentity) {
         let started = Date()
         defer { inspectionObserver?(Date().timeIntervalSince(started)) }
         return try NonMaterializingIO.perform {
@@ -55,7 +55,11 @@ public enum Filesystem {
             var seen: Set<FileObjectID> = []
             var count = 0
             var lastUpdate = ContinuousClock.now
-            let bundleLinksAllowed = url.pathExtension == "app" && (try? applicationIdentifier(at: url)) != nil
+            let verifiedBundle = applicationBundle && (try? applicationIdentifier(at: url)).map(ApplicationUninstall.supportsBundle) == true
+            let bundleLinksAllowed = verifiedBundle || (url.pathExtension == "app" && (try? applicationIdentifier(at: url)) != nil)
+            func permittedOwner(_ uid: uid_t) -> Bool {
+                verifiedBundle ? (uid == 0 || uid == getuid()) : uid == root.st_uid
+            }
 
             // Length-prefixed fields and byte sorting preserve delimiters, newlines,
             // case, and canonically equivalent Unicode names without String equality.
@@ -75,7 +79,7 @@ public enum Filesystem {
                 guard UInt64(UInt32(bitPattern: info.st_dev)) == device else {
                     throw LumaError.rejected("A volume boundary was encountered.")
                 }
-                guard info.st_uid == root.st_uid else { throw LumaError.rejected("This tree contains an item owned by another user.") }
+                guard permittedOwner(info.st_uid) else { throw LumaError.rejected("This tree contains an item owned by another user.") }
                 guard try path.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile != true else {
                     throw LumaError.rejected("Finder aliases are excluded from cleanup.")
                 }
@@ -106,7 +110,7 @@ public enum Filesystem {
                             count += 1
                             guard count <= limit, bundleLinksAllowed,
                                   UInt64(UInt32(bitPattern: metadata.st_dev)) == device,
-                                  metadata.st_uid == root.st_uid else {
+                                  permittedOwner(metadata.st_uid) else {
                                 throw LumaError.rejected("Contains an unsupported symbolic link; excluded from cleanup.")
                             }
                             var bytes = [UInt8](repeating: 0, count: Int(PATH_MAX) + 1)
@@ -177,7 +181,7 @@ public enum Filesystem {
         var contents: [String: Int64] = [:]
         let (size, identity) = try inspect(url, progress: progress, onFile: { object, bytes in
             if captureContents { contents["\(object.device):\(object.inode)"] = bytes }
-        })
+        }, applicationBundle: rule == "application.exact-bundle")
         var item = CleanupItem(url: url, bytes: size, category: category, safety: safety,
                            explanation: explanation, consequence: consequence, ruleID: rule,
                            ownerBundleID: owner, identity: identity, scannedAt: Date())

@@ -225,12 +225,36 @@ private struct UninstallFixture {
         }
     }
 
+    @Test func unsafeOptionalRootsAreRetainedWholeAndCapturedChangesStillFail() async throws {
+        let f = try UninstallFixture(); defer { f.remove() }
+        try await f.withInventory {
+            let cache = f.home.appendingPathComponent("Library/Caches/org.lumatest.uninstall")
+            let logs = f.home.appendingPathComponent("Library/Logs/org.lumatest.uninstall")
+            try FileManager.default.createSymbolicLink(at: cache.appendingPathComponent("unsafe-link"), withDestinationURL: f.home)
+            let plan = try FilesystemAccess.$restriction.withValue({ Filesystem.isWithin($0, root: logs) ? .unknown : .local }) {
+                try ApplicationUninstall.prepare(f.app, home: f.home)
+            }
+            #expect(!plan.items.contains { $0.url == cache || $0.url == logs })
+            #expect(plan.retainedApplicationData.count == 2)
+            let included = try #require(plan.items.first { $0.ruleID == "application.exact-related" })
+            try Data("changed".utf8).write(to: included.url, options: .atomic)
+            let journal = try f.journal()
+            await #expect(throws: (any Error).self) { try await journal.execute(plan, context: { .init(processPaths: []) }) }
+            #expect(await journal.snapshot().records.isEmpty)
+            #expect(FileManager.default.fileExists(atPath: cache.path))
+            #expect(FileManager.default.fileExists(atPath: f.app.url.path))
+        }
+    }
+
     @Test func ignoredDescendantsRejectParentsAtPlanPreflightAndFinalMove() async throws {
         let f = try UninstallFixture(); defer { f.remove() }
         try await f.withInventory {
             let plan = try ApplicationUninstall.prepare(f.app, home: f.home)
             let ignored = plan.items[0].url.appendingPathComponent("cache").path
-            #expect(throws: (any Error).self) { try ApplicationUninstall.prepare(f.app, home: f.home, ignoredPaths: [ignored]) }
+            let retainingIgnoredRoot = try ApplicationUninstall.prepare(f.app, home: f.home, ignoredPaths: [ignored])
+            #expect(!retainingIgnoredRoot.items.contains { $0.url == plan.items[0].url })
+            #expect(retainingIgnoredRoot.items.last?.url == f.app.url)
+            #expect(retainingIgnoredRoot.retainedApplicationData.contains { $0.contains("ignored") })
             let journal = try f.journal()
             let counter = UninstallContextCounter()
             await #expect(throws: (any Error).self) {

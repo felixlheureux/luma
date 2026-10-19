@@ -34,13 +34,13 @@ struct ApplicationsView: View {
                 HStack(spacing: 16) {
                     summary("APPLICATIONS", value: "\(model.visibleApplications.count)")
                     summary("MEASURED BUNDLE STORAGE", value: measuredStorage)
-                    summary("RELATIONSHIP MATCHING", value: "Exact paths and mappings")
                 }
                 if model.applicationInventory.isBusy || (model.scanSessions.isBusy && [.applications, .overview].contains(model.scanTarget)) {
                     Text("Refreshing inventory · sizes may still be pending. Uninstall is available as rows arrive.").font(.system(size: 11)).foregroundStyle(.secondary)
                 } else if model.applications.contains(where: { $0.sizeState == .unavailable }) {
                     Text("Measured storage excludes applications with unavailable sizes. See coverage for details.").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
+                Text(ApplicationUninstall.scopeDescription).font(.caption).foregroundStyle(.secondary)
                 HStack {
                     TextField("Filter applications", text: $model.applicationSearch).textFieldStyle(.roundedBorder).frame(maxWidth: 280)
                     Spacer()
@@ -81,7 +81,6 @@ struct ApplicationsView: View {
                 .accessibilityLabel("Uninstall " + app.name)
         }
         VStack(alignment: .leading, spacing: 4) {
-            Text(ApplicationUninstall.scopeDescription).font(.caption).foregroundStyle(.secondary)
             if let message = model.uninstallMessages[app.id] ?? model.uninstallUnavailableReason(app) {
                 Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             }
@@ -104,7 +103,6 @@ struct LeftoversView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Residues").font(.title2)
             Text("App documents, preferences and offline content may be useful if you reinstall. Only your selected items move to Trash.")
                 .font(.caption).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 4) {
@@ -116,8 +114,12 @@ struct LeftoversView: View {
                         .disabled(model.residueDiscovery.isBusy || model.operationBusy)
                 }
                 if let date = model.residueSavedAt { Text("Last refresh: " + date.formatted()).font(.caption2).foregroundStyle(.secondary) }
-                ForEach(Array(model.residueCoverage.enumerated()), id: \.offset) { _, notice in
-                    Text(notice).font(.caption).foregroundStyle(.secondary)
+                if !model.residueCoverage.isEmpty {
+                    DisclosureGroup("Coverage") {
+                        ForEach(Array(model.residueCoverage.enumerated()), id: \.offset) { _, notice in
+                            Text(notice).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }.frame(minHeight: 42, alignment: .topLeading)
             HStack {
@@ -143,15 +145,19 @@ struct LeftoversView: View {
                             }
                             if !collapsed.contains(group.id) {
                                 ForEach(group.items) { item in
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Toggle(isOn: Binding(get: { model.residueSelection[item.id] != nil },
-                                            set: { model.selectResidue(item, selected: $0) })) {
-                                            Text(item.displayPath).font(.caption).textSelection(.enabled)
-                                        }.toggleStyle(.checkbox)
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Toggle("Select " + item.displayPath, isOn: Binding(get: { model.residueSelection[item.id] != nil },
+                                            set: { model.selectResidue(item, selected: $0) }))
+                                            .labelsHidden().toggleStyle(.checkbox).frame(width: 20)
                                             .disabled(!model.residueEligible(item) && model.residueSelection[item.id] == nil)
-                                        Text(item.explanation).font(.caption2).foregroundStyle(.secondary)
-                                        Text(item.consequence).font(.caption2).foregroundStyle(.secondary)
-                                    }.padding(.vertical, 5)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(item.displayPath).font(.caption).textSelection(.enabled)
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(item.explanation)
+                                                Text(item.consequence)
+                                            }.font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
+                                        }.frame(maxWidth: .infinity, alignment: .leading)
+                                    }.padding(.leading, 28).padding(.vertical, 5)
                                 }
                             }
                         }
@@ -207,7 +213,7 @@ struct ResidueActionBar: View {
                           let session = model.cleanupSession.sessions.first(where: { $0.id == id }), model.canUndo(session) {
                     Button("Undo") { model.undo(session) }.disabled(model.mutationUnavailableReason != nil)
                 }
-                Button("Activity") { model.destination = .history }
+                Button("Activity") { model.destination = .history }.nativeCheckTarget("Activity")
             }
         }.padding(12).background(.bar)
     }
@@ -227,7 +233,7 @@ struct ApplicationActionBar: View {
                           model.canUndo(session) {
                     Button("Undo") { model.undo(session) }.disabled(model.mutationUnavailableReason != nil)
                 }
-                Button("Activity") { model.destination = .history }
+                Button("Activity") { model.destination = .history }.nativeCheckTarget("Activity")
             }.padding(12).background(.bar)
     }
 }

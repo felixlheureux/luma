@@ -5,6 +5,10 @@ import SwiftUI
 
 struct SystemSample: Sendable {
     var sampledAt: Date?
+    var cpuAvailable = false
+    var memoryAvailable = false
+    var diskAvailable = false
+    var swapAvailable = false
     var networkObservation: NetworkObservation?
     var network = NetworkActivity()
     var batteryDetails = BatteryDetails()
@@ -51,6 +55,7 @@ struct SystemSample: Sendable {
         var result = SystemSample()
         result.sampledAt = Date()
         if let values = try? FileManager.default.homeDirectoryForCurrentUser.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]) {
+            result.diskAvailable = values.volumeTotalCapacity != nil && values.volumeAvailableCapacityForImportantUsage != nil
             result.totalDisk = Int64(values.volumeTotalCapacity ?? 0)
             result.availableDisk = values.volumeAvailableCapacityForImportantUsage ?? 0
         }
@@ -60,6 +65,7 @@ struct SystemSample: Sendable {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count) }
         }
         if vmStatus == KERN_SUCCESS {
+            result.memoryAvailable = true
             // Inactive memory includes reusable file cache; it is not all app memory.
             let memory = MemoryBreakdown(physical: result.physicalMemory, pageSize: Int64(getpagesize()),
                 anonymousPages: UInt64(vm.internal_page_count), wiredPages: UInt64(vm.wire_count),
@@ -81,7 +87,7 @@ struct SystemSample: Sendable {
         }
         var swap = xsw_usage()
         var swapSize = MemoryLayout<xsw_usage>.size
-        if sysctlbyname("vm.swapusage", &swap, &swapSize, nil, 0) == 0 { result.swap = Int64(swap.xsu_used) }
+        if sysctlbyname("vm.swapusage", &swap, &swapSize, nil, 0) == 0 { result.swap = Int64(swap.xsu_used); result.swapAvailable = true }
         var cpu = host_cpu_load_info()
         var cpuCount = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
         let cpuStatus = withUnsafeMutablePointer(to: &cpu) {
@@ -92,6 +98,7 @@ struct SystemSample: Sendable {
             if previous.count == 4 {
                 let delta = zip(result.cpuTicks, previous).map { $0 >= $1 ? $0 - $1 : 0 }
                 let total = delta.reduce(0, +)
+                result.cpuAvailable = total > 0
                 result.cpu = total > 0 ? Double(total - delta[2]) / Double(total) * 100 : 0
             }
         }

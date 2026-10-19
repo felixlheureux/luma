@@ -1,6 +1,6 @@
 # 060 — Correct app inventory, icons and uninstall eligibility
 
-Status: Planned
+Status: Done
 
 Priority: P1
 
@@ -26,12 +26,12 @@ Preserve central identity, owner/helper, provider, ignore, protected-path and re
 
 ## Acceptance
 
-- [ ] Supported two-component IDs uninstall bundle-only when related matching is unavailable; protected/unverifiable/provider cases remain blocked accurately.
-- [ ] Unsafe optional roots stay intact without blocking the safe bundle. Captured-target changes, ignored descendants and partial outcomes remain protected without automatic retries.
-- [ ] Unrelated denied helpers do not block the chosen app when its required evidence is complete; denied/active/unknown chosen helpers do. Matching embedded owners beneath differently identified apps are not lost.
-- [ ] Direct-root/vendor-subfolder membership and action eligibility stay consistent across Residues, refresh and Restore. Companion filtering preserves independent utilities and ownership detection.
-- [ ] Icons survive metadata merges and Undo/Restore. Loose-resource/key-precedence and supported asset cases are covered; unsupported/provider resources fall back without downloads.
-- [ ] Root/mixed-owner behavior has a documented supported/unsupported decision and disposable-fixture evidence, without general privilege relaxation.
+- [x] Supported two-component IDs uninstall bundle-only when related matching is unavailable; protected/unverifiable/provider cases remain blocked accurately.
+- [x] Unsafe optional roots stay intact without blocking the safe bundle. Captured-target changes, ignored descendants and partial outcomes remain protected without automatic retries.
+- [x] Unrelated denied helpers do not block the chosen app when its required evidence is complete; denied/active/unknown chosen helpers do. Matching embedded owners beneath differently identified apps are not lost.
+- [x] Direct-root/vendor-subfolder membership and action eligibility stay consistent across Residues, refresh and Restore. Companion filtering preserves independent utilities and ownership detection.
+- [x] Icons survive metadata merges and Undo/Restore. Loose-resource/key-precedence and supported asset cases are covered; unsupported/provider resources fall back without downloads.
+- [x] Root/mixed-owner behavior has a documented supported/unsupported decision and disposable-fixture evidence, without general privilege relaxation.
 
 ## Validation
 
@@ -47,3 +47,22 @@ Inspect direct actions, reasons, logos, keyboard access and narrow layout in Lig
 - Icon loss/key handling: [Scanners.swift](../Sources/LumaCore/Scanners.swift), [ApplicationIcon.swift](../Sources/LumaCore/ApplicationIcon.swift), [ApplicationIconView.swift](../Sources/LumaApp/ApplicationIconView.swift). Verify semantics against Apple's [Core Foundation keys reference](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html).
 
 Follow [README](README.md) for reference comparisons/evidence. Creating this task claims no implementation or native validation.
+
+## Implementation — 2026-10-19
+
+- `ApplicationUninstall.supportsBundle` separates two-component bundle eligibility from strict related-data matching. Exact protected identifiers, providers and unverified bundles remain blocked. Optional roots are captured whole or retained whole before plan creation, with recorded reasons; execution never silently drops/retries a captured target.
+- Direct plans discover helpers from the selected installation at whole-plan preflight and again before each move. Unknown/denied/linked selected helpers fail closed. Broad residue ownership discovery still includes embedded owners beneath differently identified apps and never supplies ordinary display rows.
+- `ApplicationInventory` bounds display membership to direct apps and two vendor-folder levels, with 10,000 entries per root. Packages/helpers remain excluded. Exact paired product-name/identifier companion associations are filtered only from display. Refresh retains observations for unreadable inventory locations; denied sizing does not retain deleted rows. Apps/Search share the same records; vendor mutation and Restore scopes agree.
+- Same-installation metadata merges preserve known icons; Restore reloads bounded local resources. PNG and ICNS are covered. `CFBundleIconName` takes precedence over the loose-file key and is never converted into an `.icns` path. Asset catalogs remain an explicit unsupported fallback until a public API's bounded/nondelegated read behavior is verified. No Finder, Quick Look or private catalog parsing was added.
+- The exact-bundle policy supports current-user/root contents only when native ordinary deletion rights allow the operation and immutable/append flags are absent. All identities/owners remain fingerprinted through Trash, Restore and reconciliation. Library/personal-data ownership restrictions are unchanged. Current-user/immutable fixtures exercise this decision; actual root/mixed-owner native moves remain unverified because `sudo -n true` reports that a password is required. No administrator credential, permission change or personal application was used.
+
+
+## Accepted validation
+
+- Full Swift suite: 327 reported tests across 33 suites pass, including the existing opt-in skips. New fixtures cover two-component eligibility, vendor/package boundaries, narrow companion associations, ownership-only membership, unrelated/chosen denied helpers, matching embedded owners, ignored/linked/denied optional roots, captured changes, ordinary native rights/immutable flags, PNG/ICNS/key precedence and icon merges/Restore.
+- Native applications: Light/Dark/System pass optional footprint/reset regressions and direct vendor-subfolder two-component Uninstall/Undo, known-icon merges, scoped partial inventory retention, deletion despite unrelated size failures, blocked reasons, navigation during mutation, selected state, narrow windows and stale-inventory Restore. Accepted injected one-bundle moves take 0.567–0.577 s for a 455-byte synthetic bundle plus synthetic cache/preferences/support data on Apple M2/16 GiB/macOS 27.0.1. These are fixture observations, not real Trash performance. Native screenshots of the original UI and colored fixture icon were inspected.
+- Native residues: Light/Dark/System pass automatic observations, exact groups, retained selections/results, navigation, direct actions and Undo with an injected fixture mover.
+- Actual root/mixed-owner native Trash remains unverified because noninteractive administrator authority is unavailable; the ordinary-rights policy and current-user/immutable fixture evidence are recorded in Safety.md. Asset catalogs remain a tested generic fallback. Full manual keyboard traversal/VoiceOver and macOS 26-specific integration are not claimed.
+
+- Native Stop/Undo regressions pass Light/Dark with durable partial sessions, direct Undo, restored fixtures and monitoring/menu continuity. Strict deep app-signature verification, shell syntax and diff/link checks pass. `Scripts/preview.sh` still fails its known stale 38×38 `overview.png` dimension assertion; it is not passing visual evidence. Full-size native application captures supply the inspected Light/Dark evidence. No real Trash or personal-data cleanup ran.
+- Final reference comparison repeated ApplicationsModule progress, related-data discovery and failed-removal resources from the read-only CleanMyMac 5.7.2 image, then ejected it. Reference runtime and native-rights equivalence remain unverified. Task 061 is next; this task adds no release/version change.

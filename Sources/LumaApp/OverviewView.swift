@@ -3,66 +3,37 @@ import LumaCore
 
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.colorScheme) private var scheme
     var body: some View {
-        VStack(alignment: .leading, spacing: 25) {
-            if model.smartStartedAt == nil { hero }
+        VStack(alignment: .leading, spacing: 22) {
             LiveOverviewMetrics()
-            SmartCheckView()
-            VStack(alignment: .leading, spacing: 10) {
-                SectionHeading(title: "A good place to start", detail: "You’re in control")
-                Surface(padding: 10) {
-                    VStack(spacing: 0) {
-                        InsightRow(symbol: "sparkles", tint: Palette.accent, title: model.cleanup.isEmpty ? "Find room in the everyday" : "Generated data, ready to review",
-                                   subtitle: "Known app caches and developer build files. Every rule explained.",
-                                   value: model.completedScans.contains(.clean) ? formatBytes(model.cleanupBytes) : "Run a check") {
-                            model.destination = .clean
-                            if !model.completedScans.contains(.clean) { model.runScan(.clean) }
-                        }
-                        Divider().padding(.leading, 56)
-                        InsightRow(symbol: "square.stack.3d.up", tint: Palette.blue, title: "Apps have a bigger footprint than you think",
-                                   subtitle: "Inspect application bundles and their related data.", value: "Explore") {
-                            model.destination = .applications
-                            if !model.completedScans.contains(.applications) { model.runScan(.applications) }
-                        }
-                        Divider().padding(.leading, 56)
-                        InsightRow(symbol: "square.on.square", tint: Palette.peach, title: "One copy might be enough",
-                                   subtitle: "Find exact duplicates with content verification, not guesswork.", value: "Choose folder") { model.chooseFolder(for: .duplicates) }
-                    }.padding(.horizontal, 10)
+            Surface(padding: 18) {
+                VStack(spacing: 0) {
+                    shortcut(.applications, detail: model.visibleApplications.isEmpty ? "Browse installed applications" : "\(model.visibleApplications.count) observed applications")
+                    Divider().padding(.vertical, 10)
+                    shortcut(.residues, detail: model.residueSavedAt == nil ? "Find potentially unclaimed app data" : "\(model.visibleResidues.count) observed items · refresh on entry")
+                    Divider().padding(.vertical, 10)
+                    shortcut(.storage, detail: model.storageIndex == nil ? "Scan when you’re ready" : "Saved observations available · scan to update")
+                    Divider().padding(.vertical, 10)
+                    shortcut(.maintenance, detail: "Choose a maintenance action")
+                    Divider().padding(.vertical, 10)
+                    shortcut(.system, detail: "Live measurements and running applications")
                 }
             }
-            HStack(spacing: 9) {
-                Image(systemName: "arrow.uturn.backward.circle").font(.system(size: 15)).foregroundStyle(Palette.mint)
-                Text("Review first. Trash by default. Always your decision.").font(.system(size: 11)).foregroundStyle(.secondary)
-                Spacer()
-                Text("LUMA / \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "DEV")").font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(.tertiary)
-            }.padding(.horizontal, 3)
         }
     }
-
-    private var hero: some View {
-        HStack(spacing: 20) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 7) { Circle().fill(Palette.mint).frame(width: 6, height: 6); Eyebrow(text: "Your Mac, in focus") }
-                Text("More space.\nLess guesswork.").font(.system(size: 35, weight: .semibold)).tracking(-1.3).lineSpacing(0)
-                Text("Understand what’s taking up space.\nMake changes with a little more confidence.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
-                PrimaryButton(title: "Run Smart Check", symbol: "sparkles") {
-                    model.runScan(.overview)
-                }.disabled(model.busy).padding(.top, 2)
-            }
-            Spacer(minLength: 0)
-            LiveStorageOrbit()
-                .frame(width: 245, height: 245)
-        }
-        .padding(.horizontal, 30).padding(.vertical, 25).frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 24).fill(Palette.surface.opacity(0.78))
-            RoundedRectangle(cornerRadius: 24).fill(LinearGradient(colors: [Palette.accent.opacity(0.025), Palette.accent.opacity(0.09), Palette.blue.opacity(0.055)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(scheme == .dark ? 0.07 : 0.5)))
+    private func shortcut(_ page: Destination, detail: String) -> some View {
+        Button { model.openCore(page) } label: {
+            HStack(spacing: 14) {
+                Image(systemName: page.symbol).foregroundStyle(Palette.accent).frame(width: 24)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(page.rawValue).font(.system(size: 13, weight: .semibold))
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityIdentifier("overview-" + page.id).nativeCheckTarget("overview-" + page.id)
     }
-
 }
 
 struct StorageOrbit: View {
@@ -89,29 +60,41 @@ struct StorageOrbit: View {
 
 private struct LiveOverviewMetrics: View {
     @Environment(AppModel.self) private var model
+    private var missing: String { model.system.sampledAt == nil ? "Collecting…" : "Unavailable" }
+    private var stale: Bool { model.system.sampledAt.map { Date().timeIntervalSince($0) > 10 } ?? false }
     var body: some View {
-        HStack(spacing: 14) {
-                metric("MEMORY USED", value: formatMemory(model.system.usedMemory), detail: "of \(formatMemory(model.system.physicalMemory)) · \(model.system.pressure.lowercased()) pressure", symbol: "memorychip", tint: Palette.accent, history: model.memoryHistory)
-                metric("CPU USAGE", value: model.cpuHistory.isEmpty ? "Sampling…" : "\(Int(model.system.cpu))%", detail: "\(ProcessInfo.processInfo.activeProcessorCount) cores · \(model.system.thermal.lowercased()) thermals", symbol: "cpu", tint: Palette.blue, history: model.cpuHistory)
-                metric("AVAILABLE SPACE", value: formatBytes(model.system.availableDisk), detail: "Available for important usage", symbol: "internaldrive", tint: Palette.accent, history: nil)
-            }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) { metrics(compact: false) }
+            Surface(padding: 16) { VStack(spacing: 16) { metrics(compact: true) } }
+        }
     }
-    private func metric(_ title: String, value: String, detail: String, symbol: String, tint: Color, history: [Double]?) -> some View {
-        Surface(padding: 17) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack { Eyebrow(text: title); Spacer(); Image(systemName: symbol).font(.system(size: 13)).foregroundStyle(tint) }
-                HStack(alignment: .firstTextBaseline) {
-                    Text(value).font(.system(size: 24, weight: .semibold)).tracking(-0.7)
-                    Spacer(minLength: 0)
-                    if let history { Sparkline(values: history, tint: tint).frame(width: 65, height: 28) }
+    @ViewBuilder private func metrics(compact: Bool) -> some View {
+        metric("MEMORY USED", value: model.system.memoryAvailable ? formatMemory(model.system.usedMemory) : missing,
+               detail: model.system.memoryAvailable ? "of \(formatMemory(model.system.physicalMemory)) · \(model.system.pressure.lowercased()) pressure" : "Memory measurement", symbol: "memorychip", compact: compact)
+        metric("CPU USAGE", value: model.system.cpuAvailable ? "\(Int(model.system.cpu))%" : missing,
+               detail: "\(ProcessInfo.processInfo.activeProcessorCount) cores", symbol: "cpu", compact: compact)
+        metric("AVAILABLE SPACE", value: model.system.diskAvailable ? formatBytes(model.system.availableDisk) : missing,
+               detail: "Available for important usage", symbol: "internaldrive", compact: compact)
+    }
+    @ViewBuilder private func metric(_ title: String, value: String, detail: String, symbol: String, compact: Bool) -> some View {
+        if compact {
+            HStack(spacing: 12) {
+                Image(systemName: symbol).foregroundStyle(Palette.accent).frame(width: 20)
+                VStack(alignment: .leading, spacing: 4) {
+                    Eyebrow(text: title)
+                    Text(stale ? "Stale · " + detail : detail).font(.system(size: 10)).foregroundStyle(.secondary)
                 }
-                Text(detail).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                Text(value).font(.system(size: 18, weight: .semibold)).fixedSize()
+            }
+        } else {
+            Surface(padding: 17) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack { Eyebrow(text: title); Spacer(); Image(systemName: symbol).foregroundStyle(Palette.accent) }
+                    Text(value).font(.system(size: 24, weight: .semibold)).tracking(-0.7)
+                    Text(stale ? "Stale · " + detail : detail).font(.system(size: 10)).foregroundStyle(.secondary)
+                }.frame(minWidth: 155, maxWidth: .infinity, alignment: .leading)
             }
         }
     }
-}
-
-private struct LiveStorageOrbit: View {
-    @Environment(AppModel.self) private var model
-    var body: some View { StorageOrbit(total: model.system.totalDisk, available: model.system.availableDisk) }
 }

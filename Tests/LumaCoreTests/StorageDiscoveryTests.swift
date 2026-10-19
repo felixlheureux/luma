@@ -81,6 +81,63 @@ private final class DiscoveryClock: @unchecked Sendable {
         #expect(try index.listing(query).isEmpty)
     }
 
+    @Test func selectedBypassesAllBrowsingFiltersAndCapturesExactTargets() throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        let hidden = try f.file(".hidden", content: "hidden")
+        let file = try f.file("folder/file", content: "nested")
+        let folder = file.deletingLastPathComponent()
+        let index = try StorageDiscovery.scan(home: f.home, roots: [f.home])
+        let ids: Set<String> = [hidden.path, folder.path]
+        for largest in [true, false] {
+            let query = StorageListingQuery(largestFiles: largest, directory: f.home.appendingPathComponent("Documents").path,
+                filter: "Selected", showHidden: false, search: "no matching paths", location: "/unrelated", sort: "Name", selection: ids)
+            let visible = Set(try index.listing(query).map(\.id))
+            #expect(visible == ids)
+            #expect(Set(try index.prepare(ids: visible, home: f.home, ignoredPaths: []).items.map(\.id)) == ids)
+            // Ineligible selections remain visible, and cannot gain authority from visibility.
+            #expect(throws: (any Error).self) { try index.prepare(ids: visible, home: f.home, ignoredPaths: [hidden.path]) }
+            if !largest {
+                try Data("changed".utf8).write(to: hidden)
+                #expect(Set(try index.listing(query).map(\.id)) == ids)
+                #expect(throws: (any Error).self) { try index.prepare(ids: visible, home: f.home, ignoredPaths: []) }
+            }
+        }
+    }
+
+    @Test func largerFreshScanOnlyIncreasesAnEntryBound() throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        for i in 0..<180 { _ = try f.file("entry-\(i)", content: "x") }
+        let bounded = try StorageDiscovery.scan(home: f.home, roots: [f.downloads], limit: 128)
+        #expect(bounded.discoveryBounds == [.entries])
+        #expect(bounded.largerScanLimit(current: 128) == 256)
+        #expect(bounded.largerScanLimit(current: 200_000) == nil)
+        #expect(bounded.largerScanLimit(current: 64) == nil)
+        let larger = try StorageDiscovery.scan(home: f.home, roots: [f.downloads], limit: 256)
+        #expect(Set(larger.nodes.keys).subtracting(bounded.nodes.keys).count > 0)
+        #expect(larger.largerScanLimit(current: 256) == nil)
+        let clock = DiscoveryClock()
+        let timed = try StorageIndex.$discoveryClock.withValue(clock.now) {
+            try FilesystemAccess.$restriction.withValue({ url in
+                if url.lastPathComponent.hasPrefix("entry-") { clock.advance() }
+                return .local
+            }) { try StorageDiscovery.scan(home: f.home, roots: [f.downloads], limit: 256) }
+        }
+        #expect(timed.discoveryBounds?.contains(.time) == true)
+        #expect(timed.largerScanLimit(current: 256) == nil)
+        #expect(timed.nodes.count > 2 && timed.nodes.count < larger.nodes.count)
+        #expect(timed.validHierarchy)
+        var divided = bounded; divided.discoveryRootCount = 6
+        #expect(divided.largerScanLimit(current: 128) == nil)
+        var capped = bounded; capped.discoveryEntryLimit = 200_000
+        #expect(capped.largerScanLimit(current: 200_000) == nil)
+        let decoded = try JSONDecoder().decode(StorageIndex.self, from: JSONEncoder().encode(bounded))
+        #expect(decoded.largerScanLimit(current: 128) == 256)
+        let cloud = bounded.includingCloud(.init(observations: [], notice: "Fixture"))
+        #expect(cloud.largerScanLimit(current: 128) == 256)
+        var legacy = bounded; legacy.discoveryBounds = nil; legacy.discoveryEntryLimit = nil
+        #expect(legacy.largerScanLimit(current: 128) == nil)
+    }
+
     @Test func freshAutomaticHomeSelectionNeedsNoPickerAndRoundTrips() async throws {
         let container = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/Fixtures/broad-\(UUID())")
         let f = try FilesystemEdgeFixture(root: container)

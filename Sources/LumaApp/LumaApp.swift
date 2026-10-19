@@ -29,10 +29,10 @@ struct LumaApp: App {
             }
             CommandMenu("Navigate") {
                 ForEach(Array(Destination.core.enumerated()), id: \.element.id) { index, page in
-                    Button(page.rawValue) { model.openCore(page); model.showMainWindow?() }
+                    Button(page.rawValue) { model.openMain(page) }
                         .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
                 }
-                Button("Activity") { model.openCore(.history); model.showMainWindow?() }.keyboardShortcut("9")
+                Button("Activity") { model.openMain(.history) }.keyboardShortcut("9")
             }
         }
         Settings { SettingsView().environment(model).preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil) }
@@ -55,7 +55,7 @@ struct LumaApp: App {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { AppModel.shared.showMainWindow?() }
+        AppModel.shared.openMain()
         return true
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -63,7 +63,7 @@ struct LumaApp: App {
         AppModel.shared.startMonitoring()
         statusController = StatusBarController(model: AppModel.shared)
         NSApplication.shared.setActivationPolicy(.regular)
-        if !CommandLine.arguments.contains("--snapshot") { NSApplication.shared.activate() }
+        NSApplication.shared.activate()
         if CommandLine.arguments.contains("--snapshot") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.captureSnapshot() }
         }
@@ -75,6 +75,12 @@ struct LumaApp: App {
         }
         let arguments = CommandLine.arguments
         #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-overview-input"), arguments.indices.contains(flag + 1) {
+            checkOverviewInput(output: arguments[flag + 1])
+        }
+        if let flag = arguments.firstIndex(of: "--check-menu-panel"), arguments.indices.contains(flag + 1) {
+            checkMenuPanel(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-monitoring-depth"), arguments.indices.contains(flag + 1) {
             checkMonitoringDepth(output: arguments[flag + 1])
         }
@@ -152,6 +158,8 @@ struct LumaApp: App {
 
     #if DEBUG
     func showMonitoringMenuForCheck() -> NSWindow? { statusController?.showForPreview(); return statusController?.previewWindow }
+    func toggleMonitoringMenuForCheck() { statusController?.toggleForCheck() }
+    func monitoringMenuDiagnosticsForCheck() -> [String: Any] { statusController?.diagnostics() ?? [:] }
     func hideMonitoringMenuForCheck() { statusController?.hideForPreview() }
     func scanCheckMenuVisible() -> Bool { statusController?.diagnostics()["visible"] as? Bool == true }
     #endif
@@ -219,41 +227,13 @@ struct LumaApp: App {
     private func captureSnapshot() {
         let args = CommandLine.arguments
         guard let flag = args.firstIndex(of: "--snapshot") ?? args.firstIndex(of: "--snapshot-menu") ?? args.firstIndex(of: "--scan-snapshot"), args.indices.contains(flag + 1) else { return }
-        let target = args.contains("--snapshot-menu") ? statusController?.previewWindow : NSApplication.shared.windows.first(where: { !($0 is NSPanel) && $0.frame.width >= 600 && $0.frame.height >= 400 })
+        let target = args.contains("--snapshot-menu") ? statusController?.previewWindow : AppModel.shared.mainWindow
         guard let window = target else {
             NSApplication.shared.terminate(nil)
             return
         }
-        // Capture only our own window so composited glass and native toolbar
-        // controls are represented. Fall back to a view render if unavailable.
-        let capture = Process()
-        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        capture.arguments = ["-x", "-o", "-l", String(window.windowNumber), args[flag + 1]]
-        capture.standardOutput = FileHandle.nullDevice; capture.standardError = FileHandle.nullDevice
-        if (try? capture.run()) != nil {
-            capture.waitUntilExit()
-            if capture.terminationStatus == 0 { NSApplication.shared.terminate(nil); return }
-        }
-        guard let view = window.contentView,
-              let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-            FileHandle.standardError.write(Data("Snapshot failed: no visible application window.\n".utf8))
-            NSApplication.shared.terminate(nil)
-            return
-        }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        // View caching omits the popover's native material. Composite the fallback
-        // over its appearance's window color so translucent content stays legible.
-        let image = NSImage(size: view.bounds.size, flipped: false) { rect in
-            window.effectiveAppearance.performAsCurrentDrawingAppearance {
-                NSColor.windowBackgroundColor.setFill()
-                rect.fill()
-                bitmap.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
-            }
-            return true
-        }
-        if let tiff = image.tiffRepresentation, let data = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
-            try? data.write(to: URL(fileURLWithPath: args[flag + 1]))
-        }
+        do { try saveWindowRender(window, path: args[flag + 1]) }
+        catch { FileHandle.standardError.write(Data("Snapshot failed: \(error.localizedDescription)\n".utf8)) }
         NSApplication.shared.terminate(nil)
     }
 }

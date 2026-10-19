@@ -27,6 +27,7 @@ public struct CleanupExecutionContext: Sendable {
 public struct CleanupPlan: Identifiable, Sendable {
     public let id: UUID
     public let source: CleanupSource
+    public let retainedApplicationData: [String]
     public let uninstallApplication: ApplicationRecord?
     public let resetApplication: ApplicationRecord?
     public let createdAt: Date
@@ -43,7 +44,7 @@ public struct CleanupPlan: Identifiable, Sendable {
     }
 
     public init(items: [CleanupItem], authorizedRoots: [URL] = [], ignoredPaths: Set<String> = [],
-                duplicateGroups: [DuplicateGroup] = [], source: CleanupSource = .storage, resetApplication: ApplicationRecord? = nil, uninstallApplication: ApplicationRecord? = nil) throws {
+                duplicateGroups: [DuplicateGroup] = [], source: CleanupSource = .storage, resetApplication: ApplicationRecord? = nil, uninstallApplication: ApplicationRecord? = nil, retainedApplicationData: [String] = []) throws {
         if let app = uninstallApplication {
             guard source == .applications, items.last?.url == app.url, items.last?.ruleID == "application.exact-bundle",
                   items.dropLast().allSatisfy({ $0.ruleID == "application.exact-related" }),
@@ -51,6 +52,7 @@ public struct CleanupPlan: Identifiable, Sendable {
                 throw LumaError.rejected("Uninstall requires the captured application and its exact related data.")
             }
         }
+        self.retainedApplicationData = retainedApplicationData
         self.uninstallApplication = uninstallApplication
         if source == .developerProjects {
             guard items.allSatisfy({ ProjectRule(rawValue: $0.ruleID) != nil && $0.projectEvidence != nil }) else { throw LumaError.rejected("Project review requires manifest-backed project findings.") }
@@ -93,7 +95,7 @@ public struct CleanupPlan: Identifiable, Sendable {
                 let (next, overflow) = contribution.addingReportingOverflow(bytes)
                 guard bytes >= 0, !overflow else { throw LumaError.rejected("The selection size could not be verified.") }
                 contribution = next
-            })
+            }, applicationBundle: item.ruleID == "application.exact-bundle")
             guard identity == item.identity, identity.location == item.identity.location, bytes == item.bytes else {
                 throw LumaError.rejected("Files changed since scanning. Scan again before reviewing their contents.")
             }
@@ -170,7 +172,12 @@ public struct CleanupPlan: Identifiable, Sendable {
     func preflightOwners(home: URL, progress: @escaping @Sendable (ScanPulse) -> Void = { _ in }) throws -> Set<String>? {
         let needsLeftovers = items.contains { $0.ruleID == "application.leftover.exact-identifier" }
         guard needsLeftovers || uninstallApplication != nil else { return nil }
-        return try ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: needsLeftovers ? nil : uninstallApplication?.bundleID, emit: { event in
+        if !needsLeftovers, let app = uninstallApplication {
+            return try ApplicationPresence.selectedInstallation(app.url, emit: { event in
+                if case .progress(let pulse) = event { progress(pulse) }
+            })
+        }
+        return try ApplicationPresence.bundleIdentifiers(home: home, emit: { event in
             if case .progress(let pulse) = event { progress(pulse) }
         })
     }
@@ -186,7 +193,7 @@ public struct CleanupPlan: Identifiable, Sendable {
         let engine = SafetyEngine(home: home, ignoredPaths: ignoredPaths.union(context.ignoredPaths))
         try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs, activity: context.activity,
             preflightOwners: uninstallApplication == nil ? preflightOwners : nil,
-            preflightHelpers: uninstallApplication == nil ? nil : preflightOwners, progress: progress)
+            preflightHelpers: try uninstallApplication.map { app in try preflightOwners ?? ApplicationPresence.selectedInstallation(app.url) }, progress: progress)
         guard item.ruleID == "duplicates.sha256", checkDuplicateContent else { return }
         guard let proof = duplicateProofs[Data(item.id.utf8)] else { throw LumaError.rejected("The duplicate group is missing. Scan again.") }
         try engine.validate(proof.keeper, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs)

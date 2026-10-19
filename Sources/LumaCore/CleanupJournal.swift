@@ -209,10 +209,10 @@ public actor CleanupJournal {
                         let movedPin = try PinnedPath(destination)
                         guard UInt64(UInt32(bitPattern: movedPin.value.st_dev)) == item.identity.device,
                               movedPin.value.st_ino == item.identity.inode,
-                              movedPin.value.st_uid == getuid(),
+                              (movedPin.value.st_uid == getuid() || (item.ruleID == "application.exact-bundle" && movedPin.value.st_uid == 0)),
                               try Filesystem.inspect(destination, progress: { entries, bytes in
                                   onDetail(.init("Verifying moved files", current: item.name, entries: entries, bytes: bytes))
-                              }).1 == item.identity else {
+                              }, applicationBundle: item.ruleID == "application.exact-bundle").1 == item.identity else {
                             throw LumaError.rejected("The moved item could not be identified. Review the interrupted operation in Activity.")
                         }
                         try movedPin.revalidate()
@@ -257,25 +257,25 @@ public actor CleanupJournal {
                 throw LumaError.rejected("This older activity entry has no parent-chain evidence. Restore it through Finder’s Trash.")
             }
             try validateTrashLocation(stored.trashed)
-            guard try Filesystem.inspect(stored.trashed).1 == expected else { throw LumaError.rejected("The item in Trash has changed or was replaced. Inspect it in Finder before restoring.") }
+            guard try Filesystem.inspect(stored.trashed, applicationBundle: stored.planSource == .applications && stored.original.pathExtension == "app").1 == expected else { throw LumaError.rejected("The item in Trash has changed or was replaced. Inspect it in Finder before restoring.") }
             try validateOriginalParent(stored.original, expected: expected)
             guard !exists(stored.original) else { throw LumaError.rejected("The original location is occupied. Restore using Finder to choose another location.") }
             let intent = JournalIntent(id: UUID(), action: .restore, original: stored.original, source: stored.trashed,
-                                       destination: stored.original, identity: expected, bytes: stored.bytes, date: Date(), recordID: stored.id)
+                                       destination: stored.original, identity: expected, bytes: stored.bytes, date: Date(), recordID: stored.id, planSource: stored.planSource)
             var prepared = state; prepared.pending.append(intent); try commit(prepared)
             var moveStarted = false
             do {
                 let sourcePin = try PinnedPath(stored.trashed)
                 let parentPin = try PinnedPath(stored.original.exactDeletingLastPathComponent())
                 try validateTrashLocation(stored.trashed)
-                guard try Filesystem.inspect(stored.trashed).1 == expected else { throw LumaError.rejected("The item changed before restore. Review it in Finder.") }
+                guard try Filesystem.inspect(stored.trashed, applicationBundle: stored.planSource == .applications && stored.original.pathExtension == "app").1 == expected else { throw LumaError.rejected("The item changed before restore. Review it in Finder.") }
                 try validateOriginalParent(stored.original, expected: expected)
                 try mutationCheckpoint?()
                 try Task.checkCancellation()
                 try sourcePin.revalidate()
                 try parentPin.revalidate()
                 try validateOriginalParent(stored.original, expected: expected)
-                guard !exists(stored.original), try Filesystem.inspect(stored.trashed).1 == expected else {
+                guard !exists(stored.original), try Filesystem.inspect(stored.trashed, applicationBundle: stored.planSource == .applications && stored.original.pathExtension == "app").1 == expected else {
                     throw LumaError.rejected("The restore source changed or the destination is occupied.")
                 }
                 // Native, exclusive same-volume rename relative to pinned directories.
@@ -295,7 +295,7 @@ public actor CleanupJournal {
                 try MutationOutcome.$preserving.withValue(true) {
                     restoreOutcomeCheckpoint?()
                     try parentPin.revalidate()
-                    guard try Filesystem.inspect(stored.original).1 == expected else {
+                    guard try Filesystem.inspect(stored.original, applicationBundle: stored.planSource == .applications && stored.original.pathExtension == "app").1 == expected else {
                         throw LumaError.rejected("The restored item could not be verified. Review Activity and Finder.")
                     }
                     var completed = state
@@ -339,7 +339,7 @@ public actor CleanupJournal {
         do {
             if exists(record.original) { return item(.occupied, "Original destination is occupied; use Finder to choose another location.") }
             try validateTrashLocation(record.trashed)
-            guard try Filesystem.inspect(record.trashed).1 == identity else { return item(.changed, "Trash contents changed; inspect in Finder.") }
+            guard try Filesystem.inspect(record.trashed, applicationBundle: record.planSource == .applications && record.original.pathExtension == "app").1 == identity else { return item(.changed, "Trash contents changed; inspect in Finder.") }
             try validateOriginalParent(record.original, expected: identity)
             return item(.eligible, "Eligible for verified restore")
         } catch {
@@ -412,13 +412,13 @@ public actor CleanupJournal {
                     do {
                         switch intent.action {
                         case .trash:
-                            if try matches(intent.source, identity: intent.identity) {
+                            if try matches(intent.source, identity: intent.identity, applicationBundle: intent.planSource == .applications && intent.original.pathExtension == "app") {
                                 next.pending.removeAll { $0.id == intent.id }; changed = true
                                 continue // The recorded move did not happen; never retry it automatically.
                             }
                             if let destination = intent.destination {
                                 try validateTrashLocation(destination)
-                                if try matches(destination, identity: intent.identity) {
+                                if try matches(destination, identity: intent.identity, applicationBundle: intent.planSource == .applications && intent.original.pathExtension == "app") {
                                     if !next.records.contains(where: { $0.id == intent.id }) {
                                         next.records.insert(intent.completedRecord(at: destination), at: 0)
                                     }
@@ -434,7 +434,7 @@ public actor CleanupJournal {
                                 let attributes = try? Filesystem.attributes(child)
                                 if (attributes?[.systemNumber] as? NSNumber)?.uint64Value == intent.identity.device,
                                    (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value == intent.identity.inode,
-                                   try matches(child, identity: intent.identity) { candidates.append(child) }
+                                   try matches(child, identity: intent.identity, applicationBundle: intent.planSource == .applications && intent.original.pathExtension == "app") { candidates.append(child) }
                             }
                             guard candidates.count == 1, let destination = candidates.first else {
                                 throw LumaError.rejected("The moved item could not be uniquely identified in Trash. Nothing will be retried automatically.")
@@ -445,10 +445,10 @@ public actor CleanupJournal {
                             next.pending.removeAll { $0.id == intent.id }; changed = true
                         case .restore:
                             guard let destination = intent.destination, let recordID = intent.recordID else { throw LumaError.rejected("Incomplete restore metadata; review it in Finder.") }
-                            if try matches(destination, identity: intent.identity), !exists(intent.source) {
+                            if try matches(destination, identity: intent.identity, applicationBundle: intent.planSource == .applications && intent.original.pathExtension == "app"), !exists(intent.source) {
                                 if let index = next.records.firstIndex(where: { $0.id == recordID }) { next.records[index].restored = true }
                                 next.pending.removeAll { $0.id == intent.id }; changed = true
-                            } else if try matches(intent.source, identity: intent.identity) {
+                            } else if try matches(intent.source, identity: intent.identity, applicationBundle: intent.planSource == .applications && intent.original.pathExtension == "app") {
                                 next.pending.removeAll { $0.id == intent.id }; changed = true
                             } else { throw LumaError.rejected("The interrupted restore cannot be verified. Check the original location and Trash in Finder.") }
                         }
@@ -494,12 +494,12 @@ public actor CleanupJournal {
         return snapshot()
     }
 
-    private func matches(_ path: URL, identity: FileIdentity) throws -> Bool {
+    private func matches(_ path: URL, identity: FileIdentity, applicationBundle: Bool = false) throws -> Bool {
         do {
             let attributes = try Filesystem.attributes(path)
             guard (attributes[.systemNumber] as? NSNumber)?.uint64Value == identity.device,
                   (attributes[.systemFileNumber] as? NSNumber)?.uint64Value == identity.inode else { return false }
-            return try Filesystem.inspect(path, onFile: nil, legacyFingerprint: identity.location == nil).1 == identity
+            return try Filesystem.inspect(path, onFile: nil, legacyFingerprint: identity.location == nil, applicationBundle: applicationBundle).1 == identity
         } catch {
             if GeneratedDataScanner.failureState(error) == .missing { return false }
             throw error
@@ -527,7 +527,7 @@ public actor CleanupJournal {
 
     private func validateOriginalParent(_ original: URL, expected: FileIdentity) throws {
         let parent = original.exactDeletingLastPathComponent()
-        let allowed = Filesystem.isWithin(original, root: home) || parent.exactStandardizedFileURL.path == "/Applications"
+        let allowed = Filesystem.isWithin(original, root: home) || ApplicationInventory.contains(original, home: home)
         guard allowed, !Filesystem.isWithin(original, root: home.appendingPathComponent(".Trash")), !Filesystem.samePath(original, home) else {
             throw LumaError.rejected("The original path is outside supported restore locations.")
         }

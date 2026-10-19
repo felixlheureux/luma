@@ -9,7 +9,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
-required = ["noScanOnOpen", "noScanOnWarmOpen", "requestedScanWithoutPicker", "partialCoverage", "providerExcluded", "cloudMetadataVisible", "cloudCleanupRejected", "cloudBytesExcluded", "unreadablePartial", "nothingSelected",
+required = ["selectedFooterVisible", "selectedIgnoresBrowsingFilters", "ineligibleSelectionVisibleAndBlocked", "ineligibleSelectionCanDeselect", "mapListMembershipAllSorts", "mapRemainderRevealsRows", "honestLargerFreshScan", "timeBoundCannotOfferLargerScan", "noScanOnOpen", "noScanOnWarmOpen", "requestedScanWithoutPicker", "partialCoverage", "providerExcluded", "cloudMetadataVisible", "cloudCleanupRejected", "cloudBytesExcluded", "unreadablePartial", "nothingSelected",
             "selectionSurvivesNavigationAndFilters", "cachedHistory", "narrowWindow", "directTrashWithoutSheet",
             "unaffectedInventoryRetained", "undoWithoutSheet", "undoUpdatesObservation", "pendingScopeKeepsLabels", "failedScopeKeepsLabelsAndOutcome",
             "warmHierarchyAvailable", "persistenceSettles", "coreRoutes", "monitoringContinued", "windowFrameRestored", "oldVolumeDoesNotCancelNewScope",

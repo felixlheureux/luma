@@ -4,12 +4,28 @@ cd "$(dirname "$0")/.."
 bash Scripts/make-icon.sh
 bash Scripts/build-app.sh debug
 mkdir -p Documentation/Screenshots
-dist/Luma.app/Contents/MacOS/Luma --check-preview --snapshot "$PWD/Documentation/Screenshots/overview.png" -luma.appearance light
-dist/Luma.app/Contents/MacOS/Luma --check-preview --snapshot "$PWD/Documentation/Screenshots/overview-dark.png" -luma.appearance dark
-dist/Luma.app/Contents/MacOS/Luma --check-preview --snapshot "$PWD/Documentation/Screenshots/system-dark.png" --page System -luma.appearance dark
-dist/Luma.app/Contents/MacOS/Luma --check-preview --snapshot "$PWD/Documentation/Screenshots/activity-dark.png" --page Activity -luma.appearance dark
-dist/Luma.app/Contents/MacOS/Luma --check-preview --snapshot-menu "$PWD/Documentation/Screenshots/menu-light.png" -luma.appearance light
-dist/Luma.app/Contents/MacOS/Luma --check-preview --snapshot-menu "$PWD/Documentation/Screenshots/menu-dark.png" -luma.appearance dark
+# Do not accept an old image when a launch fails to render its main window.
+rm -f Documentation/Screenshots/{overview,overview-dark,system-dark,activity-dark,menu-light,menu-dark}.png
+# Launch as a foreground app; direct CLI launches may never create the main window.
+python3 - <<'PY_RENDER'
+from pathlib import Path
+import subprocess
+root = Path.cwd()
+bundle = root / "dist/Luma.app"
+for name, appearance, page, menu in [
+    ("overview.png", "light", None, False),
+    ("overview-dark.png", "dark", None, False),
+    ("system-dark.png", "dark", "System", False),
+    ("activity-dark.png", "dark", "Activity", False),
+    ("menu-light.png", "light", None, True),
+    ("menu-dark.png", "dark", None, True),
+]:
+    args = ["--check-preview", "--snapshot-menu" if menu else "--snapshot",
+            str(root / "Documentation/Screenshots" / name), "-luma.appearance", appearance]
+    if page:
+        args += ["--page", page]
+    subprocess.run(["/usr/bin/open", "-W", "-n", str(bundle), "--args", *args], check=True, timeout=30)
+PY_RENDER
 
 python3 - <<'PY_CHECK'
 from pathlib import Path

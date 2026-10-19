@@ -7,13 +7,13 @@ struct SystemView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 16) {
-                graphCard(title: "CPU", value: "\(Int(model.system.cpu))%", detail: "\(ProcessInfo.processInfo.activeProcessorCount) active cores", values: model.cpuHistory, tint: Palette.blue)
-                graphCard(title: "Memory used", value: "\(Int(model.system.memoryUsagePercent))%", detail: "\(formatMemory(model.system.usedMemory)) / \(formatMemory(model.system.physicalMemory)) · \(model.system.pressure.lowercased()) pressure", values: model.memoryHistory, tint: Palette.accent)
+                graphCard(title: "CPU", available: model.system.cpuAvailable, value: model.system.cpuAvailable ? "\(Int(model.system.cpu))%" : missingReading, detail: "\(ProcessInfo.processInfo.activeProcessorCount) active cores", values: model.cpuHistory, tint: Palette.blue)
+                graphCard(title: "Memory used", available: model.system.memoryAvailable, value: model.system.memoryAvailable ? "\(Int(model.system.memoryUsagePercent))%" : missingReading, detail: model.system.memoryAvailable ? "\(formatMemory(model.system.usedMemory)) / \(formatMemory(model.system.physicalMemory)) · \(model.system.pressure.lowercased()) pressure" : "Memory reading unavailable", values: model.memoryHistory, tint: Palette.accent)
             }
             Surface {
                 HStack(spacing: 30) {
-                    readout("SWAP", value: formatMemory(model.system.swap), symbol: "arrow.left.arrow.right")
-                    readout("COMPRESSED", value: formatMemory(model.system.compressedMemory), symbol: "arrow.down.right.and.arrow.up.left")
+                    readout("SWAP", value: model.system.swapAvailable ? formatMemory(model.system.swap) : missingReading, symbol: "arrow.left.arrow.right")
+                    readout("COMPRESSED", value: model.system.memoryAvailable ? formatMemory(model.system.compressedMemory) : missingReading, symbol: "arrow.down.right.and.arrow.up.left")
                     readout("THERMAL STATE", value: model.system.thermal, symbol: "thermometer.medium")
                     readout("UPTIME", value: uptime, symbol: "clock")
                 }
@@ -22,10 +22,10 @@ struct SystemView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     SectionHeading(title: "Memory breakdown", detail: "Used = app + wired + compressed")
                     HStack(spacing: 22) {
-                        readout("APP MEMORY", value: formatMemory(model.system.appMemory), symbol: "app")
-                        readout("WIRED", value: formatMemory(model.system.wiredMemory), symbol: "lock")
-                        readout("CACHED FILES", value: formatMemory(model.system.cachedMemory), symbol: "doc.on.doc")
-                        readout("AVAILABLE", value: formatMemory(model.system.availableMemory), symbol: "memorychip")
+                        readout("APP MEMORY", value: model.system.memoryAvailable ? formatMemory(model.system.appMemory) : missingReading, symbol: "app")
+                        readout("WIRED", value: model.system.memoryAvailable ? formatMemory(model.system.wiredMemory) : missingReading, symbol: "lock")
+                        readout("CACHED FILES", value: model.system.memoryAvailable ? formatMemory(model.system.cachedMemory) : missingReading, symbol: "doc.on.doc")
+                        readout("AVAILABLE", value: model.system.memoryAvailable ? formatMemory(model.system.availableMemory) : missingReading, symbol: "memorychip")
                     }
                     Text("Reusable file cache is shown separately from used memory. macOS can reclaim it when applications need RAM.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
@@ -44,14 +44,19 @@ struct SystemView: View {
         let hours = Int(ProcessInfo.processInfo.systemUptime / 3600)
         return hours >= 24 ? "\(hours / 24)d \(hours % 24)h" : "\(hours)h"
     }
-    private func graphCard(title: String, value: String, detail: String, values: [Double], tint: Color) -> some View {
+    private var missingReading: String { model.system.sampledAt == nil ? "Collecting" : "Unavailable" }
+    private func graphCard(title: String, available: Bool, value: String, detail: String, values: [Double], tint: Color) -> some View {
         Surface {
             VStack(alignment: .leading, spacing: 15) {
-                HStack { Text(title).font(.system(size: 13, weight: .semibold)); Spacer(); StatusPill(text: "Live", tint: tint) }
+                HStack { Text(title).font(.system(size: 13, weight: .semibold)); Spacer(); TimelineView(.periodic(from: .now, by: 2)) { context in
+                    StatusPill(text: model.system.sampledAt.map { sampled in
+                        context.date.timeIntervalSince(sampled) > 10 ? "Updated " + sampled.formatted(date: .omitted, time: .shortened) : available ? "Recent sample" : "Unavailable"
+                    } ?? "Collecting", tint: tint)
+                } }
                 Text(value).font(.system(size: 34, weight: .semibold)).tracking(-1)
                 Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
                 Sparkline(values: values, tint: tint).accessibilityLabel("\(title) history").frame(height: 90)
-                Text("Last \(values.count * 2) seconds · sampled every 2s").font(.system(size: 10)).foregroundStyle(.tertiary)
+                Text("\(values.count) measured samples · every 2s while available").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
         }
     }

@@ -1,6 +1,6 @@
 # 062 — Keep Storage selections visible and browsing consistent
 
-Status: Planned
+Status: Done
 Priority: P1
 Depends on: Completed [056](056-storage-discovery.md) and [057](057-icloud-discovery.md); existing direct-action safety from [054](054-direct-uninstall.md)
 
@@ -26,10 +26,10 @@ Source review of `c03e185`; these are code findings, not a new native validation
 
 ## Acceptance
 
-- [ ] Selected shows all selected targets despite prior location/search/hidden filters; its count agrees with the action's captured target set. No invisible selection can authorize an unexpected Trash operation.
-- [ ] Explore's map, primary rows and Other items describe the same membership under every supported sort/filter. Map focus/remainder activation reveals the matching list content without changing removal selection or restarting discovery.
-- [ ] The discovery action either demonstrates bounded forward progress into previously unvisited work, or accurately describes a larger fresh scan and becomes unavailable when it cannot increase the relevant bound. Time-limited results cannot trigger a useless continuation loop.
-- [ ] Cold/warm opening remains idle, requested scans and optional folder selection still work, and cloud observations remain read-only without content materialization.
+- [x] Selected shows all selected targets despite prior location/search/hidden filters; its count agrees with the action's captured target set. No invisible selection can authorize an unexpected Trash operation.
+- [x] Explore's map, primary rows and Other items describe the same membership under every supported sort/filter. Map focus/remainder activation reveals the matching list content without changing removal selection or restarting discovery.
+- [x] The discovery action either demonstrates bounded forward progress into previously unvisited work, or accurately describes a larger fresh scan and becomes unavailable when it cannot increase the relevant bound. Time-limited results cannot trigger a useless continuation loop.
+- [x] Cold/warm opening remains idle, requested scans and optional folder selection still work, and cloud observations remain read-only without content materialization.
 
 ## Validation and starting points
 
@@ -38,3 +38,20 @@ Add focused generated-data fixtures to the existing Storage listing/discovery te
 Extend only the affected assertions in `Scripts/check-storage-browser.sh`: Selected with incompatible filters, map-to-collapsed-row focus, Other items under Name/Modified sorting, and the chosen bounded-discovery behavior. Verify the changed controls in Light/Dark/System at ordinary and narrow widths, including keyboard use and continued System monitoring. Use disposable fixtures and the existing injected mover if direct target capture is exercised; never scan personal data or invoke real Trash for QA. Run the meaningful changed checks on the final implementation and record actual outcomes and limits. This task file itself claims no test or native pass.
 
 Start in `StorageListing.swift`, `StorageView.swift`, `StorageActions.swift`, `StorageDiscovery.swift`, `StorageIndex.swift` and the existing Storage discovery/browser tests. Follow [README](README.md) for current queue and reference evidence; earlier automatic-start requirements in 056 are superseded by its owner correction.
+
+## Implementation
+
+- Selected uses the selection as its source and pauses search, location and hidden filters in both browse modes. Controls explain the paused filters. Ineligible retained targets show an inline reason, remain deselectable and block removal; fresh plan/journal checks remain unchanged.
+- The worker-prepared `StorageExploreListing` partitions the sorted/filtered rows for both the list and map. Positive primary observations retain their per-path logical area; zero/unknown observations stay accessible in the list. The remainder represents exactly the list's Other items and cannot enter a cleanup plan. Pointer/keyboard map focus expands and reveals corresponding content inside the browser's own scroll area, leaving selection and whole-page position alone.
+- Discovery stores optional entry/time/depth bound evidence, requested budget and root count. Only entry-only results with an effective larger per-root budget offer **Rescan with larger entry limit**, with explicit restart wording. Time/depth bounds, capped/complete scans and old saved observations with unknown budgets offer no misleading continuation. Existing 15-second/fair-branch bounds stay unchanged; no cursor, watcher or retry loop is added.
+- The Storage header stacks its existing scan/location actions at narrow widths. The detail viewport is explicitly constrained so an ineligible-selection explanation cannot push the action footer beyond the window. Idle opening, optional folder picking, retained observations, central mutation checks and read-only cloud metadata remain intact.
+
+## Validation
+
+Generated-data regressions cover exact visible/captured selection sets across incompatible filters, hidden paths and mixed folders/files; ignored/changed rejection; shared membership for Size/Name/Modified, ties/zeros/unknowns and filters; synthetic remainder rejection; reveal beyond the display bound; deterministic time-bound suppression; effective per-root entry increases, caps, saved metadata and useful observations. Existing cancellation/session, identity/provider/ignore and duplicate-keeper regressions remain in the suite.
+
+Final acceptance on Apple M2/16 GB/macOS 27.0.1: the full Swift suite passes 330 reported tests across 33 suites (five opt-in skips). Native Storage passes Light/Dark/System with 1,217 generated observations: first results 0.528–0.546 s, warm opening 0.093–0.121 s, requested discovery 2.144–2.803 s, maximum sampled main-actor interval 0.060–0.076 s, injected Trash 0.306–0.348 s and Undo 0.313–0.372 s. Exact Selected target capture, incompatible filters/hidden paths, blocked-but-deselectable targets, visible footer geometry, all-sort map membership, actual first-remainder-row visibility, effective larger fresh scans/time-bound suppression, idle cold/warm opening, scope retention, Search keyboard activation, narrow layouts and continued monitoring pass. Only generated data and an injected mover were used; no personal-folder scan, cloud download or real Trash was invoked. Light/Dark/System own-process renders were inspected.
+
+Shared native regressions pass: 60 Overview/input assertions on each fresh/legacy saved-page launch, menu interaction/appearance checks in Light/Dark/System, and close/monitor/reopen/Quit lifecycle. Strict deep debug-bundle signature verification, shell syntax, whitespace and local documentation links pass. Full manual keyboard/VoiceOver, composited glass/chrome, accessibility preference toggles, macOS 26-specific integration and real-home performance remain unverified; fixture timings do not establish real-home scan coverage.
+
+The required standalone `preview.sh` attempt still fails its existing missing `Documentation/Screenshots/overview.png` check; it is not accepted as passing. Dedicated dimension-checked native Storage/Overview renders provide the inspected Light/Dark/System and narrow-window evidence. Task 062 is complete with this existing preview-launcher limit; 063 battery reporting is next.

@@ -92,6 +92,11 @@ public struct ScanCoverage: Identifiable, Sendable {
     public let bytes: Int64
     public let detail: String
     public var accessCapability: FilesystemCapability? = nil
+    public init(ruleID: String, title: String, path: String, category: ItemCategory, state: CoverageState,
+                bytes: Int64, detail: String, accessCapability: FilesystemCapability? = nil) {
+        self.ruleID = ruleID; self.title = title; self.path = path; self.category = category
+        self.state = state; self.bytes = bytes; self.detail = detail; self.accessCapability = accessCapability
+    }
 }
 
 public struct ScanProgress: Sendable {
@@ -116,6 +121,13 @@ public struct ApplicationRecord: Identifiable, Sendable {
     public init(url: URL, name: String, bundleID: String, version: String, bytes: Int64, sizeState: ApplicationSizeState = .available, iconPNG: Data? = nil) {
         self.url = url; self.name = name; self.bundleID = bundleID; self.version = version
         self.bytes = bytes; self.sizeState = sizeState; self.iconPNG = iconPNG
+    }
+}
+
+extension ApplicationRecord {
+    public func preservingIcon(from previous: ApplicationRecord?) -> ApplicationRecord {
+        ApplicationRecord(url: url, name: name, bundleID: bundleID, version: version, bytes: bytes,
+            sizeState: sizeState, iconPNG: iconPNG ?? (previous?.id == id && previous?.bundleID == bundleID ? previous?.iconPNG : nil))
     }
 }
 

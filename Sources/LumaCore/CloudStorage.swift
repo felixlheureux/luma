@@ -187,6 +187,6 @@ extension StorageIndex {
             let total = root.children.compactMap { updated[$0]?.aggregateBytes }.reduce(0, +)
             updated[rootID] = root.replacing(aggregate: total, folderBytes: true, children: root.children.filter { $0 != branch } + [branch])
         }
-        return Self(rootID: rootID, scope: scope, nodes: updated, scannedAt: scannedAt, duration: duration, discoveryScopes: discoveryScopes)
+        return Self(rootID: rootID, scope: scope, nodes: updated, scannedAt: scannedAt, duration: duration, discoveryScopes: discoveryScopes, discoveryBounds: discoveryBounds, discoveryEntryLimit: discoveryEntryLimit, discoveryRootCount: discoveryRootCount)
     }
 }

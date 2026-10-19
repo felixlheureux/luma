@@ -141,6 +141,19 @@ private struct FeedbackFixture {
         let loaded = try ApplicationIcon.png(bundle: bundle, metadata: metadata)
         let image = try #require(loaded)
         #expect(image.count <= 131_072)
+        #expect(try ApplicationScanner.restoredRecord(at: bundle).iconPNG == image)
+        #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconName": "Fixture.png"]) == nil)
+        #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconName": "AssetIcon", "CFBundleIconFile": "Fixture.png"]) == nil)
+        // A bounded loose ICNS representation, with the extension omitted in metadata.
+        var icns = Data("icns".utf8)
+        var length = UInt32(png.length + 16).bigEndian
+        withUnsafeBytes(of: &length) { icns.append(contentsOf: $0) }
+        icns.append(Data("icp6".utf8))
+        length = UInt32(png.length + 8).bigEndian
+        withUnsafeBytes(of: &length) { icns.append(contentsOf: $0) }
+        icns.append(png as Data)
+        _ = try f.file("Applications/Fixture.app/Contents/Resources/Loose.icns", data: icns)
+        #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconFile": "Loose"]) != nil)
         let result = try ApplicationScanner.inventory(home: f.home, roots: [bundle.deletingLastPathComponent()])
         #expect(result.applications.first?.iconPNG != nil)
         try FilesystemAccess.$restriction.withValue({ $0.path == resource.path ? .providerManaged : .local }) { () throws -> Void in

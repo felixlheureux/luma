@@ -6,6 +6,10 @@ public enum ApplicationPresence {
     // Test observation only; cannot change ownership results or runtime policy.
     @TaskLocal static var inventoryObserver: (@Sendable (String?) -> Void)?
     public static func bundleIdentifiers(home: URL, roots: [URL]? = nil, matchingOwner: String? = nil, emit: ScanEmitter = { _ in }) throws -> Set<String> {
+        try inventory(home: home, roots: roots, matchingOwner: matchingOwner, emit: emit)
+    }
+
+    private static func inventory(home: URL, roots: [URL]? = nil, matchingOwner: String? = nil, selectedBundle: URL? = nil, emit: ScanEmitter = { _ in }) throws -> Set<String> {
         inventoryObserver?(matchingOwner)
         return try NonMaterializingIO.perform {
             let roots = roots ?? [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications"), URL(fileURLWithPath: "/System/Applications")]
@@ -14,19 +18,20 @@ public enum ApplicationPresence {
             let embeddedLocations = ["Contents/PlugIns", "Contents/Extensions", "Contents/XPCServices", "Contents/Library/LoginItems", "Contents/Frameworks", "Contents/MacOS"]
             func register(_ bundleURL: URL, depth: Int = 0, belongsToOwner: Bool = false) throws {
                 try Task.checkCancellation()
+                visited += 1
+                guard visited <= 100_000 else { throw LumaError.rejected("Installed helper evidence exceeded its entry limit.") }
                 let properties = try bundleURL.resourceValues(forKeys: [.isAliasFileKey, .isSymbolicLinkKey])
-                guard properties.isAliasFile != true, properties.isSymbolicLink != true else { return }
+                guard properties.isAliasFile != true, properties.isSymbolicLink != true else {
+                    if selectedBundle != nil { throw LumaError.rejected("A selected helper is an unsupported alias or link.") }
+                    return
+                }
+                try Filesystem.validatePath(bundleURL)
                 guard try Filesystem.attributes(bundleURL)[.type] as? FileAttributeType == .typeDirectory else { return }
                 emit(.progress(.init("Checking installed owners and helpers", current: bundleURL.lastPathComponent)))
                 let identifier = Bundle(url: bundleURL)?.bundleIdentifier ?? ""
-                if depth == 0, matchingOwner == nil, !Filesystem.isWithin(bundleURL, root: URL(fileURLWithPath: "/System")),
-                   let app = try? ApplicationScanner.restoredRecord(at: bundleURL) {
-                    // Share metadata with Apps without recursively sizing bundles.
-                    emit(.application(app))
-                }
+                if selectedBundle != nil, identifier.isEmpty { throw LumaError.rejected("A selected application helper has no verifiable identifier.") }
                 let matchesOwner = belongsToOwner || identifier.lowercased() == matchingOwner?.lowercased()
                 if !identifier.isEmpty && (matchingOwner == nil || matchesOwner) { identifiers.insert(identifier.lowercased()) }
-                guard depth < 3 else { return }
                 for path in embeddedLocations {
                     try Task.checkCancellation()
                     let directory = bundleURL.appendingPathComponent(path)
@@ -37,10 +42,19 @@ public enum ApplicationPresence {
                         throw error
                     }
                     for child in children where ["app", "appex", "xpc", "framework", "bundle"].contains(child.pathExtension) {
-                        guard (try? child.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { continue }
+                        guard try child.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
+                            if selectedBundle != nil { throw LumaError.rejected("A selected helper is a symbolic link.") }
+                            continue
+                        }
+                        guard depth < 3 else { throw LumaError.rejected("Embedded helper evidence exceeds the supported depth.") }
                         try register(child, depth: depth + 1, belongsToOwner: matchesOwner)
                     }
                 }
+            }
+            if let selectedBundle {
+                try Filesystem.validatePath(selectedBundle)
+                try register(selectedBundle)
+                return identifiers
             }
             for root in roots {
                 try Task.checkCancellation()
@@ -72,6 +86,10 @@ public enum ApplicationPresence {
             }
             return identifiers
         }
+    }
+
+    static func selectedInstallation(_ url: URL, emit: ScanEmitter = { _ in }) throws -> Set<String> {
+        try inventory(home: url.deletingLastPathComponent(), selectedBundle: url, emit: emit)
     }
 
     public static func launchServicesContains(_ identifier: String) -> Bool {

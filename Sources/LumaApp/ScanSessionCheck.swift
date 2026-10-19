@@ -241,26 +241,7 @@ extension LumaAppDelegate {
     }
 
     func saveScanCheckWindow(_ window: NSWindow, path: String) throws {
-        window.displayIfNeeded()
-        let capture = Process()
-        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        capture.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
-        capture.standardOutput = FileHandle.nullDevice; capture.standardError = FileHandle.nullDevice
-        try capture.run(); capture.waitUntilExit()
-        if capture.terminationStatus == 0 { return }
-        guard let view = window.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        window.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in: view.bounds, to: bitmap) }
-        let image = NSImage(size: view.bounds.size, flipped: false) { rect in
-            window.effectiveAppearance.performAsCurrentDrawingAppearance {
-                NSColor.windowBackgroundColor.setFill(); rect.fill()
-                bitmap.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
-            }
-            return true
-        }
-        if let tiff = image.tiffRepresentation,
-           let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
-            try png.write(to: URL(fileURLWithPath: path))
-        }
+        try saveWindowRender(window, path: path)
     }
 }
 #endif

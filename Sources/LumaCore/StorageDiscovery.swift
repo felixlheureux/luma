@@ -38,17 +38,17 @@ public enum StorageDiscovery {
                 let index = try StorageIndex.scan(root: root, limit: max(128, limit / max(1, roots.count)),
                     ignoredPaths: ignoredPaths, home: home, cache: nil, discovery: true,
                     publish: { partial in
-                        if let merged = try? merge(previous + [partial], started: started, notices: previousNotices) {
+                        if let merged = try? merge(previous + [partial], started: started, notices: previousNotices, entryLimit: limit, rootCount: roots.count) {
                             emit(.storage(merged))
                         }
                     }, emit: emit)
                 indexes.append(index)
             } catch is CancellationError { throw CancellationError() }
             catch { notices.append("\(root.path): \(error.localizedDescription)"); emit(.notice(notices.last!)) }
-            if !indexes.isEmpty { emit(.storage(try merge(indexes, started: started, notices: notices))) }
+            if !indexes.isEmpty { emit(.storage(try merge(indexes, started: started, notices: notices, entryLimit: limit, rootCount: roots.count))) }
         }
         guard !indexes.isEmpty else { throw LumaError.rejected("No local discovery roots could be read. Check Full Disk Access in System Settings.") }
-        return try merge(indexes, started: started, notices: notices).includingCloud(CloudStorageDiscovery.scan(home: home))
+        return try merge(indexes, started: started, notices: notices, entryLimit: limit, rootCount: roots.count).includingCloud(CloudStorageDiscovery.scan(home: home))
     }
 
     public static func refresh(_ current: StorageIndex, paths: [URL], home: URL,
@@ -78,12 +78,12 @@ public enum StorageDiscovery {
                 if let node = nodes[target.path], let parent { nodes[target.path] = node.replacing(parent: parent) }
             }
             indexes.append(StorageIndex(rootID: scope.root.path, scope: scope, nodes: nodes,
-                                        scannedAt: Date(), duration: 0))
+                                        scannedAt: Date(), duration: 0, discoveryBounds: current.discoveryBounds))
         }
         return try merge(indexes, started: Date(), notices: []).includingCloud(CloudStorageDiscovery.scan(home: home))
     }
 
-    private static func merge(_ indexes: [StorageIndex], started: Date, notices: [String]) throws -> StorageIndex {
+    private static func merge(_ indexes: [StorageIndex], started: Date, notices: [String], entryLimit: Int? = nil, rootCount: Int? = nil) throws -> StorageIndex {
         let first = indexes[0]
         var nodes: [String: StorageNode] = [:]
         for index in indexes { nodes.merge(index.nodes, uniquingKeysWith: { old, _ in old }) }
@@ -107,7 +107,10 @@ public enum StorageDiscovery {
             issue: (["Accessible local roots only; system-managed space and other users are outside this inventory."] + issues).joined(separator: " "),
             accessCapability: nil, coverageState: .skipped, children: children, device: first.scope.volume.identity.device, inode: nil)
         var result = StorageIndex(rootID: rootID, scope: first.scope, nodes: nodes, scannedAt: started, duration: Date().timeIntervalSince(started))
+        result.discoveryEntryLimit = entryLimit
+        result.discoveryRootCount = rootCount
         result.discoveryScopes = indexes.map(\.scope)
+        result.discoveryBounds = indexes.reduce(into: Set<StorageDiscoveryBound>()) { $0.formUnion($1.discoveryBounds ?? []) }
         return result
     }
 }
@@ -149,7 +152,7 @@ extension StorageIndex {
                 ? [node.issue, "Saved display is bounded; refresh for remaining observations."].compactMap { $0 }.joined(separator: " ") : nil,
                 children: children)
         }
-        return Self(rootID: rootID, scope: scope, nodes: bounded, scannedAt: scannedAt, duration: duration, discoveryScopes: discoveryScopes)
+        return Self(rootID: rootID, scope: scope, nodes: bounded, scannedAt: scannedAt, duration: duration, discoveryScopes: discoveryScopes, discoveryBounds: discoveryBounds, discoveryEntryLimit: discoveryEntryLimit, discoveryRootCount: discoveryRootCount)
     }
 
     var validHierarchy: Bool {
@@ -174,7 +177,7 @@ extension StorageIndex {
             combined[rootID] = after.replacing(children: children)
         }
         var result = Self(rootID: rootID, scope: scope, nodes: combined, scannedAt: scannedAt,
-                          duration: duration, discoveryScopes: previous.discoveryScopes)
+                          duration: duration, discoveryScopes: previous.discoveryScopes, discoveryBounds: discoveryBounds, discoveryEntryLimit: discoveryEntryLimit, discoveryRootCount: discoveryRootCount)
         for scope in discoveryScopes where !result.discoveryScopes.contains(where: { $0.root == scope.root }) { result.discoveryScopes.append(scope) }
         return result
     }
@@ -252,7 +255,7 @@ extension StorageIndex {
                 updated[id] = node.replacing(issue: "Changed contents · refresh for a current total", children: node.children.filter { !affected.contains($0) })
             }
         }
-        result = Self(rootID: rootID, scope: scope, nodes: updated, scannedAt: scannedAt, duration: duration, discoveryScopes: discoveryScopes)
+        result = Self(rootID: rootID, scope: scope, nodes: updated, scannedAt: scannedAt, duration: duration, discoveryScopes: discoveryScopes, discoveryBounds: discoveryBounds, discoveryEntryLimit: discoveryEntryLimit, discoveryRootCount: discoveryRootCount)
         return result
     }
 }

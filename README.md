@@ -11,7 +11,7 @@ Every proposed cleanup has a path, an explanation, an ownership rule, and a cons
 
 ## Current development focus
 
-The owner reset the scope on 2026-10-19, then reviewed implementation at `c03e185`. The [core task queue](tasks/README.md) is 054–063. Tasks 054–057 implement direct app uninstall/Undo, automatic residue observations with in-place Trash, requested Storage discovery with saved browsing, and read-only iCloud metadata with owner-reported integration acceptance. Storage opens without scanning; broad discovery starts only when requested, and the optional folder picker remains available. Task 058 is in progress for a flat focused menu with two primary actions. Planned corrections 060–063 cover app inventory/icons/uninstall eligibility, restored Overview/layout/focus, Storage selection/map behavior and M2 battery reporting. Complete these corrections before the small Maintenance view in 059. The unstarted expansion backlog remains deleted; System keeps its current metric set.
+The owner reset the scope on 2026-10-19, then reviewed implementation at `c03e185`. The [core task queue](tasks/README.md) is 054–063. Tasks 054–057 implement direct app uninstall/Undo, automatic residue observations with in-place Trash, requested Storage discovery with saved browsing, and read-only iCloud metadata with owner-reported integration acceptance. Storage opens without scanning; broad discovery starts only when requested, and the optional folder picker remains available. Task 058 implements a focused native Liquid Glass menu flush below the menu bar, with two primary actions. Task 060 corrects app inventory, supported bundle-only uninstall, optional-data retention and bounded local icon preservation. Task 061 restores Overview/layout/focus. Task 062 keeps selections visible across browsing filters, aligns the map with its list and offers truthful larger fresh scans. Correction 063 covers M2 battery reporting. Complete these corrections before the small Maintenance view in 059. The unstarted expansion backlog remains deleted; System keeps its current metric set.
 
 ## What you can do
 
@@ -33,12 +33,12 @@ The interface follows **System appearance by default**, with optional Light and 
 
 | Area | Core change |
 | --- | --- |
-| Apps | Implemented direct uninstall; 060 corrects eligibility, inventory, companion filtering and icons |
-| Overview and layout | 061 restores Overview first and fixes residue spacing, click-away focus and footer height |
-| Residues | Implemented automatic observations and in-place Trash/Undo; layout correction in 061 |
-| Storage | Implemented requested discovery/saved browsing/direct Trash; 062 corrects selection, map and continuation |
+| Apps | Implemented direct uninstall with corrected eligibility, bounded vendor inventory, narrow companion filtering and preserved local icons |
+| Overview and layout | Overview opens first with live summaries; residue hierarchy, click-away focus and compact footer |
+| Residues | Implemented automatic observations and in-place Trash/Undo, with indented residue children |
+| Storage | Implemented requested discovery/saved browsing/direct Trash, cross-folder Selected, consistent map/list and bounded fresh rescans |
 | iCloud | Implemented metadata discovery; owner-reported integration acceptance in 057 |
-| Menu companion | 058 in progress: flat focused panel with Open Luma and Maintenance footer actions |
+| Menu companion | Implemented native Liquid Glass panel with Open Luma and Maintenance footer actions |
 | System | Keep current metrics; 063 corrects existing M2 battery reporting |
 | Maintenance | 059 planned after core corrections: approved cache/Trash actions and useful memory help |
 
@@ -117,11 +117,11 @@ See the [cache support matrix](Documentation/Cache-Support.md) for supported bui
 
 The tests cover verified app layouts, adjacent-data exclusions, hard-link-aware group/selection totals, provider/dataless access, thread-policy restoration, provider-state changes before mutations, scan replacement, late events, stopping/timeouts, progressive inventory, scoped permission retry, protected paths, symlink escapes, stale scans, ownership, reinstalled apps, browser and package cache boundaries, permission exclusions, active tools, interrupted cleanup and restore, hard links, hashing, memory accounting, and process grouping. Fixtures are disposable and project-local. After building the app, the lifecycle smoke check requires a logged-in desktop session and verifies that closing the window preserves monitoring, reopening works, and explicit Quit exits.
 
-The preview script captures light and dark app windows without cleaning files. Its fallback cannot reproduce every native composited glass layer when window capture is unavailable. Generated screenshots and local diagnostics are excluded from the repository.
+The preview script renders Luma’s own view content in Light and Dark without cleaning files or requesting screen/audio recording permission. These in-process renders cannot reproduce every native window chrome or composited glass layer. Generated images and local diagnostics are excluded from the repository.
 
-Shortcuts: `Command-K` searches, `Command-R` refreshes supported views, `Command-1` through `Command-5` open Storage/Apps/Residues/Maintenance/System, `Command-9` opens Activity, and `Shift-Command-D` changes the manual appearance override. Choose System in Settings to follow macOS again.
+Shortcuts: `Command-K` searches, `Command-R` refreshes supported views, `Command-1` through `Command-6` open Overview/Storage/Apps/Residues/Maintenance/System, `Command-9` opens Activity, and `Shift-Command-D` changes the manual appearance override. Choose System in Settings to follow macOS again.
 
-Task 061 will restore Overview as the first primary page and new-launch default, updating the primary shortcuts to `Command-1` through `Command-6` for Overview/Storage/Apps/Residues/Maintenance/System. This routing change is planned, not implemented by the review.
+Overview is the first page on each new launch, including when an older saved preference names Storage. Reopening the running window retains its page. Overview links use the same core routes and do not start Storage discovery.
 
 ## Contributing
 
@@ -154,3 +154,5 @@ Residue groups default to exact bundle-identifier order, with mixed-state group 
 Storage volume analysis currently has native read-only APFS-image evidence. HFS+, network/provider-managed storage and volumes without stable identifiers/current capability evidence are unsupported or unverified. Unmounting/replacing a target clears live results; a new explicit scan validates volume/root identity. Available-for-important-usage is a system estimate, filesystem free space is a separate observation, and neither is a promise of cleanup recovery.
 
 Debug native monitoring QA: after a debug build, run `bash Scripts/check-monitoring-depth.sh`. Injected providers verify single-interface rates, supported/missing battery fields, desktop states and menu-only monitoring in both appearances. It measures passive provider collection against the CPU/memory/disk core baseline and records actual hardware field availability. No active network test, mutation or personal-folder scan is invoked. `LUMA_MONITORING_QA_OUTPUT_DIR` retains temporary reports/captures.
+
+Task 060 keeps supported vendor-folder apps consistent across inventory, Search and Restore. Two-component identifiers can uninstall bundle-only; unsafe optional roots stay intact with an explanation. Ordinary macOS Trash rights apply to verified bundles without an administrator helper. Asset-catalog icons retain a generic fallback, and actual root/mixed-owner native moves remain unverified because administrator fixture authority was unavailable. See [the task evidence](tasks/060-app-inventory-and-uninstall-corrections.md) for accepted native checks and limits.

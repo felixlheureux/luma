@@ -12,6 +12,7 @@ private final class MonitoringFixture: @unchecked Sendable {
         step += 1
         var result = SystemSample()
         result.sampledAt = Date(); result.cpu = 12
+        result.cpuAvailable = true; result.memoryAvailable = true; result.swapAvailable = true
         result.cpuTicks = [UInt64(step), 0, UInt64(step), 0]
         result.usedMemory = 4_000_000_000; result.appMemory = 3_000_000_000
         result.wiredMemory = 500_000_000; result.compressedMemory = 500_000_000

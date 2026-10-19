@@ -30,8 +30,8 @@ extension StorageIndex {
             if i % 256 == 0 { try Task.checkCancellation() }
             guard (query.filter == "Selected" || !query.largestFiles || !node.isDirectory),
                   (query.showHidden || !node.hidden || query.filter == "Selected"),
-                  query.search.isEmpty || node.url.path.localizedCaseInsensitiveContains(query.search),
-                  location.map({ Filesystem.isWithin(node.url, root: $0) }) ?? true else { continue }
+                  (query.filter == "Selected" || query.search.isEmpty || node.url.path.localizedCaseInsensitiveContains(query.search)),
+                  (query.filter == "Selected" || (location.map({ Filesystem.isWithin(node.url, root: $0) }) ?? true)) else { continue }
             switch query.filter {
             case "Over 100 MB": if node.bytes <= 100_000_000 { continue }
             case "Older than a year": if node.modified.map({ $0 < old }) != true { continue }

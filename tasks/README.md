@@ -16,10 +16,10 @@ Make the daily actions fast and obvious: uninstall from the app list, select res
 | 2 | 055 | [Show residues automatically and trash them in place](055-residues.md) | Done | 054 |
 | 3 | 056 | [Make Storage discover large files across the Mac](056-storage-discovery.md) | Done | 054 (shared action state) |
 | 4 | 057 | [Include iCloud files in storage discovery](057-icloud-discovery.md) | Done | 056 |
-| 5 | 058 | [Make the menu panel flat and immediately active](058-menu-panel.md) | In progress | 054 (safe termination) |
-| 6 | 060 | [Correct app inventory, icons and uninstall eligibility](060-app-inventory-and-uninstall-corrections.md) | Planned | 054, 055 |
-| 7 | 061 | [Restore Overview and refine layout and input focus](061-overview-layout-and-input-focus.md) | Planned | 054–057; coordinate routes with 058 |
-| 8 | 062 | [Correct Storage selection, map and continuation](062-storage-selection-map-and-continuation.md) | Planned | 056, 057 |
+| 5 | 058 | [Make the menu panel flat and immediately active](058-menu-panel.md) | Done | 054 (safe termination) |
+| 6 | 060 | [Correct app inventory, icons and uninstall eligibility](060-app-inventory-and-uninstall-corrections.md) | Done | 054, 055 |
+| 7 | 061 | [Restore Overview and refine layout and input focus](061-overview-layout-and-input-focus.md) | Done | 054–057; coordinate routes with 058 |
+| 8 | 062 | [Correct Storage selection, map and continuation](062-storage-selection-map-and-continuation.md) | Done | 056, 057 |
 | 9 | 063 | [Correct M2 battery reporting](063-m2-battery-reporting.md) | Planned | Existing monitoring; coordinate menu with 058 |
 | 10 | 059 | [Add simple Maintenance actions](059-maintenance.md) | Planned | 054, 055; core corrections first |
 

@@ -4,7 +4,7 @@ import LumaCore
 extension AppModel {
     func openCore(_ target: Destination) {
         switch target {
-        case .overview, .downloads, .projects, .backups:
+        case .downloads, .projects, .backups:
             destination = .storage
             storageMode = "Largest files"
             storageLocation = [.downloads, .projects].contains(target) ? uninstallHome.appendingPathComponent(target == .projects ? "Projects" : "Downloads").path : "All locations"
@@ -108,6 +108,13 @@ extension AppModel {
                 return ScanResult(storageIndex: index)
             }
         }
+    }
+
+    func rescanStorageWithLargerLimit() {
+        guard !operationBusy, !storageLoading, !storageDiscovery.isBusy,
+              let next = storageIndex?.largerScanLimit(current: storageLimit) else { return }
+        storageLimit = next
+        ensureStorage(refresh: true)
     }
 
     func refreshStorage(paths: [URL]) {
