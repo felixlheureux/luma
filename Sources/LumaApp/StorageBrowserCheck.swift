@@ -7,7 +7,11 @@ extension LumaAppDelegate {
     func checkStorageBrowser(output: String) {
         Task { @MainActor in
             let model = AppModel.shared
-            let home = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/Fixtures/discovery-\(UUID())")
+            let arguments = CommandLine.arguments
+            let fixtureFlag = arguments.firstIndex(of: "--storage-fixture-root")
+            let fixtureRoot = fixtureFlag.flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+                ?? FileManager.default.currentDirectoryPath + "/.build/Fixtures"
+            let home = URL(fileURLWithPath: fixtureRoot).appendingPathComponent("discovery-\(UUID())")
             let downloads = home.appendingPathComponent("Downloads")
             let denied = downloads.appendingPathComponent("Unreadable")
             var checkedWindow: NSWindow?, originalFrame: NSRect?
@@ -33,13 +37,13 @@ extension LumaAppDelegate {
             @MainActor func marker(_ window: NSWindow, _ name: String) -> NSView? {
                 window.contentView.flatMap { descendants($0).first { $0.identifier?.rawValue == "luma-check-" + name } }
             }
-            @MainActor func clickMarker(_ window: NSWindow, _ name: String) throws {
+            @MainActor func clickMarker(_ window: NSWindow, _ name: String, clickCount: Int = 1) throws {
                 guard let view = marker(window, name) else { throw LumaError.rejected("Missing Storage control: " + name) }
                 let frame = view.convert(view.bounds, to: nil)
                 for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                     guard let event = NSEvent.mouseEvent(with: type, location: NSPoint(x: frame.midX, y: frame.midY),
                         modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-                        context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { throw LumaError.rejected("No Storage pointer event") }
+                        context: nil, eventNumber: 0, clickCount: clickCount, pressure: 1) else { throw LumaError.rejected("No Storage pointer event") }
                     NSApp.postEvent(event, atStart: false)
                 }
             }
@@ -189,6 +193,22 @@ extension LumaAppDelegate {
                     let partition = StorageExploreListing(nodes: rows), map = StorageMapEntry.entries(for: rows)
                     mapAgreement = mapAgreement && map.filter { !$0.isRemainder }.map(\.id) == partition.primary.filter { $0.bytes > 0 }.map(\.id)
                         && map.filter { !$0.isRemainder }.allSatisfy { marker(window, "storage-map-" + $0.id) != nil }
+                    if ordering == "Size", let folder = partition.primary.first(where: { $0.canNavigate && $0.bytes > 0 }) {
+                        if let viewport = marker(window, "storage-map-viewport") { viewport.scrollToVisible(viewport.bounds) }
+                        try await Task.sleep(for: .milliseconds(100))
+                        try clickMarker(window, "storage-map-" + folder.id)
+                        try await Task.sleep(for: .milliseconds(100))
+                        report["mapSingleClickFocusesWithoutNavigation"] = model.storageDirectory == downloads.path && model.storageFocus == folder.id && model.storageSelection == [leaf.path]
+                        try clickMarker(window, "storage-map-" + folder.id, clickCount: 2)
+                        try await wait { model.storageDirectory == folder.id }
+                        report["mapDoubleClickOpensFolder"] = model.storageDirectory == folder.id && model.storageSelection == [leaf.path]
+                        model.navigateStorage(downloads.path)
+                        try await Task.sleep(for: .milliseconds(250))
+                    }
+                    if let columns = marker(window, "storage-explore-columns"), let list = marker(window, "storage-browser-list"), let content = window.contentView {
+                        let container = columns.convert(columns.bounds, to: content), listFrame = list.convert(list.bounds, to: content)
+                        report["exploreUsesAvailableWidth"] = abs(container.maxX - listFrame.maxX) < 2
+                    }
                     try clickMarker(window, "storage-map-storage-remainder")
                     try await Task.sleep(for: .milliseconds(200))
                     if let first = partition.remainder.first { mapReveal = mapReveal && marker(window, "storage-row-" + first.id).map { !$0.visibleRect.isEmpty } == true }
@@ -316,7 +336,10 @@ extension LumaAppDelegate {
                 report["coreRoutes"] = Destination.allCases.map(\.rawValue) == ["Overview", "Storage", "Apps", "Residues", "Maintenance", "System", "Activity"]
                 report["monitoringContinued"] = !model.cpuHistory.isEmpty
                 report["windowFrameRestored"] = window.frame == originalFrame
-            } catch { report["error"] = error.localizedDescription }
+            } catch {
+                report["error"] = error.localizedDescription
+                if let checkedWindow { try? saveScanCheckWindow(checkedWindow, path: output + "-failure.png") }
+            }
             do { try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output), options: .atomic) }
             catch { NSLog("Storage QA report failed: %@", error.localizedDescription) }
         }

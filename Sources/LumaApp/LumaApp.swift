@@ -17,17 +17,11 @@ struct LumaApp: App {
                 }
         }
         .defaultSize(width: 1200, height: 850)
-        .windowResizability(.contentMinSize)
         .defaultLaunchBehavior(.presented)
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
         .commands {
             CommandGroup(replacing: .newItem) {}
-            CommandGroup(after: .windowSize) {
-                Button("Restore Default Window Size") {
-                    if let window = model.mainWindow { MainWindowSizing.restoreDefault(window) }
-                }
-            }
             CommandGroup(after: .appSettings) {
                 Button(appearance == "dark" ? "Use Light Appearance" : "Use Dark Appearance") {
                     appearance = appearance == "dark" ? "light" : "dark"

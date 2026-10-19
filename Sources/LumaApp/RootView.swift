@@ -14,7 +14,7 @@ struct RootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView().navigationSplitViewColumnWidth(min: 205, ideal: 216, max: 250)
         } detail: {
-            GeometryReader { _ in
+            GeometryReader { geometry in
                 ZStack {
                     AmbientBackground()
                     VStack(spacing: 0) {
@@ -79,7 +79,7 @@ struct RootView: View {
                         WindowStatusBar()
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
             .navigationTitle("")
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
@@ -100,8 +100,8 @@ struct RootView: View {
                 }
             }
         }
-        .background(MainWindowReader(model: model).frame(width: 0, height: 0).allowsHitTesting(false))
-        .background(ClickAwayEditing().frame(width: 0, height: 0).allowsHitTesting(false))
+        .background(MainWindowReader(model: model))
+        .background(ClickAwayEditing())
         .tint(Palette.accent)
         .frame(minWidth: 640, minHeight: 540)
         .sheet(isPresented: $model.showingReview) { ReviewSheet() }
@@ -121,6 +121,7 @@ struct RootView: View {
             model.showMainWindow = {
                 if let window = model.mainWindow {
                     if window.isMiniaturized { window.deminiaturize(nil) }
+                    if !window.isVisible { MainWindowSizing.restoreDefault(window) }
                     window.makeKeyAndOrderFront(nil)
                 } else { openWindow(id: "main") }
                 NSApplication.shared.activate()
@@ -223,7 +224,7 @@ struct SearchView: View {
                 }.onChange(of: highlighted) { _, i in proxy.scrollTo(i) }
             }
         }.padding(18).frame(width: 400, height: 400)
-            .background(ClickAwayEditing().frame(width: 0, height: 0).allowsHitTesting(false))
+            .background(ClickAwayEditing())
             .defaultFocus($typing, true)
             .onChange(of: model.search) { _, _ in highlighted = 0 }
             .onExitCommand { model.showingSearch = false }
@@ -344,7 +345,6 @@ private struct MainWindowReader: NSViewRepresentable {
         let model: AppModel
         init(model: AppModel) { self.model = model; super.init(frame: .zero) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }

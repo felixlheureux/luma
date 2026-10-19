@@ -23,7 +23,7 @@ with context as directory:
         subprocess.run(command, check=True, timeout=90)
         report = json.loads(output.read_text())
         assert "error" not in report, report
-        for key in ["singleInterfaceRate", "supportedBatteryFields", "desktopExplicit", "unsupportedFieldsUnavailable", "menuFitsScreen", "menuWithoutMainWindow", "memoryPressureDistinct", "detailFieldsAndTime", "detailCacheReused", "detailRequestsCoalesced", "lightweightDuringDetails", "detailFailurePreservesReadings", "monitorContinuesAfterDetailFailure", "partialDetailsExplained", "actualLightweightIdentityAvailable", "actualLumaMatchesPowerReport", "staleSourceDetailsDiscarded"]:
+        for key in ["batterySingleRowAtDefaultWidth", "batteryWrapsWithinNarrowWidth", "singleInterfaceRate", "supportedBatteryFields", "desktopExplicit", "unsupportedFieldsUnavailable", "menuFitsScreen", "menuWithoutMainWindow", "memoryPressureDistinct", "detailFieldsAndTime", "detailCacheReused", "detailRequestsCoalesced", "lightweightDuringDetails", "detailFailurePreservesReadings", "monitorContinuesAfterDetailFailure", "partialDetailsExplained", "actualLightweightIdentityAvailable", "actualLumaMatchesPowerReport", "staleSourceDetailsDiscarded"]:
             assert report.get(key) is True, (key, report)
         assert report["mutationInvoked"] is False and report["activeNetworkTestInvoked"] is False and report["personalFoldersScanned"] is False
         assert report["actualNetworkProviderAvailable"] is True, report

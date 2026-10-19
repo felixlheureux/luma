@@ -7,7 +7,8 @@ extension LumaAppDelegate {
         Task { @MainActor in
             let model = AppModel.shared
             var report: [String: Any] = ["mutationInvoked": false, "personalFoldersScanned": false]
-            let saved = UserDefaults.standard.string(forKey: "NSWindow Frame main")
+            let domain = Bundle.main.bundleIdentifier ?? "app.luma.mac"
+            let saved = UserDefaults.standard.persistentDomain(forName: domain)?["NSWindow Frame main"] as? String
             defer { NSApp.terminate(nil) }
             func require(_ value: Bool, _ key: String) throws {
                 report[key] = value
@@ -21,6 +22,13 @@ extension LumaAppDelegate {
                 report["autosaveName"] = window.frameAutosaveName
                 report["restorable"] = window.isRestorable
                 try require(window.frameAutosaveName.isEmpty && !window.isRestorable, "qaDoesNotAutosave")
+                report["contentMinSize"] = NSStringFromSize(window.contentMinSize)
+                report["contentMaxSize"] = NSStringFromSize(window.contentMaxSize)
+                report["minSize"] = NSStringFromSize(window.minSize)
+                report["maxSize"] = NSStringFromSize(window.maxSize)
+                try require(UserDefaults.standard.string(forKey: "NSWindow Frame main") == "100 100 760 650 0 0 1710 1073 ", "legacyFrameSupplied")
+                try require(abs((window.contentView?.bounds.width ?? 0) - 1200) < 2, "launchUsesDefaultSize")
+                try require(window.contentMinSize.width <= 760 && window.contentMinSize.height <= 650, "usableNativeMinimum")
                 let samples = model.cpuHistory.count
                 for (page, size) in [(Destination.overview, NSSize(width: 760, height: 650)), (.system, NSSize(width: 1200, height: 850)), (.maintenance, NSSize(width: 900, height: 740))] {
                     model.destination = page
@@ -35,10 +43,11 @@ extension LumaAppDelegate {
                 try await Task.sleep(for: .milliseconds(300))
                 try require(abs((window.contentView?.bounds.width ?? 0) - 1200) < 2, "restoresWideDefault")
                 try require(model.cpuHistory.count > samples, "monitoringContinues")
+                window.setContentSize(NSSize(width: 900, height: 740))
                 window.close(); model.openMain()
                 try await Task.sleep(for: .milliseconds(300))
                 try require(window.isVisible && abs((window.contentView?.bounds.width ?? 0) - 1200) < 2, "reopenKeepsWideSize")
-                try require(UserDefaults.standard.string(forKey: "NSWindow Frame main") == saved, "savedUserFrameUnchanged")
+                try require((UserDefaults.standard.persistentDomain(forName: domain)?["NSWindow Frame main"] as? String) == saved, "savedUserFrameUnchanged")
                 try saveWindowRender(window, path: output + ".png")
                 report["width"] = window.contentView?.bounds.width
                 report["height"] = window.contentView?.bounds.height

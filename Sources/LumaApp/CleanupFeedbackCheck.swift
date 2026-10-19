@@ -17,7 +17,11 @@ extension LumaAppDelegate {
     func checkCleanupFeedback(output: String) {
         Task { @MainActor in
             let model = AppModel.shared, oldRunner = AppModel.shared.scanRunner
-            let home = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/Fixtures/cleanup-feedback-\(UUID())")
+            let arguments = CommandLine.arguments
+            let fixtureFlag = arguments.firstIndex(of: "--feedback-fixture-root")
+            let fixtureRoot = fixtureFlag.flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+                ?? FileManager.default.currentDirectoryPath + "/.build/Fixtures"
+            let home = URL(fileURLWithPath: fixtureRoot).appendingPathComponent("cleanup-feedback-\(UUID())")
             let trash = home.appendingPathComponent(".Trash"), apps = home.appendingPathComponent("Applications")
             let gate = FeedbackMoveGate()
             var checkedWindow: NSWindow?
@@ -52,7 +56,7 @@ extension LumaAppDelegate {
                     bytes[pixel * 4] = 100; bytes[pixel * 4 + 1] = 70; bytes[pixel * 4 + 2] = 220; bytes[pixel * 4 + 3] = 255
                 }
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { throw LumaError.rejected("No fixture icon PNG") }
-                let metadata: [String: Any] = ["CFBundleIdentifier": "org.lumatest.installed", "CFBundleName": "Fixture Application", "CFBundleIconFile": "Fixture.png", "CFBundleShortVersionString": "1.0"]
+                let metadata: [String: Any] = ["CFBundleIdentifier": "org.lumatest.installed", "CFBundleName": "Fixture Application", "CFBundleIconName": "AssetIcon", "CFBundleIconFile": "Fixture.png", "CFBundleShortVersionString": "1.0"]
                 try write("Applications/Fixture Application.app/Contents/Info.plist", PropertyListSerialization.data(fromPropertyList: metadata, format: .xml, options: 0))
                 try write("Applications/Fixture Application.app/Contents/Resources/Fixture.png", png)
                 let journal = try CleanupJournal(home: home, trashMover: { source in
@@ -72,6 +76,7 @@ extension LumaAppDelegate {
                 }
                 guard let window = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }) else { throw LumaError.rejected("No feedback window") }
                 checkedWindow = window; originalFrame = window.frame
+                window.makeKeyAndOrderFront(nil); NSRunningApplication.current.activate(options: [])
                 model.destination = .applications; model.applicationTab = .installed
                 model.runScan(.applications)
                 try await wait { !model.busy }
@@ -87,12 +92,26 @@ extension LumaAppDelegate {
                 report["threeLeftoversTwoOwners"] = model.leftovers.count == 3 && LeftoverGroup.groups(for: model.leftovers).map(\.id) == ["org.lumatest.alpha", "org.lumatest.zeta"]
                 report["initialSelectionEmpty"] = model.residueSelection.isEmpty
                 let alpha = LeftoverGroup.groups(for: model.leftovers)[0]
-                model.selectResidueGroup(alpha)
+                @MainActor func clickGroup() async throws {
+                    @MainActor func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
+                    guard let marker = window.contentView.flatMap({ descendants($0).first { $0.identifier?.rawValue == "luma-check-residue-group-" + alpha.id } }) else { throw LumaError.rejected("No residue group control") }
+                    let frame = marker.convert(marker.bounds, to: nil)
+                    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                        guard let event = NSEvent.mouseEvent(with: type, location: NSPoint(x: frame.midX, y: frame.midY), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { throw LumaError.rejected("No group pointer event") }
+                        NSApp.postEvent(event, atStart: false)
+                    }
+                    try await Task.sleep(for: .milliseconds(250))
+                }
+                try await Task.sleep(for: .milliseconds(250))
+                try await clickGroup()
                 report["wholeGroupSelected"] = model.selectedResidues.count == 2
+                try saveScanCheckWindow(window, path: output + "-group-selected.png")
                 let item = alpha.items[0]
                 model.selectResidue(item, selected: false)
                 report["mixedGroupSelection"] = model.selectedResidues.count == 1
-                model.selectResidueGroup(alpha)
+                try await Task.sleep(for: .milliseconds(250))
+                try saveScanCheckWindow(window, path: output + "-group-mixed.png")
+                try await clickGroup()
                 report["mixedSelectsAll"] = model.selectedResidues.count == 2
                 let originalRows = model.leftovers
                 let newURL = home.appendingPathComponent("Library/Logs/org.lumatest.alpha/new")
@@ -102,7 +121,7 @@ extension LumaAppDelegate {
                 report["arrivalNotSelected"] = model.residueSelection[arrival.id] == nil && model.selectedResidues.count == 2
                 model.leftovers = originalRows
                 try FileManager.default.removeItem(at: newURL.deletingLastPathComponent())
-                model.selectResidueGroup(alpha)
+                try await clickGroup()
                 report["groupDeselectsAll"] = model.residueSelection.isEmpty
                 model.selectResidue(item, selected: true)
                 model.destination = .system
@@ -155,7 +174,14 @@ extension LumaAppDelegate {
                     }
                 }
                 report["monitoringContinued"] = !model.cpuHistory.isEmpty
-            } catch { report["error"] = error.localizedDescription }
+            } catch {
+                report["error"] = error.localizedDescription
+                report["residueStatus"] = model.residueStatus
+                report["residueEntered"] = model.residueEntered
+                report["residueLoading"] = model.residueLoading
+                report["residueBusy"] = model.residueDiscovery.isBusy
+                report["operationBusy"] = model.operationBusy
+            }
             model.showingReview = false; model.error = nil
             try? await Task.sleep(for: .milliseconds(350))
             do { try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output), options: .atomic) }

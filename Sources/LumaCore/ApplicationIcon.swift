@@ -11,10 +11,9 @@ public enum ApplicationIcon {
                 try Task.checkCancellation()
                 let pin = try PinnedPath(bundle)
                 // IconName identifies an asset, never a loose resource filename.
-                // Public asset loading cannot yet guarantee bounded, nondelegated reads;
-                // retain the generic fallback rather than misrepresent IconFile as that asset.
-                guard metadata["CFBundleIconName"] == nil,
-                      let name = metadata["CFBundleIconFile"] as? String, !name.isEmpty,
+                // Asset loading is unsupported here; the independently declared
+                // IconFile remains a useful local fallback even when both keys exist.
+                guard let name = metadata["CFBundleIconFile"] as? String, !name.isEmpty,
                       !name.contains("/"), !name.contains("\\"), !name.hasPrefix(".") else { return nil }
                 let filename = (name as NSString).pathExtension.isEmpty ? name + ".icns" : name
                 let resource = bundle.exactAppendingPathComponent("Contents").exactAppendingPathComponent("Resources").exactAppendingPathComponent(filename)

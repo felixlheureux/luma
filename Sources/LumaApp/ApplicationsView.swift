@@ -168,26 +168,19 @@ struct LeftoversView: View {
     }
 }
 
-private struct ResidueGroupCheckbox: NSViewRepresentable {
+private struct ResidueGroupCheckbox: View {
     @Environment(AppModel.self) private var model
     let group: LeftoverGroup
-    func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(checkboxWithTitle: "", target: context.coordinator, action: #selector(Coordinator.toggle))
-        button.allowsMixedState = true
-        button.setAccessibilityLabel("Select residues for " + group.id)
-        return button
-    }
-    func updateNSView(_ button: NSButton, context: Context) {
-        context.coordinator.action = { model.selectResidueGroup(group) }
+    var body: some View {
         let eligible = group.items.filter { model.residueEligible($0) }
-        let count = eligible.filter { model.residueSelection[$0.id] != nil }.count
-        button.state = count == 0 ? .off : count == eligible.count ? .on : .mixed
-        button.isEnabled = !eligible.isEmpty
-    }
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    final class Coordinator: NSObject {
-        var action: (() -> Void)?
-        @objc func toggle() { action?() }
+        let sources = eligible.map { item in
+            Binding(get: { model.residueSelection[item.id] != nil },
+                    set: { model.selectResidue(item, selected: $0) })
+        }
+        Toggle("Select residues for " + group.id, sources: sources, isOn: \.self)
+            .labelsHidden().toggleStyle(.checkbox).tint(Palette.accent)
+            .nativeCheckTarget("residue-group-" + group.id)
+            .disabled(eligible.isEmpty)
     }
 }
 

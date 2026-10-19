@@ -67,7 +67,7 @@ struct BatteryDetailsView: View {
                     }
                 }
                 if battery.presence == .available {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading, spacing: 16) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12, alignment: .leading)], alignment: .leading, spacing: 12) {
                         metric("Current charge", battery.charge.map { "\($0)%" } ?? "Unavailable")
                         metric(battery.estimatingFullCharge ? "Estimated time until full" : "Estimated time remaining", battery.estimateText)
                         if let condition = model.batteryReport?.condition ?? battery.condition ?? battery.health { metric("Reported condition", condition) }
@@ -91,5 +91,6 @@ struct BatteryDetailsView: View {
     }
     private func metric(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) { Text(label).font(.system(size: 10)).foregroundStyle(.secondary); Text(value).font(.system(size: 14, weight: .medium)).monospacedDigit() }
+            .nativeCheckTarget("battery-" + label)
     }
 }

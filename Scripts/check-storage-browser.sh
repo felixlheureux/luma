@@ -9,7 +9,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
-required = ["selectedFooterVisible", "selectedIgnoresBrowsingFilters", "ineligibleSelectionVisibleAndBlocked", "ineligibleSelectionCanDeselect", "mapListMembershipAllSorts", "mapRemainderRevealsRows", "honestLargerFreshScan", "timeBoundCannotOfferLargerScan", "noScanOnOpen", "noScanOnWarmOpen", "requestedScanWithoutPicker", "partialCoverage", "providerExcluded", "cloudMetadataVisible", "cloudCleanupRejected", "cloudBytesExcluded", "unreadablePartial", "nothingSelected",
+required = ["mapSingleClickFocusesWithoutNavigation", "mapDoubleClickOpensFolder", "exploreUsesAvailableWidth", "selectedFooterVisible", "selectedIgnoresBrowsingFilters", "ineligibleSelectionVisibleAndBlocked", "ineligibleSelectionCanDeselect", "mapListMembershipAllSorts", "mapRemainderRevealsRows", "honestLargerFreshScan", "timeBoundCannotOfferLargerScan", "noScanOnOpen", "noScanOnWarmOpen", "requestedScanWithoutPicker", "partialCoverage", "providerExcluded", "cloudMetadataVisible", "cloudCleanupRejected", "cloudBytesExcluded", "unreadablePartial", "nothingSelected",
             "selectionSurvivesNavigationAndFilters", "cachedHistory", "narrowWindow", "directTrashWithoutSheet",
             "unaffectedInventoryRetained", "undoWithoutSheet", "undoUpdatesObservation", "pendingScopeKeepsLabels", "failedScopeKeepsLabelsAndOutcome",
             "warmHierarchyAvailable", "persistenceSettles", "coreRoutes", "monitoringContinued", "windowFrameRestored", "oldVolumeDoesNotCancelNewScope",
@@ -20,8 +20,12 @@ with context as directory:
     pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
     for appearance in ["light", "dark", "system"]:
         output = pathlib.Path(directory) / f"{appearance}.json"
-        subprocess.run([sys.argv[1], "--check-storage-browser", str(output),
-                        "-luma.appearance", appearance, "-luma.menuBar", "YES"], check=True, timeout=60)
+        args = [sys.argv[1], "--check-storage-browser", str(output),
+                "--storage-fixture-root", str(pathlib.Path.cwd() / ".build/Fixtures"),
+                "-luma.appearance", appearance, "-luma.menuBar", "YES"]
+        bundle = pathlib.Path(sys.argv[1]).resolve().parents[2]
+        command = ["/usr/bin/open", "-W", "-n", str(bundle), "--args", *args[1:]] if bundle.suffix == ".app" else args
+        subprocess.run(command, check=True, timeout=90)
         report = json.loads(output.read_text())
         assert "error" not in report, report
         assert all(report.get(key) is True for key in required), report

@@ -25,11 +25,6 @@ extension AppModel {
         if selected { if residueEligible(item) { residueSelection[item.id] = item } }
         else { residueSelection.removeValue(forKey: item.id) }
     }
-    func selectResidueGroup(_ group: LeftoverGroup) {
-        let eligible = group.items.filter { residueEligible($0) }
-        let all = !eligible.isEmpty && eligible.allSatisfy { residueSelection[$0.id] != nil }
-        for item in eligible { selectResidue(item, selected: !all) }
-    }
     func ensureResidues(refresh: Bool = false) {
         guard !operationBusy, !residueLoading, !residueDiscovery.isBusy else { return }
         guard !residueEntered || refresh || !residueDirtyOwners.isEmpty else { return }

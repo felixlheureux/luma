@@ -136,6 +136,26 @@ extension LumaAppDelegate {
                 model.monitoringFocus = "battery-details"
                 await model.refreshBatteryReport(force: true)
                 report["detailFieldsAndTime"] = model.batteryReport?.cycles == 42 && model.batteryReport?.maximumCapacityPercent == 90 && model.batteryReport?.observedAt == Date(timeIntervalSince1970: 1_700_000_000)
+                @MainActor func metricFrames() -> [NSRect] {
+                    @MainActor func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
+                    return window.contentView.map { content in
+                        descendants(content).filter { $0.identifier?.rawValue.hasPrefix("luma-check-battery-") == true }
+                            .map { $0.convert($0.bounds, to: content) }
+                    } ?? []
+                }
+                window.setContentSize(NSSize(width: 1200, height: 850))
+                try await Task.sleep(for: .milliseconds(400))
+                let wideMetrics = metricFrames()
+                report["batterySingleRowAtDefaultWidth"] = wideMetrics.count == 5 && (wideMetrics.map(\.midY).max()! - wideMetrics.map(\.midY).min()! < 2)
+                try saveScanCheckWindow(window, path: output + "-battery-default-width.png")
+                window.setContentSize(NSSize(width: 760, height: 850))
+                try await Task.sleep(for: .milliseconds(400))
+                let narrowMetrics = metricFrames()
+                let width = window.contentView?.bounds.width ?? 0
+                report["batteryWrapsWithinNarrowWidth"] = narrowMetrics.count == 5 && narrowMetrics.allSatisfy { $0.minX >= 0 && $0.maxX <= width + 1 && $0.width > 0 }
+                    && narrowMetrics.map(\.midY).max()! - narrowMetrics.map(\.midY).min()! > 2
+                try saveScanCheckWindow(window, path: output + "-battery-narrow-width.png")
+                window.setContentSize(NSSize(width: 1200, height: 850))
                 let calls = details.count
                 await model.refreshBatteryReport()
                 report["detailCacheReused"] = details.count == calls

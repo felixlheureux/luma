@@ -67,7 +67,7 @@ extension LumaAppDelegate {
             @MainActor func editing(_ window: NSWindow) -> Bool { (window.firstResponder as? NSTextView)?.isEditable == true }
             @MainActor func focusField(_ window: NSWindow) async throws -> NSTextField {
                 if !window.isKeyWindow || !NSApp.isActive {
-                    window.makeKeyAndOrderFront(nil); NSApp.activate()
+                    window.makeKeyAndOrderFront(nil); NSRunningApplication.current.activate(options: [])
                     try await waitFor { window.isKeyWindow && NSApp.isActive }
                 }
                 try require(window.isKeyWindow && NSApp.isActive, "inputWindowActive")
@@ -87,7 +87,7 @@ extension LumaAppDelegate {
                 try await Task.sleep(for: .seconds(2))
                 guard let window = model.mainWindow else { throw LumaError.rejected("No main window") }
                 checkedWindow = window; originalFrame = window.frame
-                window.setContentSize(NSSize(width: 1100, height: 850)); window.makeKeyAndOrderFront(nil); NSApp.activate()
+                window.setContentSize(NSSize(width: 1100, height: 850)); window.makeKeyAndOrderFront(nil); NSRunningApplication.current.activate(options: [])
                 model.openCore(.overview); try await pause()
                 try require(model.destination == .overview && model.storageDiscovery.session == nil, "explicitOverviewIdle")
                 try clickElement(window, label: "overview-Storage"); try await pause()
@@ -135,11 +135,9 @@ extension LumaAppDelegate {
                         try require(!editing(window) && field.stringValue == value, "\(appearance)-\(page.rawValue)-backgroundPreservesValue")
                         _ = try await focusField(window)
                         if page == .residues {
-                            let button = descendants(window.contentView!).compactMap { $0 as? NSButton }.first { $0.allowsMixedState }
-                            guard let button else { throw LumaError.rejected("No residue group checkbox") }
-                            let rect = button.convert(button.bounds, to: nil)
+                            guard let group = LeftoverGroup.groups(for: model.visibleResidues).first else { throw LumaError.rejected("No residue group") }
                             model.residueSelection = [:]
-                            try click(window, NSPoint(x: rect.midX, y: rect.midY)); try await pause()
+                            try clickElement(window, label: "residue-group-" + group.id); try await pause()
                             try require(!editing(window) && model.residueSelection.count == 1, "\(appearance)-checkboxFirstClick")
                             model.residueSelection = [:]
                         } else {
@@ -149,7 +147,7 @@ extension LumaAppDelegate {
                         model.applicationSearch = ""; model.storageSearch = ""
                     }
                     model.openCore(.overview); model.showingSearch = false
-                    window.makeKeyAndOrderFront(nil); NSApp.activate(); try await pause()
+                    window.makeKeyAndOrderFront(nil); NSRunningApplication.current.activate(options: []); try await pause()
                     model.search = ""
                     try key(window, code: 40, characters: "k", modifiers: .command, application: true)
                     let search = try await searchWindow(); try await pause()

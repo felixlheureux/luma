@@ -143,7 +143,8 @@ private struct FeedbackFixture {
         #expect(image.count <= 131_072)
         #expect(try ApplicationScanner.restoredRecord(at: bundle).iconPNG == image)
         #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconName": "Fixture.png"]) == nil)
-        #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconName": "AssetIcon", "CFBundleIconFile": "Fixture.png"]) == nil)
+        #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconName": "AssetIcon", "CFBundleIconFile": "Fixture.png"]) == image)
+        #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconName": "AssetIcon", "CFBundleIconFile": "Missing.png"]) == nil)
         // A bounded loose ICNS representation, with the extension omitted in metadata.
         var icns = Data("icns".utf8)
         var length = UInt32(png.length + 16).bigEndian
@@ -159,6 +160,7 @@ private struct FeedbackFixture {
         try FilesystemAccess.$restriction.withValue({ $0.path == resource.path ? .providerManaged : .local }) { () throws -> Void in
             let restricted = try ApplicationIcon.png(bundle: bundle, metadata: metadata)
             #expect(restricted == nil)
+            #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconName": "AssetIcon", "CFBundleIconFile": "Fixture.png"]) == nil)
         }
         #expect(try ApplicationIcon.png(bundle: bundle, metadata: ["CFBundleIconFile": "../private.png"]) == nil)
         try FileManager.default.removeItem(at: resource)

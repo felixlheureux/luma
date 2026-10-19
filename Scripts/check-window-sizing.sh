@@ -5,11 +5,11 @@ python3 - "${1:-dist/Luma.app}" <<'PY'
 import json,pathlib,subprocess,sys,tempfile
 folder=pathlib.Path(tempfile.mkdtemp(prefix='luma-window-sizing-'))
 bundle=pathlib.Path(sys.argv[1]).resolve()
-required=['nativeResizableStyle','qaDoesNotAutosave','restoresWideDefault','monitoringContinues','reopenKeepsWideSize','savedUserFrameUnchanged']
+required=['legacyFrameSupplied','launchUsesDefaultSize','usableNativeMinimum','nativeResizableStyle','qaDoesNotAutosave','restoresWideDefault','monitoringContinues','reopenKeepsWideSize','savedUserFrameUnchanged']
 required += [page+suffix for page in ['Overview','System','Maintenance'] for suffix in ['KeepsRequestedSizeAcrossUpdates','NoContentMaximumLock','AutosavingStaysDisabled']]
 for appearance in ['light','dark','system']:
     output=folder/(appearance+'.json')
-    subprocess.run(['/usr/bin/open','-W','-n',str(bundle),'--args','--check-window-sizing',str(output),'-luma.appearance',appearance,'-luma.menuBar','YES'],check=True,timeout=50)
+    subprocess.run(['/usr/bin/open','-W','-n',str(bundle),'--args','--check-window-sizing',str(output),'-luma.appearance',appearance,'-luma.menuBar','YES','-NSWindow Frame main','100 100 760 650 0 0 1710 1073 '],check=True,timeout=50)
     data=json.loads(output.read_text())
     assert 'error' not in data,data
     assert all(data.get(key) is True for key in required),data

@@ -19,7 +19,7 @@ The owner reset the scope on 2026-10-19, then reviewed implementation at `c03e18
 - **Review generated data.** Inspect Chrome, Safari, Firefox, Zen, Brave, and Edge caches; npm, Yarn Classic, and pnpm metadata caches; developer build files; simulator caches and logs; and verified VS Code 1.142.0 cache/log units. Cookies, sessions, project dependencies, shared stores, and device contents stay separate.
 - **Remove selected residues in place.** Open Residues for automatically discovered findings and saved observations during refresh. Select exact identifier groups or individual paths and use the fixed Move to Trash footer, with Stop, Activity and Undo. Data whose exact bundle identifier has no installed owner remains a review candidate. Luma checks application folders, embedded helpers, and macOS Launch Services. Exact identifiers and explicit rules cover supported named support folders. Ownership is checked again before Trash.
 - **Uninstall directly from the app list.** Inventory loads automatically. Click Uninstall on a supported row to move the bundle and verified exclusive caches/logs/preferences/saved state to Trash. Documents, support data and containers stay; shared or unknown ownership keeps all related data. Details remains optional, with separate footprint categories and honest unavailable sizes. Compact Undo checks eligible targets internally; Activity retains conflicts and individual Restore.
-- **Scan storage when you choose.** Storage opens without starting a scan. Scan accessible Mac starts bounded, progressive discovery across readable local roots; the existing optional folder picker remains under Locations. Largest files and Explore share one saved index; Explore pairs proportional bubbles with a size-ranked list, breadcrumbs and history. Selection survives folders and filters, with direct home-local Trash/Undo in a fixed footer. Projects and Downloads are locations, with custom folders/external volumes available secondarily. Unknown/excluded contents remain coverage; per-path logical sizes stay separate from unique totals and reported volume capacity.
+- **Scan storage when you choose.** Storage opens without starting a scan. Scan accessible Mac starts bounded, progressive discovery across readable local roots; the existing optional folder picker remains under Locations. Largest files and Explore share one saved index; Explore pairs packed, proportional circles with a matching list, breadcrumbs and history. Click a circle to focus its row; double-click or press Return to open a folder. The map and list fill the available width. Selection survives folders and filters, with direct home-local Trash/Undo in a fixed footer. Projects and Downloads are locations, with custom folders/external volumes available secondarily. Unknown/excluded contents remain coverage; per-path logical sizes stay separate from unique totals and reported volume capacity.
 - **Compare exact duplicates.** Filter complete groups by path or size, compare full paths, dates and bounded local previews, and preview an explicit keeper or modification-date preference before applying a selection. Full SHA-256 content checks remain authoritative; hard-linked objects count once and at least one independent copy must remain per group.
 - **Read meaningful system metrics.** See CPU, memory pressure, app/wired/compressed memory, reusable file cache, swap, thermals, passive single-interface network rates/session usage, reported battery details, and resource consumers grouped by app.
 - **Follow and cancel scans.** Application rows appear before bundle sizing finishes. Every scan and app inspection has tracked progress and cancellation; replacement scans queue until the old worker stops. Previews stay read-only, completed snapshots retain their timestamps, and permission retries keep the chosen scope.
@@ -28,7 +28,7 @@ The owner reset the scope on 2026-10-19, then reviewed implementation at `c03e18
 
 For troubleshooting, open an application's footprint and choose **Review reset**. Nothing starts selected. Review caches/logs, preferences, saved state and other app data separately; the bundle stays installed. Request a normal quit and check again if the app or its helpers are running. Other app data may include documents or sign-in state. Cleanup uses the same confirmed Trash, Activity, Stop and non-overwriting Restore/Undo flow. Inspect again afterward to refresh results.
 
-The interface follows **System appearance by default**, with optional Light and Dark overrides. Purple controls retain their deeper fill and white labels. Menu-bar visibility is enabled by default and can be changed in Settings. The main window starts at 1200 × 850 and supports native edge resizing; choose **Window → Restore Default Window Size** to return to that size, fitted to the current display. Closing the main window keeps the menu monitor running; choose Quit Luma to stop it. RAM usage and macOS memory pressure are shown separately: high usage alone does not mean high pressure.
+The interface follows **System appearance by default**, with optional Light and Dark overrides. Purple controls retain their deeper fill and white labels. Menu-bar visibility is enabled by default and can be changed in Settings. The main window starts at 1200 × 850 on every launch and reopen, fitted to the display, without remembering its last size. Closing the main window keeps the menu monitor running; choose Quit Luma to stop it. RAM usage and macOS memory pressure are shown separately: high usage alone does not mean high pressure.
 
 ## Core implementation status
 
@@ -70,7 +70,7 @@ For an existing Homebrew installation:
 brew upgrade --cask felixlheureux/luma/luma
 ```
 
-The 0.2.2 development release fixes main-window sizing and keeps the core cleanup, Storage, Overview/menu, M2 battery and Maintenance features described above. It is not notarized; macOS may block first launch. See the [tested distribution behavior](Documentation/Distribution.md#personal-homebrew-tap-task-009). Official Homebrew cask submission remains separate.
+The 0.2.3 development release adds packed Storage circles with clearer folder interaction and a full-width browser, consistent purple residue group checkboxes, restored declared local app icons, and a compact battery row. It opens each main window at the default size without remembering its previous size and retains the core features described above. It is not notarized; macOS may block first launch. See the [tested distribution behavior](Documentation/Distribution.md#personal-homebrew-tap-task-009). Official Homebrew cask submission remains separate.
 
 Create a local installer after building:
 
@@ -80,13 +80,13 @@ bash Scripts/package-dmg.sh
 
 ## Automated releases
 
-Pushing a version tag such as `v0.2.2` runs the Release workflow. It validates the tag against `CFBundleShortVersionString` in `Resources/Info.plist` and the installer README, runs the tests, builds an Apple Silicon app, verifies its signature, and packages a DMG. After those checks pass, it creates a GitHub prerelease with the DMG, `SHA256SUMS`, and generated change notes. Regular branch commits run CI without publishing releases.
+Pushing a version tag such as `v0.2.3` runs the Release workflow. It validates the tag against `CFBundleShortVersionString` in `Resources/Info.plist` and the installer README, runs the tests, builds an Apple Silicon app, verifies its signature, and packages a DMG. After those checks pass, it creates a GitHub prerelease with the DMG, `SHA256SUMS`, and generated change notes. Regular branch commits run CI without publishing releases.
 
 For a new version, update the version and build number in `Resources/Info.plist`, update the version heading in `Resources/Installer-ReadMe.txt`, and commit and push those changes before tagging that commit:
 
 ```sh
-git tag -a v0.2.2 -m "Luma 0.2.2"
-git push origin v0.2.2
+git tag -a v0.2.3 -m "Luma 0.2.3"
+git push origin v0.2.3
 ```
 
 These commands illustrate the release process; use a new version for each release, and the tag must match the committed app version. Published releases are not overwritten. Current automated releases are development prereleases for macOS 26+ and Apple Silicon.

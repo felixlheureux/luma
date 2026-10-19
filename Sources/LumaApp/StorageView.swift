@@ -58,14 +58,14 @@ struct StorageView: View {
                     } else {
                         ViewThatFits(in: .horizontal) {
                             HStack(alignment: .top, spacing: 18) {
-                                StorageBubbleMap(entries: mapEntries, focused: model.storageFocus, focus: focusMap, activate: activate)
-                                    .frame(width: 310, height: 330)
-                                list.frame(width: 380)
-                            }
+                                StorageBubbleMap(entries: mapEntries, focused: model.storageFocus, focus: focusMap, hover: { model.storageFocus = $0 }, activate: activate)
+                                    .frame(minWidth: 280, maxWidth: .infinity).frame(height: 420)
+                                list.frame(minWidth: 340, maxWidth: .infinity).nativeCheckTarget("storage-browser-list")
+                            }.frame(idealWidth: 660, maxWidth: .infinity).nativeCheckTarget("storage-explore-columns")
                             VStack(alignment: .leading) {
                                 list
                                 DisclosureGroup("Space map") {
-                                    StorageBubbleMap(entries: mapEntries, focused: model.storageFocus, focus: focusMap, activate: activate).frame(height: 260)
+                                    StorageBubbleMap(entries: mapEntries, focused: model.storageFocus, focus: focusMap, hover: { model.storageFocus = $0 }, activate: activate).frame(height: 260)
                                 }
                             }
                         }.frame(maxWidth: .infinity, alignment: .center)
@@ -114,7 +114,6 @@ struct StorageView: View {
         }
         .onChange(of: filter) { _, _ in reveal = StorageListReveal(); pinnedOrder = [] }
         .onChange(of: sort) { _, _ in pinnedOrder = [] }
-        .onChange(of: model.storageFocus) { _, id in if let id { reveal.reveal(id, in: visible) } }
         .onChange(of: keyboardRow) { _, id in
             if let id { model.storageFocus = id; if pinnedOrder.isEmpty { pinnedOrder = visible.map(\.id) } }
         }
@@ -289,44 +288,41 @@ private struct StorageBubbleMap: View {
     let entries: [StorageMapEntry]
     let focused: String?
     let focus: (String) -> Void
+    let hover: (String) -> Void
     let activate: (String) -> Void
     @FocusState private var keyboardBubble: String?
     private let colors: [Color] = [Palette.accent, Palette.blue, Palette.mint, Palette.peach]
     var body: some View {
         GeometryReader { geometry in
-            let values = entries
-            let boxes = partition(values.map { Double($0.bytes) }, CGRect(origin: .zero, size: geometry.size))
-            let scale: CGFloat = bubbleScale(values, boxes)
-            ForEach(Array(values.enumerated()), id: \.element.id) { i, entry in
-                let diameter: CGFloat = 2 * CGFloat(sqrt(Double(entry.bytes))) * scale
-                Button { activate(entry.id) } label: {
-                    Circle().fill((entry.isRemainder ? Color.gray : colors[i % colors.count]).gradient)
-                        .overlay(Circle().strokeBorder(.primary.opacity(focused == entry.id ? 0.9 : 0), lineWidth: 3))
-                        .overlay { if diameter > 70 { VStack { Text(entry.name).lineLimit(2); Text(formatBytes(entry.bytes)) }.font(.system(size: 10)).foregroundStyle(.white).padding(8) } }
-                        .frame(width: diameter, height: diameter)
-                }.nativeCheckTarget("storage-map-" + entry.id).buttonStyle(.plain).focused($keyboardBubble, equals: entry.id).position(x: boxes[i].midX, y: boxes[i].midY)
-                    .onHover { if $0 { focus(entry.id) } }
+            let circles = StorageBubbleLayout.circles(for: entries, in: geometry.size)
+            let byID = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            ForEach(circles) { circle in
+                if let entry = byID[circle.id] {
+                    let diameter = circle.radius * 2
+                    let colorIndex = entry.id.utf8.reduce(0) { ($0 * 31 + Int($1)) % colors.count }
+                    Button { focus(entry.id) } label: {
+                        Circle().fill((entry.isRemainder ? Color.gray : colors[colorIndex]).gradient)
+                            .overlay(Circle().strokeBorder(.primary.opacity(focused == entry.id ? 0.9 : 0), lineWidth: 3))
+                            .overlay {
+                                if diameter > 70 {
+                                    VStack(spacing: 4) { Text(entry.name).lineLimit(2); Text(formatBytes(entry.bytes)) }
+                                        .font(.system(size: 10)).foregroundStyle(.white).padding(8)
+                                }
+                            }
+                            .frame(width: diameter, height: diameter).contentShape(Circle())
+                    }
+                    .nativeCheckTarget("storage-map-" + entry.id).buttonStyle(.plain)
+                    .focused($keyboardBubble, equals: entry.id)
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { activate(entry.id) })
+                    .onKeyPress(.return) { activate(entry.id); return .handled }
+                    .position(circle.center)
+                    .onHover { if $0 { hover(entry.id) } }
                     .accessibilityLabel("\(entry.name), \(formatBytes(entry.bytes))")
-                    .help("\(entry.name) · \(formatBytes(entry.bytes)) · \(entry.isRemainder ? "Other items remain in the list" : "Open folder or focus file")")
+                    .accessibilityHint(entry.isRemainder ? "Show other items in the list" : "Click to focus in the list. Double-click or press Return to open a folder.")
+                    .help("\(entry.name) · \(formatBytes(entry.bytes)) · \(entry.isRemainder ? "Show other items in the list" : "Click to focus · Double-click to open folder")")
+                }
             }
-        }.onChange(of: keyboardBubble) { _, id in if let id { focus(id) } }
-    }
-    private func bubbleScale(_ values: [StorageMapEntry], _ boxes: [CGRect]) -> CGFloat {
-        guard !values.isEmpty else { return 0 }
-        return values.indices.reduce(CGFloat.greatestFiniteMagnitude) { result, i in
-            Swift.min(result, Swift.min(boxes[i].width, boxes[i].height) / Swift.max(1, 2 * CGFloat(sqrt(Double(values[i].bytes)))))
-        }
-    }
-    private func partition(_ weights: [Double], _ rect: CGRect) -> [CGRect] {
-        guard weights.count > 1 else { return weights.isEmpty ? [] : [rect] }
-        let total = weights.reduce(0, +)
-        var split = 1, sum = weights[0]
-        while split < weights.count - 1 && sum + weights[split] / 2 < total / 2 { sum += weights[split]; split += 1 }
-        let ratio = sum / max(1, total)
-        let horizontal = rect.width >= rect.height
-        let first = CGRect(x: rect.minX, y: rect.minY, width: horizontal ? rect.width * ratio : rect.width, height: horizontal ? rect.height : rect.height * ratio)
-        let second = CGRect(x: horizontal ? first.maxX : rect.minX, y: horizontal ? rect.minY : first.maxY, width: horizontal ? rect.width - first.width : rect.width, height: horizontal ? rect.height : rect.height - first.height)
-        return partition(Array(weights[..<split]), first) + partition(Array(weights[split...]), second)
+        }.nativeCheckTarget("storage-map-viewport").onChange(of: keyboardBubble) { _, id in if let id { focus(id) } }
     }
 }
 
