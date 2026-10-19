@@ -13,6 +13,7 @@ struct ClickAwayEditing: NSViewRepresentable {
 
     final class Host: NSView {
         private let observer = EditingClickObserver(target: nil, action: nil)
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             detach()

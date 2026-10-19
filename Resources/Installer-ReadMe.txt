@@ -1,4 +1,4 @@
-Luma 0.2.1 — Development Build
+Luma 0.2.2 — Development Build
 
 macOS 26 or later · Apple Silicon
 

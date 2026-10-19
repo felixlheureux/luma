@@ -14,7 +14,7 @@ struct RootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView().navigationSplitViewColumnWidth(min: 205, ideal: 216, max: 250)
         } detail: {
-            GeometryReader { geometry in
+            GeometryReader { _ in
                 ZStack {
                     AmbientBackground()
                     VStack(spacing: 0) {
@@ -79,7 +79,7 @@ struct RootView: View {
                         WindowStatusBar()
                     }
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle("")
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
@@ -100,8 +100,8 @@ struct RootView: View {
                 }
             }
         }
-        .background(MainWindowReader(model: model))
-        .background(ClickAwayEditing())
+        .background(MainWindowReader(model: model).frame(width: 0, height: 0).allowsHitTesting(false))
+        .background(ClickAwayEditing().frame(width: 0, height: 0).allowsHitTesting(false))
         .tint(Palette.accent)
         .frame(minWidth: 640, minHeight: 540)
         .sheet(isPresented: $model.showingReview) { ReviewSheet() }
@@ -223,7 +223,7 @@ struct SearchView: View {
                 }.onChange(of: highlighted) { _, i in proxy.scrollTo(i) }
             }
         }.padding(18).frame(width: 400, height: 400)
-            .background(ClickAwayEditing())
+            .background(ClickAwayEditing().frame(width: 0, height: 0).allowsHitTesting(false))
             .defaultFocus($typing, true)
             .onChange(of: model.search) { _, _ in highlighted = 0 }
             .onExitCommand { model.showingSearch = false }
@@ -344,6 +344,12 @@ private struct MainWindowReader: NSViewRepresentable {
         let model: AppModel
         init(model: AppModel) { self.model = model; super.init(frame: .zero) }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); if let window { model.mainWindow = window } }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            model.mainWindow = window
+            MainWindowSizing.attach(to: window)
+        }
     }
 }
