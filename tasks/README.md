@@ -12,11 +12,11 @@ Make the daily actions fast and obvious: uninstall from the app list, select res
 
 | Order | ID | Task | Status | Depends on |
 | --- | --- | --- | --- | --- |
-| 1 | 054 | [Uninstall directly from the app list](054-direct-uninstall.md) | Ready | Existing cleanup engine |
-| 2 | 055 | [Show residues automatically and trash them in place](055-residues.md) | Planned | 054 |
-| 3 | 056 | [Make Storage discover large files across the Mac](056-storage-discovery.md) | Planned | 054 (shared action state) |
-| 4 | 057 | [Include iCloud files in storage discovery](057-icloud-discovery.md) | Planned | 056 |
-| 5 | 058 | [Make the menu panel flat and immediately active](058-menu-panel.md) | Planned | 054 (safe termination) |
+| 1 | 054 | [Uninstall directly from the app list](054-direct-uninstall.md) | Done | Existing cleanup engine |
+| 2 | 055 | [Show residues automatically and trash them in place](055-residues.md) | Done | 054 |
+| 3 | 056 | [Make Storage discover large files across the Mac](056-storage-discovery.md) | Done | 054 (shared action state) |
+| 4 | 057 | [Include iCloud files in storage discovery](057-icloud-discovery.md) | Done | 056 |
+| 5 | 058 | [Make the menu panel flat and immediately active](058-menu-panel.md) | In progress | 054 (safe termination) |
 | 6 | 059 | [Add simple Maintenance actions](059-maintenance.md) | Planned | 054, 055 |
 
 Follow this order for a serial runner; dependencies permit independent work. Mark a task In progress when work starts. Mark it Done only after its behavior and meaningful validation are recorded. This planning reset implements no app features and does not publish a release.
@@ -25,7 +25,7 @@ Follow this order for a serial runner; dependencies permit independent work. Mar
 
 - **Apps:** click Uninstall in the row. No mandatory footprint panel, folder selection, review sheet, or acknowledgement checkbox. Optional details must stay optional.
 - **Residues:** open the view, see existing results while it refreshes, select items or an exact bundle-identifier group, click Move to Trash there. No second screen or confirmation ladder.
-- **Storage:** open it and see large files and folders across accessible Mac storage. No folder picker or Scan button is required for the default flow. Projects and Downloads become filters/locations in Storage, rather than parallel tools asking the same question.
+- **Storage:** open it without starting a scan. Show saved observations when available; Scan accessible Mac starts broad discovery explicitly. Keep the existing optional folder picker under Locations. Projects and Downloads become filters/locations in Storage, rather than parallel tools asking the same question.
 - **Progress:** reserve a compact status area in the current view. No layout jumps, simulated percentages, validation checklist, or progress restart between internal phases. Keep completed results visible during refresh.
 - **Approval:** normal local app/residue Trash actions execute directly. Cache cleanup and permanent Trash emptying each have one clear approval, with consequences visible in the initiating view. OS permission prompts remain OS prompts.
 - **Safety:** build plans, refresh evidence and use the existing journal internally. A simpler flow does not grant permission to remove shared, unknown, protected, or cloud-managed content.
@@ -67,7 +67,7 @@ Do not recreate tasks for privacy suites, photos, Mail, app update discovery, di
 
 ## Core acceptance
 
-Before proposing more features, demonstrate all six completed flows on native Apple Silicon macOS (M2 reference) with synthetic data: direct app uninstall, in-place residue cleanup, automatic cold/warm discovery, iCloud local/online-only/missing-permission states, flat focused menu, and approved maintenance. Check Light/Dark/System appearance, keyboard access, narrow layouts, navigation during work, and continued System monitoring. Record first-results, warm-open and operation timings with fixture size and hardware; do not hide slow work behind a longer timeout or retry loop.
+Before proposing more features, demonstrate all six completed flows on native Apple Silicon macOS (M2 reference) with synthetic data: direct app uninstall, in-place residue cleanup, idle cold/warm Storage opening and requested discovery, iCloud local/online-only/missing-permission states, flat focused menu, and approved maintenance. Check Light/Dark/System appearance, keyboard access, narrow layouts, navigation during work, and continued System monitoring. Record first-results, warm-open and operation timings with fixture size and hardware; do not hide slow work behind a longer timeout or retry loop.
 
 Keep the existing central safety, ownership, identity, provider and recovery regression coverage. Replace obsolete native QA assertions that demand the removed sheets with assertions for the new direct flows. Run checks appropriate to changed behavior once on the final candidate; repeat only after a relevant change or failure. Planning-only edits require link/status/diff checks, not the macOS app suite.
 

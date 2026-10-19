@@ -14,10 +14,10 @@ public struct CleanupExecutionContext: Sendable {
         self.ignoredPaths = ignoredPaths; self.runningBundleIDs = runningBundleIDs; self.processPaths = processPaths; self.activity = activity
     }
 
-    @MainActor public static func current(ignoredPaths: Set<String> = []) async -> Self {
+    @MainActor public static func current(ignoredPaths: Set<String> = [], checkingProcesses: Bool = true, checkingTools: Bool = true, checkingSimulators: Bool = false) async -> Self {
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-        let paths = await Task.detached(priority: .utility) { CleanupActivity.processPaths() }.value
-        let activity = await Task.detached(priority: .utility) { CleanupActivity.collect() }.value
+        let paths = checkingProcesses ? await Task.detached(priority: .utility) { CleanupActivity.processPaths() }.value : nil
+        let activity = checkingTools ? await Task.detached(priority: .utility) { CleanupActivity.collect(checkSimulators: checkingSimulators) }.value : nil
         return Self(ignoredPaths: ignoredPaths, runningBundleIDs: running, processPaths: paths, activity: activity)
     }
 }
@@ -27,6 +27,7 @@ public struct CleanupExecutionContext: Sendable {
 public struct CleanupPlan: Identifiable, Sendable {
     public let id: UUID
     public let source: CleanupSource
+    public let uninstallApplication: ApplicationRecord?
     public let resetApplication: ApplicationRecord?
     public let createdAt: Date
     public let items: [CleanupItem]
@@ -42,7 +43,15 @@ public struct CleanupPlan: Identifiable, Sendable {
     }
 
     public init(items: [CleanupItem], authorizedRoots: [URL] = [], ignoredPaths: Set<String> = [],
-                duplicateGroups: [DuplicateGroup] = [], source: CleanupSource = .storage, resetApplication: ApplicationRecord? = nil) throws {
+                duplicateGroups: [DuplicateGroup] = [], source: CleanupSource = .storage, resetApplication: ApplicationRecord? = nil, uninstallApplication: ApplicationRecord? = nil) throws {
+        if let app = uninstallApplication {
+            guard source == .applications, items.last?.url == app.url, items.last?.ruleID == "application.exact-bundle",
+                  items.dropLast().allSatisfy({ $0.ruleID == "application.exact-related" }),
+                  items.allSatisfy({ $0.ownerBundleID == app.bundleID && ["application.exact-bundle", "application.exact-related"].contains($0.ruleID) }) else {
+                throw LumaError.rejected("Uninstall requires the captured application and its exact related data.")
+            }
+        }
+        self.uninstallApplication = uninstallApplication
         if source == .developerProjects {
             guard items.allSatisfy({ ProjectRule(rawValue: $0.ruleID) != nil && $0.projectEvidence != nil }) else { throw LumaError.rejected("Project review requires manifest-backed project findings.") }
         }
@@ -77,6 +86,7 @@ public struct CleanupPlan: Identifiable, Sendable {
         var total: Int64 = 0
         var perItem: [Data: Int64] = [:]
         for item in items {
+            try SafetyEngine.validateIgnores(item.url, ignoredPaths: ignoredPaths)
             var contribution: Int64 = 0
             let (bytes, identity) = try Filesystem.inspect(item.url, onFile: { object, bytes in
                 guard seenContents.insert(object).inserted else { return }
@@ -129,6 +139,15 @@ public struct CleanupPlan: Identifiable, Sendable {
         logicalBytes = total; contributions = perItem; duplicateProofs = proofs
     }
 
+    /// Collect only observations used by this captured plan, once per validation boundary.
+    @MainActor public func executionContext(ignoredPaths: Set<String> = []) async -> CleanupExecutionContext {
+        let toolRules = Rules.generated.filter { rule in items.contains { $0.ruleID == rule.id } }
+        return await .current(ignoredPaths: ignoredPaths,
+            checkingProcesses: resetApplication != nil || uninstallApplication != nil,
+            checkingTools: items.contains { ProjectRule(rawValue: $0.ruleID) != nil } || toolRules.contains { !$0.tools.isEmpty },
+            checkingSimulators: toolRules.contains { $0.tools.contains(.simulator) })
+    }
+
     private static func isCovered(_ url: URL, by selectedPaths: Set<Data>) -> Bool {
         var ancestor = url.exactStandardizedFileURL
         while true {
@@ -149,8 +168,9 @@ public struct CleanupPlan: Identifiable, Sendable {
     }
 
     func preflightOwners(home: URL, progress: @escaping @Sendable (ScanPulse) -> Void = { _ in }) throws -> Set<String>? {
-        guard items.contains(where: { $0.ruleID == "application.leftover.exact-identifier" }) else { return nil }
-        return try ApplicationPresence.bundleIdentifiers(home: home, emit: { event in
+        let needsLeftovers = items.contains { $0.ruleID == "application.leftover.exact-identifier" }
+        guard needsLeftovers || uninstallApplication != nil else { return nil }
+        return try ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: needsLeftovers ? nil : uninstallApplication?.bundleID, emit: { event in
             if case .progress(let pulse) = event { progress(pulse) }
         })
     }
@@ -162,8 +182,11 @@ public struct CleanupPlan: Identifiable, Sendable {
             try ApplicationReset.validateSelection(items, app: app)
             try ApplicationReset.validateActivity(app: app, home: home, context: context)
         }
+        if let app = uninstallApplication { try ApplicationUninstall.validate(item, app: app, home: home, context: context) }
         let engine = SafetyEngine(home: home, ignoredPaths: ignoredPaths.union(context.ignoredPaths))
-        try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs, activity: ProjectRule(rawValue: item.ruleID) == nil ? nil : context.activity, preflightOwners: preflightOwners, progress: progress)
+        try engine.validate(item, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs, activity: context.activity,
+            preflightOwners: uninstallApplication == nil ? preflightOwners : nil,
+            preflightHelpers: uninstallApplication == nil ? nil : preflightOwners, progress: progress)
         guard item.ruleID == "duplicates.sha256", checkDuplicateContent else { return }
         guard let proof = duplicateProofs[Data(item.id.utf8)] else { throw LumaError.rejected("The duplicate group is missing. Scan again.") }
         try engine.validate(proof.keeper, authorizedRoots: authorizedRoots, runningBundleIDs: context.runningBundleIDs)

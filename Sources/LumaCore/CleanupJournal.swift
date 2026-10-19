@@ -45,6 +45,7 @@ struct JournalState: Codable {
 /// The operation intent reaches disk before any move. Completed history and
 /// removal of its intent are committed together in one atomic state file.
 public actor CleanupJournal {
+    @TaskLocal static var persistenceObserver: (@Sendable (TimeInterval) -> Void)?
     private let home: URL
     private let directory: URL
     private let url: URL
@@ -106,7 +107,7 @@ public actor CleanupJournal {
     /// The only cleanup entry point. Hold the operation lock over the complete
     /// plan, including awaited UI context/progress callbacks and every move.
     public func execute(_ plan: CleanupPlan,
-                        context: @Sendable () async throws -> CleanupExecutionContext = { await .current() },
+                        context: (@Sendable () async throws -> CleanupExecutionContext)? = nil,
                         onRecord: @Sendable (CleanupRecord) async -> Void = { _ in },
                         onProgress: @Sendable (CleanupProgress) async -> Void = { _ in },
                         onDetail: @escaping @Sendable (ScanPulse) -> Void = { _ in }) async throws -> [CleanupRecord] {
@@ -118,6 +119,7 @@ public actor CleanupJournal {
         guard !(state.sessions ?? []).contains(where: { $0.id == plan.id }), !state.records.contains(where: { $0.planID == plan.id }) else {
             throw LumaError.rejected("This cleanup plan has already been used. Prepare a new review before moving more items.")
         }
+        let context = context ?? { await plan.executionContext() }
         var prepared = state
         prepared.sessions = (prepared.sessions ?? []) + [CleanupSession(id: plan.id, source: plan.source, date: Date(),
             paths: plan.items.map(\.url), logicalBytes: plan.logicalBytes, phase: .validating)]
@@ -364,16 +366,18 @@ public actor CleanupJournal {
         try commit(next)
         let index = state.undoAttempts!.count - 1
         do {
-            for (offset, id) in ids.enumerated() {
+            for id in ids {
                 try Task.checkCancellation()
                 guard let record = state.records.first(where: { $0.id == id }) else { throw LumaError.rejected("Activity changed; review Undo again.") }
-                await onProgress(CleanupProgress(sessionID: review.sessionID, phase: .moving, current: record.original, completed: offset, total: ids.count))
+                await onProgress(CleanupProgress(sessionID: review.sessionID, phase: .moving, current: record.original, completed: state.undoAttempts![index].outcomes.filter(\.restored).count, total: ids.count))
                 try Task.checkCancellation()
                 do {
                     try restoreStored(record)
                     var updated = state
                     updated.undoAttempts?[index].outcomes.append(UndoOutcome(recordID: id, restored: true, detail: "Restored"))
                     try commit(updated)
+                    await onProgress(CleanupProgress(sessionID: review.sessionID, phase: .moving, current: record.original,
+                        completed: state.undoAttempts![index].outcomes.filter(\.restored).count, total: ids.count))
                 } catch {
                     var updated = state
                     let restored = state.records.contains { $0.id == id && $0.restored }
@@ -570,6 +574,8 @@ public actor CleanupJournal {
     }
 
     private func commit(_ next: JournalState) throws {
+        let started = Date()
+        defer { Self.persistenceObserver?(Date().timeIntervalSince(started)) }
         return try MutationOutcome.$preserving.withValue(true) {
             try NonMaterializingIO.perform {
                 try ensureDirectory()

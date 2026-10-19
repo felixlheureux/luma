@@ -45,7 +45,7 @@ struct AppFootprintView: View {
     private func checkActivity() async {
         checkingActivity = true; resetBlocked = true; knownOwners = []
         defer { checkingActivity = false }
-        let context = await CleanupExecutionContext.current()
+        let context = await CleanupExecutionContext.current(checkingTools: false)
         do {
             let app = app
             let owners = try await Task.detached(priority: .utility) {
@@ -173,8 +173,10 @@ struct AppFootprintView: View {
                 Spacer()
                 PrimaryButton(title: "Review selection", symbol: "arrow.right") {
                     let selected = eligibleItems.filter { model.selected.contains($0.id) }
-                    dismiss()
-                    Task { try? await Task.sleep(for: .milliseconds(250)); model.review(selected, source: resetMode ? .applicationReset : .applications, resetApplication: resetMode ? app : nil) }
+                    let source: CleanupSource = resetMode ? .applicationReset : .applications
+                    let reset = resetMode ? app : nil
+                    model.inspectedApp = nil
+                    model.review(selected, source: source, resetApplication: reset, capturedSelection: Set(selected.map(\.id)))
                 }.disabled(!eligibleItems.contains { model.selected.contains($0.id) } || model.busy || (resetMode && resetBlocked))
             }
         }.padding(28).frame(width: 780)

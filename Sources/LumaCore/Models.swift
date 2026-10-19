@@ -54,6 +54,7 @@ public struct CleanupItem: Identifiable, Codable, Sendable, Equatable {
     public let ownerBundleID: String?
     public let identity: FileIdentity
     public let scannedAt: Date
+    public var observedContents: [String: Int64]? = nil
     public var projectEvidence: ProjectEvidence? = nil
     public var name: String {
         guard let rule = Rules.generated.first(where: { $0.id == ruleID }) else { return url.lastPathComponent }
@@ -76,7 +77,7 @@ public struct ScanReport: Sendable {
     public init() {}
 }
 
-public enum CoverageState: String, Sendable, CaseIterable {
+public enum CoverageState: String, Codable, Sendable, CaseIterable {
     case found = "Found data", empty = "No data", missing = "Not present"
     case blocked = "Access needed", skipped = "Skipped"
 }

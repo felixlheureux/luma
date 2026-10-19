@@ -4,208 +4,296 @@ import LumaCore
 
 struct StorageView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.colorScheme) private var colorScheme
-    @ViewState private var filter = "All items"
+    private var filter: String { model.storageFilter }
     @ViewState private var sort = "Size"
-    @ViewState private var showHidden = false
+    private var showHidden: Bool { model.storageShowHidden }
     @ViewState private var displayLimit = 200
-
+    @ViewState private var showOther = false
+    @FocusState private var keyboardRow: String?
+    @ViewState private var pinnedOrder: [String] = []
+    @ViewState private var pointerInList = false
     private var index: StorageIndex? { model.storageIndex }
     private var current: StorageNode? { model.storageDirectory.flatMap { index?.nodes[$0] } }
-    private var visible: [StorageNode] {
-        guard let index, let current else { return [] }
-        return index.children(of: current.id, showHidden: showHidden).filter { node in
-            switch filter {
-            case "Over 100 MB": node.bytes > 100_000_000
-            case "Older than a year": node.modified.map { $0 < Date().addingTimeInterval(-365 * 86400) } ?? false
-            case "Installers": !node.isDirectory && ["dmg", "pkg", "iso"].contains(node.url.pathExtension.lowercased())
-            default: true
-            }
-        }.sorted {
-            if sort == "Size", $0.bytes != $1.bytes { return $0.bytes > $1.bytes }
-            return $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending
-        }
+    @ViewState private var visible: [StorageNode] = []
+    @ViewState private var mapEntries: [StorageMapEntry] = []
+    private struct ListingKey: Equatable {
+        let revision: UInt64
+        let query: StorageListingQuery
     }
-    private var focused: StorageNode? { model.storageFocus.flatMap { index?.nodes[$0] } }
+    private var listingKey: ListingKey {
+        ListingKey(revision: model.storageRevision, query: StorageListingQuery(
+            largestFiles: model.storageMode == "Largest files", directory: model.storageDirectory,
+            filter: filter, showHidden: showHidden, search: model.storageSearch,
+            location: model.storageLocation, sort: sort,
+            selection: filter == "Selected" ? model.storageSelection : [],
+            pinnedOrder: pointerInList || keyboardRow != nil ? pinnedOrder : []))
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            StorageVolumePicker()
-            if let index, let current {
-                StorageVolumeSummary(scope: index.scope)
-                navigation(index, current)
-                HStack {
-                    Picker("Show", selection: $filter) {
-                        ForEach(["All items", "Over 100 MB", "Older than a year", "Installers"], id: \.self) { Text($0) }
-                    }.frame(maxWidth: 220)
-                    Picker("Sort", selection: $sort) { Text("Size").tag("Size"); Text("Name").tag("Name") }.frame(width: 140)
-                    Toggle("Show hidden items", isOn: $showHidden)
-                    Spacer()
-                }.font(.system(size: 11))
-                Surface {
-                    VStack(alignment: .leading, spacing: 12) {
-                        SectionHeading(title: current.url.lastPathComponent, detail: "\(current.isComplete ? "" : "At least ")\(formatBytes(current.bytes)) · \(visible.count) matching items")
-                        if let issue = current.issue { Label(issue, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Palette.peach) }
-                        if !visible.isEmpty {
-                            StorageMapView(nodes: visible, focused: model.storageFocus) { model.storageFocus = $0 }
-                                .frame(height: 220).accessibilityHidden(true)
-                            Text("Map shows the same filtered items as the list. Other matching items combines entries beyond the largest 12. Zero and unknown sizes appear in the list.").font(.system(size: 10)).foregroundStyle(.secondary)
-                        }
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Picker("Browse", selection: $model.storageMode) {
+                    Text("Largest files").tag("Largest files"); Text("Explore").tag("Explore")
+                }.pickerStyle(.segmented).frame(maxWidth: 280)
+                Spacer()
+                if model.storageDiscovery.isBusy { Button("Stop discovery") { model.storageDiscovery.cancel() } }
+                else { Button(index == nil ? "Scan accessible Mac" : "Scan again") { model.ensureStorage(refresh: true) }.disabled(model.operationBusy || model.storageLoading) }
+                Menu {
+                    Button("Scan accessible Mac storage") { model.ensureStorage(refresh: true) }
+                    Button("Custom location…") { model.chooseFolder(for: .storage) }
+                    Button("Compare exact duplicates…") { model.chooseFolder(for: .duplicates) }
+                    ForEach(model.storageVolumes.volumes) { volume in
+                        Button(volume.name) { model.startScan(.init(.storage, root: URL(fileURLWithPath: volume.identity.mountPath), storageVolumeIdentity: volume.identity)) }
                     }
+                } label: { Label("Locations", systemImage: "externaldrive") }.disabled(model.operationBusy || model.storageLoading)
+            }
+            Text(model.storageStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(model.storageStatus).frame(height: 20, alignment: .leading)
+            if let index {
+                if !index.isDiscovery { Text("Published location: \(index.scope.root.path) · \(index.scope.inspectionOnly ? "Inspection only" : "Local files")").font(.caption).textSelection(.enabled) }
+                controls(index)
+                if index.isDiscovery {
+                    Text("iCloud metadata is partial and read-only. Online-only files are never downloaded; cloud logical sizes are excluded from local totals. Missing metadata may mean offline, signed out or unavailable access.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                if visible.isEmpty {
-                    ContentUnavailableView("No matching items", systemImage: "folder", description: Text(current.issue == nil ? "This folder is empty or no items match the current filters." : "Some contents could not be inspected. Try a fresh scan or review this folder in Finder."))
-                } else {
-                    Surface(padding: 16) {
-                        VStack(spacing: 0) {
-                            ForEach(Array(visible.prefix(displayLimit))) { node in
-                                row(node)
-                                Divider()
+                if model.storageMode == "Explore", let current {
+                    navigation(index, current)
+                    Text("\(current.url.isFileURL ? current.url.path : "Accessible Mac storage") · \(formatBytes(current.bytes)) observed unique logical bytes").font(.caption).textSelection(.enabled)
+                    if visible.isEmpty {
+                        list.frame(maxWidth: .infinity, alignment: .center)
+                    } else {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .top, spacing: 18) {
+                                StorageBubbleMap(entries: mapEntries, focused: model.storageFocus, focus: { model.storageFocus = $0 }, activate: activate)
+                                    .frame(width: 310, height: 330)
+                                list.frame(width: 380)
                             }
-                            if visible.count > displayLimit { Button("Show 200 more items") { displayLimit += 200 }.padding() }
-                        }
+                            VStack(alignment: .leading) {
+                                list
+                                DisclosureGroup("Space map") {
+                                    StorageBubbleMap(entries: mapEntries, focused: model.storageFocus, focus: { model.storageFocus = $0 }, activate: activate).frame(height: 260)
+                                }
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .center)
                     }
+                } else { list.frame(maxWidth: .infinity, alignment: .center) }
+                if let issue = current?.issue { Text(issue).font(.caption).foregroundStyle(.secondary) }
+                DisclosureGroup("Coverage and size accounting") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("File rows show per-path logical size. Folder and selected totals count hard-linked file objects once; linked names may appear in different folders. Allocated space and guaranteed APFS savings are not measured. Unknown/skipped contents are absent from totals. Packages and other users’ private data are not traversed by automatic discovery.")
+                        Text("Automatic discovery is bounded and prioritizes common personal folders. Remaining contents have unknown size.")
+                        Button("Continue bounded discovery") { model.storageLimit = min(200_000, model.storageLimit * 2); model.ensureStorage(refresh: true) }.disabled(model.storageLimit >= 200_000 || model.storageDiscovery.isBusy || model.operationBusy)
+                        ForEach(index.scopes, id: \.root.path) { scope in Text(scope.root.path) }
+                        Text("Reported volume capacity: \(index.scope.volume.capacity.map(formatBytes) ?? "Unavailable") · Filesystem free: \(index.scope.volume.free.map(formatBytes) ?? "Unavailable")")
+                        Text("Available for important usage: \(index.scope.volume.availableForImportantUsage.map(formatBytes) ?? "Unavailable"). This is a system estimate, separate from observed file bytes; APFS volumes may share capacity.")
+                        Text("If locations are inaccessible, grant Full Disk Access to Luma in System Settings, then Refresh. Readable locations remain available.")
+                        Button("Full Disk Access Settings") { if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") { NSWorkspace.shared.open(url) } }
+                    }.font(.caption).foregroundStyle(.secondary)
                 }
-                if let focused { details(focused).id("storage-details") }
-                HStack {
-                    Text("\(model.selected.count) selected").font(.system(size: 12)).foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
-                    Spacer()
-                    Button("Deselect all") { model.selected = [] }.buttonStyle(StorageActionStyle()).disabled(model.selected.isEmpty)
-                    PrimaryButton(title: "Review selection", symbol: "arrow.right") { model.reviewStorage() }
-                        .disabled(model.selected.isEmpty || model.busy || index.scope.inspectionOnly)
-                }.padding(16).glassEffect(.regular, in: .rect(cornerRadius: 16))
-                Text("Logical bytes count each hard-linked file once at its first path in the scanned tree, including hidden content. Filters can hide those bytes. Skipped bytes are unknown; sizes are not promised disk savings. Packages are navigation leaves. Nothing is selected automatically.")
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
             } else {
-                EmptyState(symbol: "internaldrive", title: "Follow the space.", message: "Choose a folder to explore its hierarchy. Large and old files are your data, never automatically junk.", actionTitle: "Choose a folder") { model.chooseFolder(for: .storage) }.disabled(!model.canStartScan)
+                ContentUnavailableView(model.storageDiscovery.isBusy ? "Discovering local storage" : "Explore your storage", systemImage: "internaldrive",
+                    description: Text(model.storageDiscovery.isBusy ? "Readable locations appear as they are discovered. You can keep using Luma while the scan runs." : "Start a scan of accessible Mac storage, or choose a folder from Locations. Nothing is scanned until you ask."))
+                    .frame(maxWidth: .infinity, minHeight: 260, alignment: .center)
             }
         }
-        .onChange(of: filter) { _, _ in clearSelection() }
-        .onChange(of: showHidden) { _, _ in clearSelection() }
-        .onChange(of: model.storageDirectory) { _, _ in displayLimit = 200 }
+        .task {
+            model.storageVolumes.refresh()
+            model.loadSavedStorage()
+        }
+        .task(id: listingKey) {
+            let captured = index, query = listingKey.query
+            let worker = Task.detached(priority: .userInitiated) {
+                let rows = try captured?.listing(query) ?? []
+                return (rows: rows, map: query.largestFiles ? [] : StorageMapEntry.entries(for: rows))
+            }
+            let result = await withTaskCancellationHandler {
+                try? await worker.value
+            } onCancel: { worker.cancel() }
+            if !Task.isCancelled, let result { visible = result.rows; mapEntries = result.map }
+        }
+        .onChange(of: filter) { _, _ in displayLimit = 200; pinnedOrder = [] }
+        .onChange(of: keyboardRow) { _, id in
+            if let id { model.storageFocus = id; if pinnedOrder.isEmpty { pinnedOrder = visible.map(\.id) } }
+        }
+        .onChange(of: model.storageDirectory) { _, _ in displayLimit = 200; pinnedOrder = [] }
     }
 
-    private func clearSelection() { model.selected = []; model.storageFocus = nil; displayLimit = 200 }
-
+    private func controls(_ index: StorageIndex) -> some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 8) {
+            TextField("Search discovered paths", text: $model.storageSearch).textFieldStyle(.roundedBorder)
+            ViewThatFits(in: .horizontal) {
+                HStack { filters(index); Toggle("Hidden", isOn: Binding(get: { model.storageShowHidden }, set: { model.storageShowHidden = $0 })) }
+                VStack(alignment: .leading) { filters(index); Toggle("Hidden", isOn: Binding(get: { model.storageShowHidden }, set: { model.storageShowHidden = $0 })) }
+            }
+        }.font(.caption)
+    }
+    private func filters(_ index: StorageIndex) -> some View {
+        @Bindable var model = model
+        return HStack {
+            Picker("Show", selection: Binding(get: { model.storageFilter }, set: { model.storageFilter = $0 })) { ForEach(["All items", "Selected", "Over 100 MB", "Older than a year", "Installers"], id: \.self) { Text($0) } }
+            Picker("Sort", selection: $sort) { ForEach(["Size", "Name", "Modified"], id: \.self) { Text($0) } }
+            Picker("Location", selection: $model.storageLocation) {
+                Text("All locations").tag("All locations")
+                ForEach(index.scopes, id: \.root.path) { Text($0.root.path).tag($0.root.path) }
+                ForEach(["Downloads", "Documents", "Desktop", "Projects"], id: \.self) { name in Text(name).tag(model.uninstallHome.appendingPathComponent(name).path) }
+            }
+        }
+    }
+    private var list: some View {
+        Surface(padding: 12) {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if visible.isEmpty {
+                    ContentUnavailableView("No matching results", systemImage: "magnifyingglass",
+                        description: Text("Try different filters. Some locations may still be unindexed or unavailable."))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, minHeight: 220, alignment: .center)
+                }
+                ForEach(Array(visible.prefix(model.storageMode == "Explore" ? 12 : displayLimit))) { node in row(node); Divider() }
+                if model.storageMode == "Explore", visible.count > 12 {
+                    DisclosureGroup("Other items (\(visible.count - 12))", isExpanded: $showOther) {
+                        ForEach(Array(visible.dropFirst(12).prefix(max(0, displayLimit - 12)))) { node in row(node); Divider() }
+                    }.padding(.vertical, 8)
+                }
+                if visible.count > displayLimit { Button("Other items · show 200 more") { displayLimit += 200 }.padding() }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }.frame(maxWidth: .infinity, alignment: .center).onHover { inside in
+            if inside { pinnedOrder = visible.map(\.id) }
+            pointerInList = inside
+        }
+    }
     private func navigation(_ index: StorageIndex, _ current: StorageNode) -> some View {
         HStack {
-            Button { if let parent = current.parentID { model.navigateStorage(parent) } } label: { Label("Back", systemImage: "chevron.left") }
-                .disabled(current.parentID == nil || model.busy)
+            Button { model.storageHistory(back: true) } label: { Image(systemName: "chevron.left") }.disabled(model.storageBack.isEmpty).help("Back")
+            Button { model.storageHistory(back: false) } label: { Image(systemName: "chevron.right") }.disabled(model.storageForward.isEmpty).help("Forward")
+            Button { if let id = current.parentID { model.navigateStorage(id) } } label: { Image(systemName: "arrow.up") }.disabled(current.parentID == nil).help("Up")
             ScrollView(.horizontal) {
-                HStack(spacing: 6) {
+                HStack {
                     ForEach(index.breadcrumbs(to: current.id)) { node in
-                        Button(node.url.lastPathComponent) { model.navigateStorage(node.id) }.disabled(model.busy)
-                        if node.id != current.id { Image(systemName: "chevron.right").foregroundStyle(.secondary) }
+                        Button(node.url.isFileURL ? node.url.lastPathComponent : "Mac") { model.navigateStorage(node.id) }
+                        if node.id != current.id { Image(systemName: "chevron.right") }
                     }
-                }.font(.system(size: 11))
+                }.font(.caption)
             }
-            Button("Scan again") { model.runScan(.storage) }.disabled(!model.canStartScan)
-            Button("Choose another folder") { model.chooseFolder(for: .storage) }.disabled(!model.canStartScan)
-        }.buttonStyle(StorageActionStyle())
+        }.buttonStyle(.borderless)
     }
-
+    private func activate(_ id: String) {
+        if id == "storage-remainder" { showOther = true; return }
+        if index?.nodes[id]?.canNavigate == true { model.navigateStorage(id) }
+        else { model.storageFocus = id }
+    }
     private func row(_ node: StorageNode) -> some View {
-        HStack(spacing: 12) {
-            Toggle("Select \(node.url.lastPathComponent) for removal review", isOn: Binding(get: { model.selected.contains(node.id) }, set: {
-                if $0 { model.selected.insert(node.id) } else { model.selected.remove(node.id) }
-            })).toggleStyle(.checkbox).labelsHidden().disabled(index?.scope.inspectionOnly != false || !node.isComplete || model.busy || !SafetyEngine(ignoredPaths: model.ignored).permitsManualSelection(at: node.url, authorizedRoots: model.authorizedRoots))
-            Button {
-                if node.canNavigate { model.navigateStorage(node.id) } else { model.storageFocus = node.id }
-            } label: {
-                HStack {
-                    Image(systemName: node.isDirectory ? (node.isPackage ? "shippingbox" : "folder") : "doc")
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(node.url.lastPathComponent).lineLimit(1)
-                        if let issue = node.issue { Text(issue).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2) }
-                    }
-                    Spacer()
-                    Text("\(node.isComplete ? "" : "At least ")\(formatBytes(node.bytes))").monospacedDigit()
-                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(.plain).disabled(model.busy).accessibilityLabel("\(node.url.lastPathComponent), \(node.isDirectory ? "folder" : "file"), \(node.isComplete ? "" : "partial size, at least ")\(formatBytes(node.bytes)). \(node.canNavigate ? "Open folder" : "Show details")")
-            Button { model.storageFocus = node.id } label: { Image(systemName: "info.circle").frame(width: 28, height: 28) }
-                .buttonStyle(StorageActionStyle()).accessibilityLabel("Show details for \(node.url.lastPathComponent)")
-        }.font(.system(size: 12)).padding(12)
-            .background(model.storageFocus == node.id ? Palette.accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
-            .contextMenu {
-                if node.canNavigate { Button("Open folder") { model.navigateStorage(node.id) }.disabled(model.busy) }
-                Button("Show details") { model.storageFocus = node.id }
-                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Toggle("Select \(node.url.lastPathComponent)", isOn: Binding(get: { model.storageSelection.contains(node.id) }, set: { model.selectStorage(node, selected: $0) }))
+                    .toggleStyle(.checkbox).labelsHidden()
+                    .disabled(!model.storageSelection.contains(node.id) && (!model.storageEligible(node) || model.storageMoving))
+                Button { model.storageFocus = node.id } label: {
+                    HStack {
+                        Image(systemName: node.isDirectory ? "folder" : "doc")
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(node.id == "luma://icloud-metadata" ? "iCloud metadata" : node.url.lastPathComponent).lineLimit(1)
+                            Text(node.url.deletingLastPathComponent().path).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                            if let date = node.modified { Text(date, style: .date).font(.system(size: 10)).foregroundStyle(.secondary) }
+                        }
+                        Spacer()
+                        Text(node.cloud.map { $0.logicalBytes.map { formatBytes($0) + " logical" } ?? "Logical size unknown" } ?? (node.issue != nil && node.bytes == 0 ? "Unknown" : "\(node.issue == nil ? "" : "≥ ")\(formatBytes(node.bytes))")).monospacedDigit()
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).focused($keyboardRow, equals: node.id)
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { activate(node.id) })
+                    .onKeyPress(.return) { activate(node.id); return .handled }
+                    .onHover { if $0 { model.storageFocus = node.id } }
+                if node.canNavigate { Button { model.navigateStorage(node.id) } label: { Image(systemName: "chevron.right") }.buttonStyle(.borderless).help("Open folder") }
             }
-    }
-
-    private func details(_ node: StorageNode) -> some View {
-        Surface(padding: 18) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(node.url.lastPathComponent).font(.headline)
-                Text(node.url.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
-                Text("Type: \(node.isPackage ? "Package" : node.isDirectory ? "Folder" : "File") · Logical size: \(node.isComplete ? "" : "at least ")\(formatBytes(node.bytes))")
-                if let modified = node.modified { Text("Modified: \(modified.formatted())") }
-                if let created = node.created { Text("Created: \(created.formatted())") }
-                Text("Coverage: \(node.issue ?? "Complete within this scan’s local filesystem scope")")
+            if let cloud = node.cloud {
                 HStack {
+                    Text(cloud.state == .local ? "Downloaded" : cloud.state == .onlineOnly ? "Online-only" : "Cloud state unknown")
+                    Text(cloud.allocatedBytes.map { formatBytes($0) + " locally allocated" } ?? "Local allocation unknown")
+                    Spacer()
                     Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
-                    Button("Copy Path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(node.url.path, forType: .string) }
-                    if node.canNavigate { Button("Open folder") { model.navigateStorage(node.id) }.disabled(model.busy) }
-                }.buttonStyle(StorageActionStyle())
-            }.font(.system(size: 11))
-        }
+                }.font(.caption).foregroundStyle(.secondary)
+                Text("\(Date().timeIntervalSince(cloud.observedAt) >= 1800 ? "Stale · " : "")\(cloud.source == .index ? "Provisional index" : "Filesystem metadata") · \(cloud.observedAt.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            DisclosureGroup("Details") {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(node.url.path).textSelection(.enabled)
+                    Text(node.issue ?? "Complete local observation. Personal data is never automatically junk.")
+                    if !model.storageEligible(node) { Text("Read-only, incomplete, protected or ignored location.") }
+                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+                }.font(.caption).foregroundStyle(.secondary)
+            }.font(.system(size: 10))
+        }.font(.system(size: 12)).padding(10)
+            .background(model.storageFocus == node.id ? Palette.accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
-private struct StorageMapView: View {
-    let nodes: [StorageNode]
+private struct StorageBubbleMap: View {
+    let entries: [StorageMapEntry]
     let focused: String?
     let focus: (String) -> Void
-    private static let colors: [Color] = [Palette.accent, Palette.blue, Palette.mint, Palette.peach]
-    private var entries: [StorageMapEntry] { StorageMapEntry.entries(for: nodes) }
+    let activate: (String) -> Void
+    @FocusState private var keyboardBubble: String?
+    private let colors: [Color] = [Palette.accent, Palette.blue, Palette.mint, Palette.peach]
     var body: some View {
         GeometryReader { geometry in
             let values = entries
-            let boxes = layout(values.map { Double($0.bytes) }, rect: CGRect(origin: .zero, size: geometry.size))
+            let boxes = partition(values.map { Double($0.bytes) }, CGRect(origin: .zero, size: geometry.size))
+            let scale: CGFloat = bubbleScale(values, boxes)
             ForEach(Array(values.enumerated()), id: \.element.id) { i, entry in
-                let box = boxes[i]
-                Button { if !entry.isRemainder { focus(entry.id) } } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if box.width > 70 && box.height > 40 {
-                            Text(entry.name).font(.system(size: 11, weight: .semibold)).lineLimit(2)
-                            Text(formatBytes(entry.bytes)).font(.system(size: 10))
-                        }
-                    }.padding(10).frame(width: max(0, box.width - 3), height: max(0, box.height - 3), alignment: .topLeading)
-                        .background((entry.isRemainder ? Color.gray : Self.colors[i % Self.colors.count]).gradient, in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white, lineWidth: focused == entry.id ? 3 : 0))
-                        .foregroundStyle(.white).clipped()
-                }.buttonStyle(.plain).offset(x: box.minX, y: box.minY)
-                    .help("\(entry.name) · \(formatBytes(entry.bytes))\(entry.isRemainder ? " · Combined entries in the list" : " · Show details")")
+                let diameter: CGFloat = 2 * CGFloat(sqrt(Double(entry.bytes))) * scale
+                Button { activate(entry.id) } label: {
+                    Circle().fill((entry.isRemainder ? Color.gray : colors[i % colors.count]).gradient)
+                        .overlay(Circle().strokeBorder(.primary.opacity(focused == entry.id ? 0.9 : 0), lineWidth: 3))
+                        .overlay { if diameter > 70 { VStack { Text(entry.name).lineLimit(2); Text(formatBytes(entry.bytes)) }.font(.system(size: 10)).foregroundStyle(.white).padding(8) } }
+                        .frame(width: diameter, height: diameter)
+                }.buttonStyle(.plain).focused($keyboardBubble, equals: entry.id).position(x: boxes[i].midX, y: boxes[i].midY)
+                    .onHover { if $0 { focus(entry.id) } }
+                    .accessibilityLabel("\(entry.name), \(formatBytes(entry.bytes))")
+                    .help("\(entry.name) · \(formatBytes(entry.bytes)) · \(entry.isRemainder ? "Other items remain in the list" : "Open folder or focus file")")
             }
+        }.onChange(of: keyboardBubble) { _, id in if let id { focus(id) } }
+    }
+    private func bubbleScale(_ values: [StorageMapEntry], _ boxes: [CGRect]) -> CGFloat {
+        guard !values.isEmpty else { return 0 }
+        return values.indices.reduce(CGFloat.greatestFiniteMagnitude) { result, i in
+            Swift.min(result, Swift.min(boxes[i].width, boxes[i].height) / Swift.max(1, 2 * CGFloat(sqrt(Double(values[i].bytes)))))
         }
     }
-    // Balanced recursive partition: deterministic, native, and proportional to size.
-    private func layout(_ weights: [Double], rect: CGRect) -> [CGRect] {
-        guard !weights.isEmpty else { return [] }
-        guard weights.count > 1 else { return [rect] }
+    private func partition(_ weights: [Double], _ rect: CGRect) -> [CGRect] {
+        guard weights.count > 1 else { return weights.isEmpty ? [] : [rect] }
         let total = weights.reduce(0, +)
-        guard total > 0 else { return Array(repeating: .zero, count: weights.count) }
-        var split = 1; var subtotal = weights[0]
-        while split < weights.count - 1 && subtotal + weights[split] / 2 < total / 2 { subtotal += weights[split]; split += 1 }
-        let ratio = subtotal / total
-        if rect.width >= rect.height {
-            let width = rect.width * ratio
-            return layout(Array(weights[..<split]), rect: CGRect(x: rect.minX, y: rect.minY, width: width, height: rect.height)) + layout(Array(weights[split...]), rect: CGRect(x: rect.minX + width, y: rect.minY, width: rect.width - width, height: rect.height))
-        }
-        let height = rect.height * ratio
-        return layout(Array(weights[..<split]), rect: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: height)) + layout(Array(weights[split...]), rect: CGRect(x: rect.minX, y: rect.minY + height, width: rect.width, height: rect.height - height))
+        var split = 1, sum = weights[0]
+        while split < weights.count - 1 && sum + weights[split] / 2 < total / 2 { sum += weights[split]; split += 1 }
+        let ratio = sum / max(1, total)
+        let horizontal = rect.width >= rect.height
+        let first = CGRect(x: rect.minX, y: rect.minY, width: horizontal ? rect.width * ratio : rect.width, height: horizontal ? rect.height : rect.height * ratio)
+        let second = CGRect(x: horizontal ? first.maxX : rect.minX, y: horizontal ? rect.minY : first.maxY, width: horizontal ? rect.width - first.width : rect.width, height: horizontal ? rect.height : rect.height - first.height)
+        return partition(Array(weights[..<split]), first) + partition(Array(weights[split...]), second)
     }
 }
 
-private struct StorageActionStyle: ButtonStyle {
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.isEnabled) private var enabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(scheme == .dark ? Color.white : Color.black)
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .background((scheme == .dark ? Color.white : Color.black).opacity(configuration.isPressed ? 0.15 : 0.06), in: RoundedRectangle(cornerRadius: 8))
-            .opacity(enabled ? 1 : 0.4)
+struct StorageActionBar: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("\(model.storageSelection.count) selected · \(formatBytes(model.storageIndex?.selectedBytes(model.storageSelection) ?? 0)) unique logical bytes").font(.caption)
+                Spacer()
+                Button("Deselect all") { model.storageSelection = [] }.disabled(model.storageSelection.isEmpty)
+                if model.storageMoving { Button("Stop") { model.cleanupSession.stop() }.disabled(model.cleanupSession.stopping) }
+                else { Button("Move to Trash", systemImage: "trash") { model.trashStorage() }.disabled(model.storageUnavailableReason != nil) }
+            }
+            Text(model.storageOutcome ?? " ").font(.caption).lineLimit(2).help(model.storageOutcome ?? "")
+                .textSelection(.enabled).frame(height: 28, alignment: .leading)
+            Text(model.storageMoving ? "Stop ends before the next item; completed moves remain in Activity." : model.storageUnavailableReason ?? "Only selected local items will move to Trash.")
+                .font(.caption).foregroundStyle(.secondary).lineLimit(2).frame(height: 26, alignment: .leading)
+            HStack {
+                Button("Activity") { model.destination = .history }
+                if let id = model.lastStorageSessionID, let session = model.cleanupSession.sessions.first(where: { $0.id == id }), model.canUndo(session) {
+                    Button("Undo") { model.undo(session) }.disabled(model.mutationUnavailableReason != nil)
+                }
+            }.font(.caption)
+        }.padding(.horizontal, 20).padding(.vertical, 12).background(.bar)
     }
 }

@@ -105,7 +105,7 @@ struct HistoryView: View {
                                     Spacer()
                                     if !record.restored {
                                         if record.identity != nil {
-                                            Button("Restore") { model.restore(record) }.buttonStyle(.glass).controlSize(.small).disabled(model.busy || !model.recoveryNotices.isEmpty)
+                                            Button("Restore") { model.restore(record) }.buttonStyle(.glass).controlSize(.small).disabled(model.mutationUnavailableReason != nil)
                                         } else {
                                             Button("Open Trash", action: openTrash).buttonStyle(.glass).controlSize(.small)
                                                 .help("This older entry has no saved file identity; inspect and restore it in Finder.")

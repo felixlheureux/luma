@@ -3,14 +3,14 @@ import Darwin
 
 /// Volume capacity observations are separate from logical bytes in a scan.
 /// UUID/device/mount/root-location evidence binds a result to this generation.
-public struct StorageVolumeIdentity: Sendable, Equatable {
+public struct StorageVolumeIdentity: Codable, Sendable, Equatable {
     public let uuid: String
     public let device: UInt64
     public let mountPath: String
     public let filesystemID: Data
 }
 
-public struct StorageVolume: Identifiable, Sendable {
+public struct StorageVolume: Identifiable, Codable, Sendable {
     public var id: String { identity.mountPath }
     public let identity: StorageVolumeIdentity
     public let name: String
@@ -54,7 +54,7 @@ public struct StorageVolume: Identifiable, Sendable {
     }
 }
 
-public struct StorageScope: Sendable {
+public struct StorageScope: Codable, Sendable {
     public let root: URL
     public let volume: StorageVolume
     public let rootLocation: FileLocation

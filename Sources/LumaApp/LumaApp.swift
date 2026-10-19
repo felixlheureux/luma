@@ -13,10 +13,11 @@ struct LumaApp: App {
                 .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
                 .task {
                     let args = CommandLine.arguments
-                    if let flag = args.firstIndex(of: "--page"), args.indices.contains(flag + 1), let page = Destination(rawValue: args[flag + 1]) { model.destination = page }
+                    if let flag = args.firstIndex(of: "--page"), args.indices.contains(flag + 1), let page = Destination(rawValue: args[flag + 1]) { model.openCore(page) }
                 }
         }
         .defaultSize(width: 1200, height: 850)
+        .defaultLaunchBehavior(.presented)
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
         .commands {
@@ -27,18 +28,11 @@ struct LumaApp: App {
                 }.keyboardShortcut("d", modifiers: [.command, .shift])
             }
             CommandMenu("Navigate") {
-                Button("Overview") { model.destination = .overview }.keyboardShortcut("1")
-                Button("Clean") { model.destination = .clean }.keyboardShortcut("2")
-                Button("Optimizer") { model.destination = .optimizer }.keyboardShortcut("3")
-                Button("Applications") { model.destination = .applications }.keyboardShortcut("4")
-                Button("Backups") { model.destination = .backups }
-                Button("Downloads") { model.destination = .downloads }
-                Button("Projects") { model.destination = .projects }
-                Button("Storage") { model.destination = .storage }.keyboardShortcut("5")
-                Button("Duplicates") { model.destination = .duplicates }.keyboardShortcut("6")
-                Button("Privacy") { model.destination = .privacy }.keyboardShortcut("7")
-                Button("System") { model.destination = .system }.keyboardShortcut("8")
-                Button("Activity") { model.destination = .history }.keyboardShortcut("9")
+                ForEach(Array(Destination.core.enumerated()), id: \.element.id) { index, page in
+                    Button(page.rawValue) { model.openCore(page); model.showMainWindow?() }
+                        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
+                }
+                Button("Activity") { model.openCore(.history); model.showMainWindow?() }.keyboardShortcut("9")
             }
         }
         Settings { SettingsView().environment(model).preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil) }
@@ -48,6 +42,14 @@ struct LumaApp: App {
 
 @MainActor final class LumaAppDelegate: NSObject, NSApplicationDelegate {
     private var statusController: StatusBarController?
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let operation = AppModel.shared.cleanupSession
+        guard operation.isRunning else { return .terminateNow }
+        operation.onDrained = { sender.reply(toApplicationShouldTerminate: true) }
+        operation.stop()
+        return .terminateLater
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         !UserDefaults.standard.bool(forKey: "luma.menuBar")
     }
@@ -103,6 +105,9 @@ struct LumaApp: App {
         }
         if let flag = arguments.firstIndex(of: "--check-native-ux"), arguments.indices.contains(flag + 1) {
             checkNativeUX(output: arguments[flag + 1])
+        }
+        if let flag = arguments.firstIndex(of: "--check-direct-uninstall"), arguments.indices.contains(flag + 1) {
+            checkDirectUninstall(output: arguments[flag + 1])
         }
         if let flag = arguments.firstIndex(of: "--check-application-footprint"), arguments.indices.contains(flag + 1) {
             checkApplicationFootprint(output: arguments[flag + 1])
@@ -214,7 +219,7 @@ struct LumaApp: App {
     private func captureSnapshot() {
         let args = CommandLine.arguments
         guard let flag = args.firstIndex(of: "--snapshot") ?? args.firstIndex(of: "--snapshot-menu") ?? args.firstIndex(of: "--scan-snapshot"), args.indices.contains(flag + 1) else { return }
-        let target = args.contains("--snapshot-menu") ? statusController?.previewWindow : NSApplication.shared.windows.first(where: { $0.isVisible && !($0 is NSPanel) })
+        let target = args.contains("--snapshot-menu") ? statusController?.previewWindow : NSApplication.shared.windows.first(where: { !($0 is NSPanel) && $0.frame.width >= 600 && $0.frame.height >= 400 })
         guard let window = target else {
             NSApplication.shared.terminate(nil)
             return

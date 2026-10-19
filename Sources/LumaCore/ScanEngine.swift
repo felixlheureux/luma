@@ -20,12 +20,19 @@ public enum ScanEngine {
         case .applications:
             return try ApplicationScanner.inventory(home: home, roots: applicationRoots, emit: emit)
         case .leftovers:
-            return ScanResult(report: try await LeftoverScanner(home: home, applicationRoots: applicationRoots, emit: emit).scan())
+            return ScanResult(report: try await LeftoverScanner(home: home, applicationRoots: applicationRoots, emit: emit, owners: request.residueOwners).scan())
         case .footprint:
             guard let app = request.application else { throw LumaError.rejected("Choose an application to inspect.") }
             return try ApplicationFootprintScanner.inspect(app, home: home, emit: emit)
         case .storage:
-            guard let root = request.root else { throw LumaError.rejected("Choose a folder to analyze.") }
+            guard let root = request.root else {
+                let index = try StorageDiscovery.scan(home: home, ignoredPaths: request.ignoredPaths, emit: emit)
+                var report = ScanReport()
+                report.visited = index.nodes.count; report.duration = index.duration
+                report.isComplete = false
+                report.notices = [index.nodes[index.rootID]?.issue ?? "Accessible local storage only"]
+                return ScanResult(report: report, storageIndex: index)
+            }
             let (cache, cacheNote) = analysisSession(root: root, index: analysisIndex)
             let index = try StorageIndex.scan(root: root, ignoredPaths: request.ignoredPaths, home: home, expectedVolume: request.storageVolumeIdentity, cache: cache, emit: emit)
             var report = ScanReport()

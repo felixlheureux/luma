@@ -149,6 +149,16 @@ public struct FolderScanner: Scanner {
 }
 
 public enum ApplicationScanner {
+    /// Refresh a confirmed restored bundle without rescanning unrelated installations.
+    public static func restoredRecord(at url: URL, verifiedBytes: Int64? = nil) throws -> ApplicationRecord {
+        try NonMaterializingIO.perform {
+            let metadata = try Filesystem.applicationMetadata(at: url)
+            let identifier = try Filesystem.applicationIdentifier(at: url)
+            return ApplicationRecord(url: url, name: metadata["CFBundleDisplayName"] as? String ?? url.deletingPathExtension().lastPathComponent,
+                bundleID: identifier, version: metadata["CFBundleShortVersionString"] as? String ?? "Unknown", bytes: verifiedBytes ?? 0, sizeState: verifiedBytes == nil ? .pending : .available)
+        }
+    }
+
     public static func scan(home: URL = FileManager.default.homeDirectoryForCurrentUser) throws -> [ApplicationRecord] {
         try inventory(home: home).applications
     }

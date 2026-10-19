@@ -24,7 +24,7 @@ Users select residues or whole groups and click Move to Trash in the same view. 
 
 ## Storage
 
-Provide one useful Storage destination for large files and folders across accessible internal Mac storage. Start discovery automatically, default to largest items, and show partial results before full traversal finishes. Returning to Storage uses saved observations immediately and refreshes changed locations in the background. A manual Refresh is optional.
+Provide one useful Storage destination for large files and folders across accessible internal Mac storage. Opening Storage must not start a filesystem scan. Show saved observations immediately when available, with their timestamp, and wait for an explicit Scan accessible Mac or Scan again action. Default to largest items and publish partial results during a requested scan. Keep the existing optional folder picker under Locations. Do not restart scans in response to background filesystem activity; targeted observation updates after an authorized mutation may still run.
 
 Discover roots and volumes automatically. Use standard macOS permission guidance, including a single Settings handoff for Full Disk Access where needed; do not make a recurring folder chooser the main flow. Show inaccessible/excluded locations as coverage, not zero bytes or an empty healthy system. Avoid scanning APFS firmlink aliases twice or traversing system/package internals just to fill a chart. System-managed space can be a read-only capacity category. External volumes are optional. Discovery limits retain useful prioritized results and visible remaining coverage; they must not send the user back to a smaller-folder picker. Allocated-byte observations are not guaranteed unique physical usage or reclaimed space on APFS.
 

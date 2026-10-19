@@ -55,7 +55,7 @@ extension LumaAppDelegate {
                 model.selected = Set(items.map(\.id))
                 model.inspectedApp = nil
                 try await Task.sleep(for: .milliseconds(400))
-                model.review(items, source: .applications)
+                model.review(items, source: .applications, capturedSelection: Set(items.map(\.id)))
                 try await waitForFootprintCheck { !model.busy }
                 try await Task.sleep(for: .milliseconds(400))
                 report["separateBundleChoice"] = model.reviewPlan?.items.allSatisfy { $0.category != .applications } == true
@@ -86,7 +86,7 @@ extension LumaAppDelegate {
                 model.selected = Set(resetItems.map(\.id))
                 model.inspectedApp = nil
                 try await Task.sleep(for: .milliseconds(400))
-                model.review(resetItems, source: .applicationReset, resetApplication: app)
+                model.review(resetItems, source: .applicationReset, resetApplication: app, capturedSelection: Set(resetItems.map(\.id)))
                 try await waitForFootprintCheck { !model.busy }
                 try await Task.sleep(for: .milliseconds(400))
                 report["resetReview"] = model.showingReview && window.attachedSheet != nil && model.reviewPlan?.source == .applicationReset
@@ -94,8 +94,9 @@ extension LumaAppDelegate {
                 try saveScanCheckWindow(window.attachedSheet ?? window, path: output + "-reset-review.png")
                 model.showingReview = false; model.reviewPlan = nil
                 try await Task.sleep(for: .milliseconds(400))
+                let previousResidues = model.leftovers
                 model.invalidateLeftovers()
-                report["mutationInvalidatesLeftovers"] = !model.didScanLeftovers && model.leftovers.isEmpty && model.completedSnapshots[.leftovers] == nil
+                report["mutationInvalidatesLeftovers"] = !model.residueEntered && model.leftovers == previousResidues && model.completedSnapshots[.leftovers] == nil
                 model.invalidateApplicationFootprint()
                 report["mutationInvalidatesFootprint"] = model.footprintDetails == nil && model.footprint.isEmpty && model.completedSnapshots[.footprint] == nil && model.scanSessions.snapshots[.footprint] == nil
                 report["monitoringContinued"] = !model.cpuHistory.isEmpty && self.scanCheckMenuVisible()

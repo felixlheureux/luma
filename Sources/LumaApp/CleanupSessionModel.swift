@@ -22,9 +22,10 @@ private final class CleanupDetailMailbox: @unchecked Sendable {
         let mailbox = details
         return { mailbox.send($0) }
     }
-    var undoReview: UndoReview?
     @ObservationIgnored private var task: Task<Void, Never>?
     private(set) var isRunning = false
+    @ObservationIgnored var onDrained: (() -> Void)?
+    var restoring = false
 
     func run(_ operation: @escaping @MainActor () async -> Void) {
         guard task == nil else { return }
@@ -41,6 +42,7 @@ private final class CleanupDetailMailbox: @unchecked Sendable {
             await operation()
             ticker.cancel()
             task = nil; stopping = false; progress = nil; detail = nil; details.clear(); isRunning = false
+            onDrained?(); onDrained = nil
         }
     }
 

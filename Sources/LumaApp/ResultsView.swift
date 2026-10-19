@@ -14,7 +14,7 @@ struct ItemList: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 13) {
                         Toggle("Select \(item.name)", isOn: Binding(get: { model.selected.contains(item.id) }, set: { if $0 { model.selected.insert(item.id) } else { model.selected.remove(item.id) } }))
-                            .toggleStyle(.checkbox).labelsHidden().disabled(model.busy)
+                            .toggleStyle(.checkbox).labelsHidden()
                         SymbolTile(symbol: item.category.symbol, size: 34)
                         Button { toggle(item.id) } label: {
                             VStack(alignment: .leading, spacing: 4) {

@@ -14,7 +14,7 @@ required = [
     "warmStorageMetadata", "storageCoverageAndBytesMatch", "nestedNavigationAvailable",
     "noSelection", "warmHashesReused", "duplicateResultsMatch", "nativeEventInvalidation",
     "changedContentNotInGroup", "cacheClearFinished", "activityAndIgnoresPreserved",
-    "clearForcesColdHashes", "monitoringContinued", "settingsPresented",
+    "clearForcesColdHashes", "storageObservationCacheCleared", "monitoringContinued", "settingsPresented",
 ]
 requested = os.environ.get("LUMA_INDEX_QA_OUTPUT_DIR")
 context = contextlib.nullcontext(requested) if requested else tempfile.TemporaryDirectory(prefix="luma-index-")

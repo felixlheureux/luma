@@ -97,14 +97,11 @@ struct MenuCompanion: View {
             }
 
             HStack(spacing: 10) {
-                Button { show(.system) } label: {
-                    Label("Open monitor", systemImage: "waveform.path.ecg")
-                        .frame(maxWidth: .infinity).padding(.vertical, 5).foregroundStyle(.white)
-                }.buttonStyle(.glassProminent).tint(Palette.accent)
-                Button { show(.clean) } label: {
-                    Label("Clean", systemImage: "sparkles").padding(.horizontal, 8).padding(.vertical, 5).foregroundStyle(.primary)
-                }.buttonStyle(.glass)
-            }.font(.system(size: 12, weight: .semibold))
+                ForEach(Destination.core) { page in
+                    Button { show(page) } label: { Image(systemName: page.symbol).frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass).help(page.rawValue).accessibilityLabel("Open " + page.rawValue)
+                }
+            }
             HStack {
                 Text("Updates every 2 seconds").foregroundStyle(.secondary)
                 Spacer()
@@ -139,7 +136,7 @@ struct MenuCompanion: View {
     }
 
     private func show(_ destination: Destination) {
-        dismiss(); model.destination = destination
+        dismiss(); model.openCore(destination)
         model.showMainWindow?()
     }
 }

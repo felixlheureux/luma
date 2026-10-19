@@ -12,13 +12,13 @@ import Testing
         _ = try f.file("Sample.bundle/inside", content: "12")
         let index = try StorageIndex.scan(root: f.downloads)
         #expect(index.nodes[index.rootID]?.bytes == 10)
-        #expect(index.nodes[f.downloads.appendingPathComponent("linked").path]?.bytes == 0)
+        #expect(index.nodes[f.downloads.appendingPathComponent("linked").path]?.bytes == 5)
         #expect(index.children(of: index.rootID).count == 3)
         #expect(index.children(of: index.rootID, showHidden: true).count == 4)
         #expect(index.breadcrumbs(to: first.deletingLastPathComponent().path).count == 4)
         let package = try #require(index.nodes[f.downloads.appendingPathComponent("Sample.bundle").path])
         #expect(package.isPackage && !package.canNavigate && package.children.isEmpty)
-        #expect(index.children(of: index.rootID, showHidden: true).reduce(0) { $0 + $1.bytes } == 10)
+        #expect(index.children(of: index.rootID, showHidden: true).reduce(0) { $0 + $1.aggregateBytes } == 10)
         #expect(index.nodes.values.allSatisfy { $0.isComplete })
     }
 

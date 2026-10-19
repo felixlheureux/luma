@@ -2,32 +2,38 @@ import Foundation
 import Darwin
 
 /// Read-only observations. A node is never itself permission to remove data.
-public struct StorageNode: Identifiable, Sendable {
-    public var id: String { url.path }
+public struct StorageNode: Identifiable, Codable, Sendable {
+    public var id: String { url.isFileURL ? url.path : url.absoluteString }
     public let url: URL
     public let parentID: String?
     public let isDirectory: Bool
     public let isPackage: Bool
     public let hidden: Bool
+    public let observedAt: Date
     public let modified: Date?
     public let created: Date?
     public let bytes: Int64
+    /// Unique contribution to tree totals; bytes remains the per-path logical size.
+    public let aggregateBytes: Int64
     public let issue: String?
     public let accessCapability: FilesystemCapability?
     public let coverageState: CoverageState?
     public let children: [String]
     let device: UInt64?
     let inode: UInt64?
-    public var canNavigate: Bool { isDirectory && !isPackage && device != nil }
-    public var isComplete: Bool { issue == nil }
+    public var cloud: CloudStorageMetadata? = nil
+    public var canNavigate: Bool { isDirectory && !isPackage && (device != nil || cloud != nil || id == "luma://icloud-metadata") }
+    public var isComplete: Bool { issue == nil && cloud == nil }
 }
 
-public struct StorageIndex: Sendable {
+public struct StorageIndex: Codable, Sendable {
+    @TaskLocal static var discoveryClock: (@Sendable () -> Date)?
     public let rootID: String
     public let scope: StorageScope
     public let nodes: [String: StorageNode]
     public let scannedAt: Date
     public let duration: TimeInterval
+    public var discoveryScopes: [StorageScope] = []
 
     public func children(of id: String, showHidden: Bool = false) -> [StorageNode] {
         (nodes[id]?.children ?? []).compactMap { nodes[$0] }.filter { showHidden || !$0.hidden }
@@ -80,7 +86,7 @@ public struct StorageIndex: Sendable {
         try scan(root: root, limit: limit, ignoredPaths: ignoredPaths, home: home, expectedVolume: expectedVolume, cache: nil, emit: emit)
     }
 
-    static func scan(root: URL, limit: Int = 100_000, ignoredPaths: Set<String> = [], home: URL = FileManager.default.homeDirectoryForCurrentUser, expectedVolume: StorageVolumeIdentity? = nil, cache: AnalysisIndexSession?, emit: @escaping ScanEmitter = { _ in }) throws -> Self {
+    static func scan(root: URL, limit: Int = 100_000, ignoredPaths: Set<String> = [], home: URL = FileManager.default.homeDirectoryForCurrentUser, expectedVolume: StorageVolumeIdentity? = nil, cache: AnalysisIndexSession?, discovery: Bool = false, retained: [String: StorageNode] = [:], publish: @escaping @Sendable (StorageIndex) -> Void = { _ in }, emit: @escaping ScanEmitter = { _ in }) throws -> Self {
         try NonMaterializingIO.perform {
             let started = Date()
             let root = root.exactStandardizedFileURL
@@ -92,11 +98,15 @@ public struct StorageIndex: Sendable {
             guard rootPin.value.st_mode & S_IFMT == S_IFDIR else { throw LumaError.rejected("Choose a directory.") }
             let device = UInt64(UInt32(bitPattern: rootPin.value.st_dev))
             var nodes: [String: StorageNode] = [:]
+            var activeDirectories: [String: StorageNode] = [:]
             var count = 0
-            // Assign each inode's logical bytes to its first path in exact UTF-8
-            // order. Parent totals add up; aliases in other branches count zero.
+            var lastPublication = Date()
+            let clock = discoveryClock ?? { Date() }
+            let deadline = clock().addingTimeInterval(15)
+            // Keep per-path logical size while assigning each inode's aggregate
+            // contribution once. Folder totals add those unique contributions.
             var seen: Set<FileObjectID> = []
-            func visit(_ url: URL, parent: String?, depth: Int) throws -> StorageNode {
+            func visit(_ url: URL, parent: String?, depth: Int, stopAt: Int, until: Date) throws -> StorageNode {
                 try Task.checkCancellation()
                 count += 1
                 var directory = false
@@ -107,6 +117,7 @@ public struct StorageIndex: Sendable {
                 var inode: UInt64?
                 var nodeDevice: UInt64?
                 var bytes: Int64 = 0
+                var aggregate: Int64 = 0
                 var childIDs: [String] = []
                 var issue: String?
                 var accessCapability: FilesystemCapability?
@@ -115,7 +126,10 @@ public struct StorageIndex: Sendable {
                     guard !ignoredPaths.contains(where: { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }) else {
                         throw LumaError.rejected("Ignored location; contents were not inspected.")
                     }
-                    guard count <= limit, depth <= 128 else { throw LumaError.rejected("Inspection limit reached; choose a smaller folder.") }
+                    guard count <= min(limit, stopAt), depth <= 128, !discovery || clock() < until else { throw LumaError.rejected("Discovery bound reached; remaining contents have unknown size. Continue discovery for more observations.") }
+                    if discovery && (url.path == home.appendingPathComponent(".Trash").path || url.path == home.appendingPathComponent("Library/Application Support/Luma").path) {
+                        throw LumaError.rejected("Luma persistence and Trash contents are excluded from automatic discovery.")
+                    }
                     let pin = try PinnedPath(url, allowInspectionRoot: true)
                     let info = pin.value
                     directory = info.st_mode & S_IFMT == S_IFDIR
@@ -142,25 +156,72 @@ public struct StorageIndex: Sendable {
                     nodeDevice = device
                     inode = info.st_ino
                     if directory && !package {
-                        let names = try PinnedPath.names(in: pin.descriptor).sorted { Data($0.utf8).lexicographicallyPrecedes(Data($1.utf8)) }
+                        if discovery, depth > 0, let previous = retained[url.path],
+                           previous.device == nodeDevice, previous.inode == inode, previous.modified == modified {
+                            // A targeted refresh keeps unrelated, unchanged branches
+                            // as dated observations instead of walking them again.
+                            try pin.revalidate()
+                            var pending = [previous.id]
+                            while let id = pending.popLast(), let saved = retained[id] {
+                                try Task.checkCancellation()
+                                nodes[id] = saved; pending.append(contentsOf: saved.children)
+                            }
+                            return previous
+                        }
+                        activeDirectories[url.path] = StorageNode(url: url, parentID: parent, isDirectory: true,
+                            isPackage: false, hidden: hidden, observedAt: started, modified: modified, created: created,
+                            bytes: 0, aggregateBytes: 0, issue: "Discovery in progress; remaining size is unknown.",
+                            accessCapability: nil, coverageState: .skipped, children: [], device: nodeDevice, inode: inode)
+                        let priority = ["Downloads", "Desktop", "Documents", "Movies", "Pictures", "Music", "Applications"]
+                        let names = try PinnedPath.names(in: pin.descriptor)
+                        var entries: [(name: String, directory: Bool)] = []
                         for name in names {
-                            guard count < limit else { issue = "Inspection limit reached; some children were not inspected."; break }
-                            let child = try visit(url.exactAppendingPathComponent(name), parent: url.path, depth: depth + 1)
+                            try Task.checkCancellation()
+                            var child = stat()
+                            // Classify without following links or opening content.
+                            let directory = discovery && fstatat(pin.descriptor, name, &child, AT_SYMLINK_NOFOLLOW) == 0
+                                && child.st_mode & S_IFMT == S_IFDIR
+                            entries.append((name, directory))
+                        }
+                        entries.sort { a, b in
+                            if discovery && depth == 0 {
+                                let x = priority.firstIndex(of: a.name) ?? 99, y = priority.firstIndex(of: b.name) ?? 99
+                                if x != y { return x < y }
+                            }
+                            // Show this folder's files before descending into a huge subtree.
+                            if discovery && a.directory != b.directory { return !a.directory }
+                            return Data(a.name.utf8).lexicographicallyPrecedes(Data(b.name.utf8))
+                        }
+                        var remainingDirectories = entries.filter(\.directory).count
+                        for entry in entries {
+                            guard count < min(limit, stopAt), !discovery || clock() < until else { issue = "Bounded discovery: remaining children have unknown size. Continue discovery for more."; break }
+                            // Divide both time and entries among sibling branches.
+                            // Cheap branches return their unused time to the next one.
+                            let now = clock()
+                            let childDeadline = discovery && entry.directory
+                                ? now.addingTimeInterval(max(0, until.timeIntervalSince(now)) / Double(max(1, remainingDirectories))) : until
+                            let childStop = discovery && depth == 0 && entry.directory
+                                ? min(stopAt, count + max(128, (stopAt - count) / max(1, remainingDirectories))) : stopAt
+                            if entry.directory { remainingDirectories -= 1 }
+                            let child = try visit(url.exactAppendingPathComponent(entry.name), parent: url.path, depth: depth + 1, stopAt: childStop, until: childDeadline)
                             childIDs.append(child.id)
-                            bytes += child.bytes
+                            bytes += child.aggregateBytes
+                            aggregate += child.aggregateBytes
                             if !child.isComplete { issue = "Partial size: one or more children could not be fully inspected. Skipped bytes are unknown." }
                         }
                     } else if package {
+                        if discovery { throw LumaError.rejected("Package contents are not inspected during automatic discovery.") }
                         guard !ignoredPaths.contains(where: { Filesystem.isWithin(URL(fileURLWithPath: $0), root: url) }) else {
                             throw LumaError.rejected("Package contains an ignored location; its size was not inspected.")
                         }
                         // Packages stay opaque navigation leaves, but share the
                         // same inode accounting as ordinary files in the index.
                         _ = try Filesystem.inspect(url, onFile: { object, size in
-                            if seen.insert(object).inserted { bytes += size }
+                            if seen.insert(object).inserted { bytes += size; aggregate += size }
                         })
-                    } else if seen.insert(FileObjectID(device: device, inode: info.st_ino)).inserted {
+                    } else {
                         bytes = info.st_size
+                        if seen.insert(FileObjectID(device: device, inode: info.st_ino)).inserted { aggregate = bytes }
                     }
                     try pin.revalidate()
                 } catch is CancellationError { throw CancellationError() }
@@ -170,15 +231,27 @@ public struct StorageIndex: Sendable {
                     coverageState = GeneratedDataScanner.failureState(error)
                 }
                 let node = StorageNode(url: url, parentID: parent, isDirectory: directory, isPackage: package,
-                    hidden: hidden, modified: modified, created: created, bytes: bytes, issue: issue,
+                    hidden: hidden, observedAt: started, modified: modified, created: created, bytes: bytes, aggregateBytes: aggregate, issue: issue,
                     accessCapability: accessCapability, coverageState: coverageState, children: childIDs, device: nodeDevice, inode: inode)
                 nodes[node.id] = node
+                activeDirectories.removeValue(forKey: node.id)
+                if discovery && ((parent == root.path && nodes.count <= 16) || Date().timeIntervalSince(lastPublication) > 0.4) {
+                    lastPublication = Date()
+                    // A completed child can arrive before its parents finish.
+                    // Publish an intact display hierarchy rather than dangling rows.
+                    var display = activeDirectories.merging(nodes, uniquingKeysWith: { _, finished in finished })
+                    let children = Dictionary(grouping: display.values, by: \.parentID)
+                    for (id, value) in display where value.isDirectory && !value.isPackage {
+                        display[id] = value.replacing(children: (children[id] ?? []).map(\.id).sorted())
+                    }
+                    publish(Self(rootID: root.path, scope: scope, nodes: display, scannedAt: started, duration: Date().timeIntervalSince(started)))
+                }
                 if count % 128 == 0 || parent == nil {
                     emit(.progress(.init("Indexing folder hierarchy", current: url.lastPathComponent, entries: count, bytes: bytes)))
                 }
                 return node
             }
-            _ = try visit(root, parent: nil, depth: 0)
+            _ = try visit(root, parent: nil, depth: 0, stopAt: limit, until: deadline)
             try rootPin.revalidate()
             try scope.validate()
             return Self(rootID: root.path, scope: scope, nodes: nodes, scannedAt: started, duration: Date().timeIntervalSince(started))
@@ -186,7 +259,7 @@ public struct StorageIndex: Sendable {
     }
 }
 
-public struct StorageMapEntry: Identifiable, Sendable {
+public struct StorageMapEntry: Identifiable, Codable, Sendable {
     public let id: String
     public let name: String
     public let bytes: Int64

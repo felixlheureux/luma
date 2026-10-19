@@ -1,6 +1,6 @@
 # 056 — Discover large files across the Mac in one Storage view
 
-Status: Planned
+Status: Done
 Priority: P0  
 Depends on: [054](054-direct-uninstall.md) for shared action/selection/outcome state; existing scan/index services. Read-only discovery/index/map work can be developed independently.
 
@@ -29,17 +29,17 @@ Open Storage and immediately start understanding what takes space across the Mac
 
 ## Acceptance
 
-- [ ] Fresh launch → Storage shows progressive largest-file/folder results without folder selection or a Scan action; permission-limited coverage stays usable.
-- [ ] Warm entry/relaunch shows saved hierarchy/results before new filesystem work; changing filters/breadcrumbs does not restart whole-Mac analysis.
-- [ ] Explore has a side-by-side proportional bubble map and largest-first list, linked hover/focus, usable Other items, breadcrumbs and back/forward/up. Map clicks navigate; narrow widths remain usable.
-- [ ] Largest files searches/ranks across discovered roots on the same index; selection survives folders/modes/filters, with an accurate fixed footer and direct in-view Trash. No duplicate scan engine or review basket.
-- [ ] Projects/Downloads/folder scanning no longer appear as redundant primary destinations.
-- [ ] Root aliases, hard links, volume replacement, event loss and unknown sizes do not inflate totals or authorize deletion. Logical sizes, observed local allocation and capacity are labeled distinctly. Allocated bytes are not additive unique physical usage or guaranteed reclaimable space on APFS (clones/shared extents/snapshots/compression); use honest estimates/unknown categories, not a new extent-analysis subsystem.
-- [ ] A fresh automatic whole-Mac inventory permits explicit Trash of an eligible home-local file without first choosing a folder; system/external/provider nodes remain read-only.
-- [ ] Local selection/Trash stays in Storage with exact evidence and known duplicate keeper protection; read-only/system/provider observations cannot enter cleanup. Deselect remains enabled when a removal selection is invalid.
-- [ ] Idle automatic discovery settles after persistence writes; losing observed A cannot cancel an unrelated B scan or clear Residues selection. Ignore changes invalidate affected parent eligibility.
-- [ ] Failed/cancelled scope changes preserve correctly labeled prior results; hard-linked file rows retain real logical size in filters/sorting and aggregate totals remain deduplicated.
-- [ ] All app entry points expose the same core routes; app/file Search uses existing observations with consistent focus/navigation and accessible keyboard behavior. Narrow windows and optional details preserve an operable browser.
+- [x] Fresh launch → Storage shows progressive largest-file/folder results without folder selection or a Scan action; permission-limited coverage stays usable.
+- [x] Warm entry/relaunch shows saved hierarchy/results before new filesystem work; changing filters/breadcrumbs does not restart whole-Mac analysis.
+- [x] Explore has a side-by-side proportional bubble map and largest-first list, linked hover/focus, usable Other items, breadcrumbs and back/forward/up. Map clicks navigate; narrow widths remain usable.
+- [x] Largest files searches/ranks across discovered roots on the same index; selection survives folders/modes/filters, with an accurate fixed footer and direct in-view Trash. No duplicate scan engine or review basket.
+- [x] Projects/Downloads/folder scanning no longer appear as redundant primary destinations.
+- [x] Root aliases, hard links, volume replacement, event loss and unknown sizes do not inflate totals or authorize deletion. Logical sizes, observed local allocation and capacity are labeled distinctly. Allocated bytes are not additive unique physical usage or guaranteed reclaimable space on APFS (clones/shared extents/snapshots/compression); use honest estimates/unknown categories, not a new extent-analysis subsystem.
+- [x] A fresh automatic whole-Mac inventory permits explicit Trash of an eligible home-local file without first choosing a folder; system/external/provider nodes remain read-only.
+- [x] Local selection/Trash stays in Storage with exact evidence and known duplicate keeper protection; read-only/system/provider observations cannot enter cleanup. Deselect remains enabled when a removal selection is invalid.
+- [x] Idle automatic discovery settles after persistence writes; losing observed A cannot cancel an unrelated B scan or clear Residues selection. Ignore changes invalidate affected parent eligibility.
+- [x] Failed/cancelled scope changes preserve correctly labeled prior results; hard-linked file rows retain real logical size in filters/sorting and aggregate totals remain deduplicated.
+- [x] All app entry points expose the same core routes; app/file Search uses existing observations with consistent focus/navigation and accessible keyboard behavior. Narrow windows and optional details preserve an operable browser.
 
 ## Validation and starting points
 
@@ -52,3 +52,50 @@ Start in `StorageView.swift`, `StorageVolumeModel.swift`, `AppModel.chooseFolder
 Use the current [Space Lens results guide](https://macpaw.com/support/cleanmymac/knowledgebase/space-lens-results) and its official screenshots for the map/list/navigation reference; [Large & Old Files](https://macpaw.com/support/cleanmymac/knowledgebase/large-and-old) informs the global file list. [Space Lens defaults to the main drive](https://macpaw.com/support/cleanmymac/knowledgebase/space-lens), so a folder picker is a secondary scope control. Luma discovery remains automatic. Its [separate removal review](https://macpaw.com/support/cleanmymac/knowledgebase/space-lens-cleanup) is not a Luma requirement: selected local items move to Trash in the current browser.
 
 Evidence is current official documentation and screenshots, not a live DMG run or validated knowledge of proprietary internals. Do not claim preview/provider safety from screenshots. Keep 057's no-download policy and Luma's local Trash semantics.
+
+
+## Implementation — 2026-10-19
+
+- Added `StorageDiscovery` and typed, timestamped `StorageIndex`/`StorageNode` observations. The default covers readable current-home, Applications, Library, Shared, /opt and /usr/local roots, normalizes Data-volume aliases/overlap, shares bounds across top-level locations and excludes opaque packages, other users’ private trees, provider/dataless content, Trash and owned persistence. Discovery starts on entry, publishes batches and keeps existing observations during refresh. Initial discovery is bounded to 40,000 entries across roots and 15 seconds per root; explicit continuation increases the entry budget up to 200,000. Excluded/unvisited bytes remain unknown, with no smaller-folder prompt.
+- Saved display observations retain up to 10,000 prioritized nodes with their ancestors within a 32 MiB encoded bound. Loading validates structure/root identities; corrupted/replaced roots rediscover conservatively. Path-level events refresh affected directories; gaps refresh affected roots. Owned persistence events are excluded. Clear saved analysis drains discovery and clears the hierarchy alongside existing caches. Per-node observation times remain unchanged for retained branches.
+- Largest files and Explore use the same index. Explore has proportional circles, a ranked list, linked hover/keyboard focus, explicit Other items, inline details, breadcrumbs and history. Narrow windows use a list-first layout. Empty results span the full browser rather than retaining an empty map column; the empty state and populated browser are centered within the content area.
+- Storage owns selection independently of other features and pending scopes. Navigation, modes and filters preserve explicit choices; parent/child selections normalize. The fixed footer reports unique selected logical bytes and executes captured local Trash with Stop/Activity/Undo, without a review sheet. Background/late duplicate completion cannot clear Storage choices. Fresh narrow authority permits supported home-local selections through a broad inspection-only observation without a picker; protected/ignored/provider/external content stays excluded. Known duplicate members retain keeper evidence and folders containing known duplicate members require individual selection.
+- Published observations own their scope labels. Failed/pending B leaves A labeled as A; an A volume callback cannot cancel B or clear Residues. Per-path hard-link sizes remain real sizes while aggregate/selected totals deduplicate file objects. Source observations and current cleanup evidence stay separate.
+- Unified sidebar, commands, search and companion links around Storage, Apps, Residues, Maintenance and System, with Activity/Settings secondary. Defaults restore the last valid core page or Storage. Downloads/projects are Storage locations/filters; specialized duplicate comparison remains optional. Existing generated-data review occupies Maintenance pending task 059. Global Search uses installed-app and whole-index observations, supports immediate typing/Return/Escape, resets conflicting file filters and focuses the chosen result. Main-page scroll positions are retained and ordinary file focus no longer jumps to a bottom detail panel.
+
+## Validation limits
+
+Native fixtures use an Apple M2 MacBook Air, 16 GB RAM, macOS 27.0.1 (26A434). They do not establish behavior on macOS 26 specifically, exhaustive real-home coverage, a real Full Disk Access grant, physical hotplug, full pointer/keyboard/VoiceOver traversal, GPU frame timing or real Trash. Provider/iCloud metadata visibility is intentionally deferred to 057; local provider mutation exclusions remain enforced. Reference evidence is static resources and official documentation, not a live reference-app comparison. All fixture mutations use injected local movers and disposable data. The task adds no release/version/tag.
+
+
+## Accepted validation — 2026-10-19
+
+- All **312 Swift tests in 31 suites pass**, including broad inspection-only root → no-picker home-file Trash/Restore, current identity/ownership/provider/ignore guards, hard-link sizes/unique totals, duplicate keeper protection, dirty-subtree retention, saved-index restart/corruption/freshness, prioritized saved bounds and persistence event settling.
+- Native Storage fixtures pass **24 assertions in Light/Dark/System** on a 1,036-node generated home with 1,000 nested files, 20 installer files, hidden/opaque/provider/unreadable locations and an injected mover. They cover cold/warm entry, history without a new worker, persistent selection, unrelated duplicate completion, direct Trash/Undo across navigation, A→failed B labels/outcomes, old-A unmount during B, retained Residues, narrow layout, field-editor typing/Return/Escape, frame restoration and idle settling. Empty Explore now has no reserved map column. Ordinary, narrow, Largest files and empty-state captures were inspected.
+
+| Appearance | First results | Warm open | Discovery | Fixture Trash | Fixture Undo |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Light | 1.819 s | 0.113 s | 2.303 s | 0.358 s | 0.797 s |
+| Dark | 0.480 s | 0.100 s | 2.339 s | 0.324 s | 0.788 s |
+| System | 0.478 s | 0.080 s | 2.643 s | 0.329 s | 0.737 s |
+
+These are local end-to-end fixture observations, including a 30 ms completion poll and native scheduling, not universal performance guarantees or real Trash timings.
+
+- Read-only generated APFS-volume checks pass browsing, core/app action rejection, real image unmount and continued monitoring in Light/Dark. Native metadata/hash cache checks pass both appearances, including clearing Storage observations while retaining Activity/ignores. The former explicit-folder warm check now requests its fixture explicitly; automatic discovery cannot default to personal roots in debug native QA.
+- **36 core-page layout/appearance/contrast samples** pass. Scan lifecycle passes both appearances with a 6,000-file fixture, cancellation, scoped retry, Settings, close/reopen and continued monitoring. Direct uninstall/optional footprint checks pass Light/Dark/System; residue feedback passes all three appearances; Stop/Undo checks and duplicate review pass both appearances.
+- The first final duplicate dark run crashed in macOS UpdateCycle while an NSAlert sheet was closing during fixture termination. The checker now yields for the alert update and waits for actual sheet dismissal; the subsequent Light/Dark runs pass. This was a test teardown fix, with no production alert/cleanup policy change. Failed attempts are not passing evidence.
+- The final debug app builds as arm64 and passes strict deep signature verification. Documentation links and diff whitespace checks pass. Reference resources were checked again and the read-only reference image was ejected. No real Trash, personal-folder fixture scan, release, version bump, commit or push was performed by accepted checks.
+
+## Owner correction — Storage startup and responsiveness
+
+On 2026-10-19 the owner reports freezes/slowness during Storage loading and changes the startup requirement: opening Storage must not start scanning. Keep the existing optional folder picker; show saved metadata and require an explicit broad scan. This supersedes earlier automatic-start/background-refresh requirements and their presentation assertions above. Safety, identity and cleanup acceptance remain unchanged.
+
+The follow-up moves listing/filtering/map preparation off the main actor, virtualizes visible rows, publishes only new hierarchy previews and preserves completed results while a requested refresh runs. Traversal processes direct files before descending and shares its existing time bound among sibling directories so a large nested branch cannot consume the whole budget. A deterministic clock fixture verifies sibling coverage without increasing the scan timeout.
+
+### Accepted follow-up validation
+
+- Final Swift suite: 321 reported tests in 32 suites pass, with five opt-in skips. New regressions cover complete progressive hierarchy links, display filtering/order, deterministic time fairness and retained unchanged sibling observations during targeted refresh. Central safety, provider, identity, duplicate and recovery coverage remains enabled.
+- Native Storage checks pass Light/Dark/System with 8,000 nested fixture files plus top-level/control fixtures on Apple M2, 16 GiB, macOS 27.0.1. The bounded inventory contains 1,926–2,109 nodes and explicitly retains unknown coverage; this is not a claim that every fixture file was inspected. First results: 0.481–0.576 s; saved open: 0.109–0.114 s; bounded discovery: 3.843–3.861 s. Maximum sampled main-actor interval: 0.060–0.090 s with a 30 ms heartbeat. These are synthetic checks, not frame traces or general performance guarantees.
+- Cold opening starts no scan or filesystem-event watcher. Warm opening loads saved observations without starting another scan. Requested broad discovery still needs no picker; optional custom-folder selection remains available. Selection/navigation/Search, narrow layout, cloud read-only states, direct fixture Trash/Undo and idle settling pass. Undo restores the observation through a targeted update and replaces the stale moved outcome. No real Trash or personal-folder scan was used.
+- Stop/partial-session/Undo native regressions pass Light/Dark. The final debug app builds and passes strict deep signature verification. Full-size native Storage Light/Dark captures were inspected. The generic preview script was attempted but still rejects its earlier 38×38 captures when a snapshot launch exposes only status windows; it is not counted as passing visual evidence. Full manual keyboard/VoiceOver and new real-home performance measurements remain unverified.
+- Main scene launch is explicitly presented, and native QA requires a full-size main-capable window; status-icon windows cannot satisfy Storage window checks. Task 058's remaining menu-panel implementation is still open after the owner prioritized this Storage correction.

@@ -67,6 +67,10 @@ extension LumaAppDelegate {
                 try await wait { !model.busy }
                 report["changedKeeperRejected"] = model.duplicateChoice == nil && model.selected.isEmpty && model.error != nil
                 model.error = nil
+                // Yield for the native alert update, then wait for its actual sheet
+                // dismissal before terminating the fixture app.
+                try await Task.sleep(for: .milliseconds(30))
+                try await wait { window.attachedSheet == nil }
                 report["historyAndIgnoresPreserved"] = try encoder.encode(model.history) == history && model.ignored == ignores
                 report["monitoringContinued"] = !model.cpuHistory.isEmpty
             } catch { report["error"] = error.localizedDescription }

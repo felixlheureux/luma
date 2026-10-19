@@ -17,8 +17,17 @@ public struct SafetyEngine: Sendable {
             && !protected.contains { Filesystem.samePath($0, url) }
             && !Filesystem.isWithin(url, root: home.appendingPathComponent("Library"))
             && !Filesystem.isWithin(url, root: home.appendingPathComponent(".Trash"))
-            && !ignoredPaths.contains { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }
+            && !ignoredPaths.contains { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) || Filesystem.isWithin(URL(fileURLWithPath: $0), root: url) }
             && authorizedRoots.contains { !Filesystem.samePath(url, $0) && Filesystem.isWithin(url, root: $0) }
+    }
+
+    public static func validateIgnores(_ url: URL, ignoredPaths: Set<String>) throws {
+        guard !ignoredPaths.contains(where: {
+            let ignored = URL(fileURLWithPath: $0)
+            return Filesystem.isWithin(url, root: ignored) || Filesystem.isWithin(ignored, root: url)
+        }) else {
+            throw LumaError.rejected("This item is ignored or contains an ignored path. Remove the ignore or choose a different item.")
+        }
     }
 
     public func validate(_ item: CleanupItem, authorizedRoots: [URL] = [], runningBundleIDs: Set<String> = [], activity: CleanupActivity? = nil,
@@ -29,14 +38,12 @@ public struct SafetyEngine: Sendable {
     // A shared inventory is allowed only for whole-plan preflight. The final
     // per-move call always enters through fresh ownership discovery above.
     func validate(_ item: CleanupItem, authorizedRoots: [URL], runningBundleIDs: Set<String>, activity: CleanupActivity?,
-                  preflightOwners: Set<String>?, progress: @escaping @Sendable (ScanPulse) -> Void) throws {
+                  preflightOwners: Set<String>?, preflightHelpers: Set<String>? = nil, progress: @escaping @Sendable (ScanPulse) -> Void) throws {
         _ = try Rules.catalog()
         let url = item.url.exactStandardizedFileURL
         try Filesystem.validatePath(item.url)
         guard Date().timeIntervalSince(item.scannedAt) < 1800 else { throw LumaError.rejected("Scan is over 30 minutes old. Scan again before cleaning.") }
-        guard !ignoredPaths.contains(where: { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }) else {
-            throw LumaError.rejected("This item is on your ignore list.")
-        }
+        try Self.validateIgnores(url, ignoredPaths: ignoredPaths)
         if let owner = item.ownerBundleID, runningBundleIDs.contains(owner) {
             throw LumaError.rejected("Quit the owning application before cleaning its files.")
         }
@@ -101,7 +108,7 @@ public struct SafetyEngine: Sendable {
             // Absence above already searched all apps and embedded helpers.
             // A second owner-specific walk cannot find an absent owner's helpers.
             let helpers: Set<String> = item.ruleID == "application.leftover.exact-identifier" ? []
-                : try ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: owner, emit: { event in
+                : try preflightHelpers ?? ApplicationPresence.bundleIdentifiers(home: home, matchingOwner: owner, emit: { event in
                     if case .progress(let pulse) = event { progress(pulse) }
                 })
             let running = Set(runningBundleIDs.map { $0.lowercased() })

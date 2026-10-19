@@ -10,6 +10,7 @@ struct FileObjectID: Hashable, Sendable {
 }
 
 public enum Filesystem {
+    @TaskLocal static var inspectionObserver: (@Sendable (TimeInterval) -> Void)?
     static func samePath(_ lhs: URL, _ rhs: URL) -> Bool {
         Data(lhs.exactStandardizedFileURL.path.utf8) == Data(rhs.exactStandardizedFileURL.path.utf8)
     }
@@ -41,6 +42,8 @@ public enum Filesystem {
     /// selected trees. This callback is synchronous and never escapes inspection.
     static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil,
                         onFile: ((FileObjectID, Int64) throws -> Void)?, legacyFingerprint: Bool = false) throws -> (Int64, FileIdentity) {
+        let started = Date()
+        defer { inspectionObserver?(Date().timeIntervalSince(started)) }
         return try NonMaterializingIO.perform {
             try MutationOutcome.checkCancellation()
             let pinned = try PinnedPath(url)
@@ -170,11 +173,16 @@ public enum Filesystem {
 
     public static func item(_ url: URL, category: ItemCategory, safety: SafetyLevel,
                             explanation: String, consequence: String, rule: String,
-                            owner: String? = nil, progress: (@Sendable (Int, Int64) -> Void)? = nil) throws -> CleanupItem {
-        let (size, identity) = try inspect(url, progress: progress)
-        return CleanupItem(url: url, bytes: size, category: category, safety: safety,
+                            owner: String? = nil, captureContents: Bool = false, progress: (@Sendable (Int, Int64) -> Void)? = nil) throws -> CleanupItem {
+        var contents: [String: Int64] = [:]
+        let (size, identity) = try inspect(url, progress: progress, onFile: { object, bytes in
+            if captureContents { contents["\(object.device):\(object.inode)"] = bytes }
+        })
+        var item = CleanupItem(url: url, bytes: size, category: category, safety: safety,
                            explanation: explanation, consequence: consequence, ruleID: rule,
                            ownerBundleID: owner, identity: identity, scannedAt: Date())
+        if captureContents { item.observedContents = contents }
+        return item
     }
 
     /// Read metadata through the same pinned capability gate as hashes.

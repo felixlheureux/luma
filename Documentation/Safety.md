@@ -1,11 +1,11 @@
 # Safety model and current limits
 
-## Core reset — intended changes, not yet implemented
+## Core reset — implementation status
 
 The [current product spec](Product-Spec.md) and [054–059 queue](../tasks/README.md) replace the former full-product plan. The sections below document the existing engine and earlier implementation. Their mandatory review sheets, chosen-folder entry points and blanket provider browsing exclusion are not requirements to recreate those flows.
 
 - 054/055 move normal local app/residue actions directly from their lists. The direct action authorizes its defined scope; immutable plans, current evidence, whole-plan/final validation, durable journal and recovery stay internal. No extra sheet or acknowledgement is required.
-- 056 discovers storage automatically. An automatic inspection root never grants whole-volume cleanup authority; local personal-file actions stay in the supported home scope with explicit selection and fresh evidence.
+- 056 discovers storage only after an explicit scan request. A discovered inspection root never grants whole-volume cleanup authority; local personal-file actions stay in the supported home scope with explicit selection and fresh evidence.
 - 057 adds a distinct read-only cloud metadata capability, including non-materializing ancestor access. Cloud content reads and cloud mutation remain excluded. Existing provider cleanup restrictions are preserved.
 - 059 adds exactly approved permanent emptying of the supported local user Trash through a separate operation. Ordinary cleanup still has no permanent-delete fallback. Cache approval, permanent-action scope, partial outcomes and recovery invalidation must be implemented and tested before that capability is claimed.
 
@@ -13,7 +13,7 @@ The [current product spec](Product-Spec.md) and [054–059 queue](../tasks/READM
 
 Scanners produce immutable candidates; they cannot delete files. Each candidate contains its path, logical size, classification, scanner rule, ownership evidence, consequence, scan time, and a filesystem identity and metadata-tree digest.
 
-The existing build starts with no selections. Its review sheet lists the exact paths and removal consequences, and requires explicit acknowledgement. Review builds an immutable core cleanup plan with a session ID, exact items, authorized roots, duplicate-group evidence, and verified logical totals. `CleanupJournal.execute` is the only cleanup entry point: it preflights the complete plan, then uses the Safety Engine to revalidate each item before recording an intent and again immediately before calling Apple’s `FileManager.trashItem(at:resultingItemURL:)`. There is no permanent-delete fallback.
+The build starts with no selections. Direct app Uninstall and selected-residue Move to Trash capture intent in their lists. Other existing review flows list exact paths and consequences in a review sheet. Review builds an immutable core cleanup plan with a session ID, exact items, authorized roots, duplicate-group evidence, and verified logical totals. `CleanupJournal.execute` is the only cleanup entry point: it preflights the complete plan, then uses the Safety Engine to revalidate each item before recording an intent and again immediately before calling Apple’s `FileManager.trashItem(at:resultingItemURL:)`. There is no permanent-delete fallback.
 
 ## Validation
 
@@ -155,3 +155,41 @@ FSEvents watches only a bounded set of explicitly scanned roots and supplies con
 
 
 Cleanup feedback retains whole-plan preflight and a fresh complete per-item validation immediately before Trash. Only the redundant validation before intent creation is removed; final validation failure cancels the unmoved intent. Shared installed-owner evidence is confined to preflight and never reused for the move boundary. Unselected leftover results can remain visible after cleanup with their original timestamp and reduced membership; they still require current ownership/identity checks when selected later. Application icons are thumbnails of bounded, provider-checked local bundle bytes, with no Finder/Quick Look or path-based image loading.
+
+
+## Direct application uninstall (task 054)
+
+Uninstall from an installed-app row captures a fresh plan internally. The bundle and verified exclusive caches/logs/preferences/saved state are eligible; support data, containers and documents stay. Standard installation roots and Launch Services must establish exclusive same-ID ownership before related data enters the plan. Shared or unknown ownership yields bundle-only removal. Fresh ownership/process/helper, provider, identity, volume and ignore checks still run at execution. The bundle moves last, preserving installation evidence while related data is checked.
+
+Normal Trash plans reject an ignored ancestor or descendant of the selected target. A parent cannot carry an ignored child into Trash; later ignores enter preflight and final validation. No subtree is silently split. Whole-plan helper discovery is shared, while final moves still rediscover current owners. Process/tool collection is scoped to the captured plan and simulator checks retain their explicit capability requirements.
+
+Undo now checks eligibility internally and restores captured eligible records directly. Conflicts and per-item Restore stay in Activity; missing or legacy evidence never permits overwrite or unknown retries. Confirmed app recovery refreshes Installed. Normal Quit stops between items and waits for the durable mutation owner to drain. Only affected observations are invalidated, and selections retain feature/root/snapshot scope. Native fixtures use injected moves; the earlier native Trash pathname-race and provider limits remain.
+
+
+## Automatic residue observations — task 055
+
+Residue discovery has an independent bounded scan controller. Completed per-item observations are coalesced for display while previous findings stay visible. Ownership discovery shares metadata-only app rows with Apps; it does not repeat recursive bundle sizing. After a known app inventory change/uninstall, discovery can inspect only affected exact identifiers. Full refresh still checks supported roots and current installed/embedded/Launch Services owners. Coverage failures remain explicit.
+
+Up to 4,000 timestamped observations (at most 8 MiB) are saved locally in `Library/Application Support/Luma/residue-observations.json`. These are display data, including partial/stopped coverage, and never completed executable snapshots. Selected items retain their captured identities across navigation and unrelated scans. Group selection captures only currently known eligible children; new arrivals remain unselected. Hard-linked content is counted once in group/selection display totals.
+
+Move to Trash refreshes evidence for precisely the captured selection and rejects changed objects/parent locations. It then builds an immutable residue plan and uses the journal's whole-plan and final per-item ownership, ignore, provider and identity checks. A newly installed owner blocks the move inline. Failed preparation refreshes affected observations automatically without repeating the mutation; changed objects require a new explicit selection. Confirmed moves remove only affected observations and selection entries. Partial/stopped/failed/recovery outcomes remain separate from refresh status, and Undo refreshes restored observations. No real Trash operations are used by native fixture checks.
+
+
+## Requested local Storage observations (task 056)
+
+User-requested broad discovery inspects the current home, Applications, Library, Shared, /opt and /usr/local where readable. It excludes other users’ private trees, opaque package contents, provider/dataless content, Trash contents and Luma-owned persistence. Entry/time bounds keep useful observations and report remaining unknown coverage; bounded continuation expands the entry budget. Capacity, observed logical bytes and APFS physical recovery are separate concepts. Per-path file sizes survive hard links; aggregate and selected totals count file objects once.
+
+The saved hierarchy retains at most 10,000 prioritized observations with their ancestors, within a 32 MiB encoded bound. Omitted children are explicit incomplete coverage. This hierarchy is display data. Loading validates root/volume identities and hierarchy structure; corrupt or changed roots leave Storage ready for an explicit scan. Opening Storage only loads saved display metadata. Warm results remain visible during a requested scan. Clear saved analysis cancels active Storage discovery and clears this saved hierarchy as well as existing metadata/hash caches; Activity and ignores remain. Each node retains its own observation time, so refreshing one subtree does not make another subtree fresh. No filesystem-event refresh loop runs. Targeted Restore updates retain unchanged sibling subtrees with their original observation times; own persistence writes never start a scan.
+
+Explicit Storage selection captures only supported current home-local items. The action obtains narrow parent-root authority without a folder-picker grant, refreshes exact evidence and uses the central plan/journal. Incomplete, expired, protected, ignored, external and provider observations remain ineligible. Ignored descendants block selected parents. Folder evidence checks observed descendants; known duplicate members retain complete keeper proofs, and folders containing known duplicate members require individual selection. Navigation and later scan callbacks cannot retarget a captured mutation. Confirmed moves remove only affected observations and preserve distinct outcomes plus remaining selections; Restore uses existing durable identity and destination protections.
+
+
+## Read-only iCloud metadata — task 057
+
+`CloudStorageDiscovery` observes available iCloud roots independently of `FilesystemAccess.requireLocal`. Standard Desktop/Documents URLs are checked for ubiquity and resolved under synchronous non-materializing thread policy. The compatibility CloudDocs candidate is checked rather than assumed to be the sole topology. Root device/inode identities and overlapping resolved paths deduplicate aliases. The desktop metadata index is queried by resolved/candidate paths for ubiquitous items; app-entitled container APIs and extension-scoped provider inventories are not used as global discovery.
+
+Root resolution, lstat, resource properties, bounded directory iteration and indexed observation collection run inside `NonMaterializingIO.perform`, without suspension. Traversal does not follow child symlinks, enter dataless directories, inspect package contents, read file content or ask for icons/thumbnails. EDEADLK, unavailable properties and denied directories end the affected branch without download retries. The adapter limits traversal to 4,000 observations, 64 levels and three seconds plus a bounded half-second index collection. These are partial observation bounds, not completeness guarantees.
+
+Every cloud observation carries source, collection time, download state, optional logical size and optional locally allocated size. Directory byte counts remain unknown. Indexed rows are provisional with unknown current allocation/download state. Cached collection times remain intact. Unknown allocation stays unknown; cloud logical bytes contribute zero to local tree/selection totals and never imply reclaimable space. Cloud metadata has no pinned local capability. Rows remain ineligible for ordinary plans/review, even when downloaded; the existing SafetyEngine/provider checks remain authoritative. Finder management is an explicit handoff outside Luma's journal.
+
+Synthetic regression/native evidence verifies the adapter boundary and presentation, not Apple's actual online-only/offline behavior. A separate disposable real iCloud check observed downloaded state, 25 logical bytes and 4,096 locally allocated bytes and retained provider exclusion. A root-only probe reported synced Desktop/Documents. The owner subsequently reports that the outstanding manual integration checks work and explicitly accepts task 057. That report closes manual acceptance; no additional instrumented results or OS-version coverage are inferred.

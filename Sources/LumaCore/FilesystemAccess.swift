@@ -3,7 +3,7 @@ import Darwin
 
 /// Background inspection and ordinary cleanup share the same conservative
 /// capability. Logical remote size is never reported as locally inspected bytes.
-public enum FilesystemCapability: String, Sendable {
+public enum FilesystemCapability: String, Codable, Sendable {
     case local, providerManaged, dataless, network, unknown
 
     public var explanation: String {

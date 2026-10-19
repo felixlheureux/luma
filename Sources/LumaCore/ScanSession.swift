@@ -26,9 +26,10 @@ public struct ScanRequest: Sendable {
     public let ignoredPaths: Set<String>
     public let smartScopes: [ScanTarget: URL]
     public let storageVolumeIdentity: StorageVolumeIdentity?
-    public init(_ target: ScanTarget, root: URL? = nil, application: ApplicationRecord? = nil, ignoredPaths: Set<String> = [], smartScopes: [ScanTarget: URL] = [:], storageVolumeIdentity: StorageVolumeIdentity? = nil) {
+    public let residueOwners: Set<String>?
+    public init(_ target: ScanTarget, root: URL? = nil, application: ApplicationRecord? = nil, ignoredPaths: Set<String> = [], smartScopes: [ScanTarget: URL] = [:], storageVolumeIdentity: StorageVolumeIdentity? = nil, residueOwners: Set<String>? = nil) {
         self.target = target; self.root = root; self.application = application; self.ignoredPaths = ignoredPaths
-        self.smartScopes = smartScopes; self.storageVolumeIdentity = storageVolumeIdentity
+        self.smartScopes = smartScopes; self.storageVolumeIdentity = storageVolumeIdentity; self.residueOwners = residueOwners
     }
     public var scope: String {
         if let application { return application.url.path }
@@ -57,6 +58,7 @@ public struct ScanPulse: Sendable {
 
 public enum ScanEvent: Sendable {
     case checkCompleted(ScanSnapshot)
+    case storage(StorageIndex)
     case progress(ScanPulse)
     case item(CleanupItem)
     case application(ApplicationRecord)
@@ -112,6 +114,8 @@ public struct ScanPreview: Sendable {
     public var duplicates: [DuplicateGroup] = []
     public var coverage: [ScanCoverage] = []
     public var notices: [String] = []
+    public var storageIndex: StorageIndex?
+    public var storageRevision: UInt64 = 0
     public var truncated = false
 }
 
@@ -159,6 +163,7 @@ private final class ScanMailbox: @unchecked Sendable {
         switch event {
         case .checkCompleted(let snapshot):
             if completedChecks.count < SmartCheck.targets.count { completedChecks.append(snapshot) }
+        case .storage(let index): preview.storageIndex = index; preview.storageRevision &+= 1
         case .progress(let value): pulse = value
         case .item(let item):
             let key = Data(item.url.path.utf8)

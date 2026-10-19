@@ -59,13 +59,9 @@ extension LumaAppDelegate {
                 try await Task.sleep(for: .milliseconds(600))
                 try saveCleanupCheck(output, suffix: "activity")
                 guard let session = model.cleanupSession.sessions.first else { throw LumaError.rejected("Missing session fixture.") }
-                model.reviewUndo(session)
-                try await waitCleanupCheck { !model.busy }
-                try await Task.sleep(for: .milliseconds(400))
-                report["undoSheetAttached"] = NSApp.windows.contains { $0.attachedSheet != nil }
-                report["undoOnlyEligible"] = model.cleanupSession.undoReview?.eligibleIDs.count == 1
-                try saveCleanupCheck(output, suffix: "undo")
-                model.undoSession()
+                report["undoWithoutSheet"] = !NSApp.windows.contains { $0.attachedSheet != nil }
+                report["undoOnlyEligible"] = model.history.filter { !$0.restored }.count == 1
+                model.undo(session)
                 try await waitCleanupCheck { !model.busy && !model.cleanupSession.isRunning }
                 report["undoRecorded"] = model.history.first?.restored == true && model.cleanupSession.undoAttempts.first?.phase == .completed
                 report["allContentsPreserved"] = try items.allSatisfy { try String(contentsOf: $0.url, encoding: .utf8) == "synthetic session fixture" }

@@ -33,14 +33,16 @@ extension LumaAppDelegate {
                 let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
                 let ignored = model.ignored, history = try encoder.encode(model.history)
                 model.analysisIndex = index
+                model.storageStore = StorageObservationStore(home: home)
                 model.scanRunner = { request, emit in try await ScanEngine.run(request, analysisIndex: index, emit: emit) }
                 model.destination = .storage
                 model.startScan(.init(.storage, root: root))
                 try await wait { !model.busy }
                 let coldBytes = model.storageIndex?.nodes[root.path]?.bytes
+                if let observed = model.storageIndex { try await model.storageStore.save(observed) }
                 let folder = root.appendingPathComponent("nested").path
                 model.storageDirectory = folder
-                model.runScan(.storage)
+                model.startScan(.init(.storage, root: root))
                 try await wait { !model.busy }
                 report["warmStorageMetadata"] = (model.snapshot(for: .storage)?.result.analysisCache?.reusedMetadata ?? 0) > 0
                 report["storageCoverageAndBytesMatch"] = model.storageIndex?.nodes[root.path]?.bytes == coldBytes && model.storageIndex?.nodes[root.path]?.isComplete == true
@@ -72,6 +74,7 @@ extension LumaAppDelegate {
                 model.clearAnalysisCache()
                 try await wait { !model.busy }
                 report["cacheClearFinished"] = model.analysisCacheStatus?.hasPrefix("Saved analysis cleared") == true
+                report["storageObservationCacheCleared"] = try await model.storageStore.load() == nil
                 let afterHistory = try encoder.encode(model.history)
                 report["activityAndIgnoresPreserved"] = model.ignored == ignored && afterHistory == history
                 model.runScan(.duplicates)

@@ -14,7 +14,7 @@ requested = os.environ.get("LUMA_CLEANUP_QA_OUTPUT_DIR")
 context = contextlib.nullcontext(requested) if requested else tempfile.TemporaryDirectory(prefix="luma-cleanup-sessions-")
 required = [
     "mutationTrackedSeparately", "stoppingRetainsBusy", "partialCleanupRecorded",
-    "remainingUntouched", "undoSheetAttached", "undoOnlyEligible", "undoRecorded",
+    "remainingUntouched", "undoWithoutSheet", "undoOnlyEligible", "undoRecorded",
     "allContentsPreserved", "monitoringContinued", "menuStayedVisible",
 ]
 with context as directory:
@@ -29,5 +29,5 @@ with context as directory:
         assert "error" not in report, report
         assert all(report.get(key) is True for key in required), report
         assert report.get("realTrashInvoked") is False, report
-        print(f"Passed {appearance}: in-flight Stop, durable partial session, actual Undo sheet, fixture restore, monitoring and menu continuity.")
+        print(f"Passed {appearance}: in-flight Stop, durable partial session, direct Undo, fixture restore, monitoring and menu continuity.")
 PY

@@ -41,7 +41,7 @@ extension AppModel {
     func prepareDuplicateKeeper(group: DuplicateGroup, keeper: CleanupItem, source: CleanupSource) {
         guard !busy, let current = duplicateGroup(group.id, source: source), current.items == group.items else { return }
         duplicateChoice = nil; duplicateChoiceSource = nil
-        let exclusions = ignored
+        let exclusions = ignored, scope = selectionScope, generation = reviewGeneration
         busy = true; status = "Verifying keeper choice…"
         scanTask = Task {
             do {
@@ -51,25 +51,27 @@ extension AppModel {
                     return choice
                 }
                 try Task.checkCancellation()
+                guard selectionScope == scope, reviewGeneration == generation else { finish(); return }
                 guard ignored == exclusions, duplicateGroup(group.id, source: source)?.items == group.items else {
                     throw LumaError.rejected("The duplicate scan changed. Choose a keeper again.")
                 }
                 duplicateChoiceSource = source; duplicateChoice = choice
                 status = "Preview the keeper and proposed removals"
             } catch is CancellationError { status = "Keeper choice cancelled" }
-            catch { selected.subtract(group.items.map(\.id)); self.error = error.localizedDescription }
+            catch { if selectionScope == scope && reviewGeneration == generation { selected.subtract(group.items.map(\.id)); self.error = error.localizedDescription } }
             finish()
         }
     }
 
     func applyDuplicateKeeper() {
         guard !busy, let choice = duplicateChoice, let source = duplicateChoiceSource else { return }
-        let exclusions = ignored
+        let exclusions = ignored, scope = selectionScope, generation = reviewGeneration
         busy = true; status = "Rechecking keeper and copies…"
         scanTask = Task {
             do {
                 try await offMain { try choice.validate(ignoredPaths: exclusions) }
                 try Task.checkCancellation()
+                guard selectionScope == scope, reviewGeneration == generation else { finish(); return }
                 guard ignored == exclusions, duplicateGroup(choice.group.id, source: source)?.items == choice.group.items else {
                     throw LumaError.rejected("The duplicate scan changed. Choose a keeper again.")
                 }
@@ -78,8 +80,10 @@ extension AppModel {
                 status = "Keeper retained · review selected removals before Trash"
             } catch is CancellationError { status = "Keeper choice cancelled" }
             catch {
-                selected.subtract(choice.group.items.map(\.id)); duplicateChoice = nil
-                self.error = error.localizedDescription
+                if selectionScope == scope && reviewGeneration == generation {
+                    selected.subtract(choice.group.items.map(\.id)); duplicateChoice = nil
+                    self.error = error.localizedDescription
+                }
             }
             finish()
         }

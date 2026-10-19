@@ -19,6 +19,11 @@ public enum ApplicationPresence {
                 guard try Filesystem.attributes(bundleURL)[.type] as? FileAttributeType == .typeDirectory else { return }
                 emit(.progress(.init("Checking installed owners and helpers", current: bundleURL.lastPathComponent)))
                 let identifier = Bundle(url: bundleURL)?.bundleIdentifier ?? ""
+                if depth == 0, matchingOwner == nil, !Filesystem.isWithin(bundleURL, root: URL(fileURLWithPath: "/System")),
+                   let app = try? ApplicationScanner.restoredRecord(at: bundleURL) {
+                    // Share metadata with Apps without recursively sizing bundles.
+                    emit(.application(app))
+                }
                 let matchesOwner = belongsToOwner || identifier.lowercased() == matchingOwner?.lowercased()
                 if !identifier.isEmpty && (matchingOwner == nil || matchesOwner) { identifiers.insert(identifier.lowercased()) }
                 guard depth < 3 else { return }
@@ -105,12 +110,14 @@ public struct LeftoverScanner: Scanner {
     private let applicationRoots: [URL]?
     private let lookup: @Sendable (String) -> Bool
     private let emit: ScanEmitter
+    private let owners: Set<String>?
     public static let knownPaths = ApplicationRelationships.knownPaths
     public static let locations = ApplicationRelationships.locations
 
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, applicationRoots: [URL]? = nil,
                 lookup: @escaping @Sendable (String) -> Bool = ApplicationPresence.launchServicesContains,
-                emit: @escaping ScanEmitter = { _ in }) {
+                emit: @escaping ScanEmitter = { _ in }, owners: Set<String>? = nil) {
+        self.owners = owners
         self.home = home; self.applicationRoots = applicationRoots; self.lookup = lookup; self.emit = emit
     }
 
@@ -148,7 +155,7 @@ public struct LeftoverScanner: Scanner {
                 let name = url.lastPathComponent
                 guard location.suffix.isEmpty || name.hasSuffix(location.suffix) else { continue }
                 let owner = location.suffix.isEmpty ? name : String(name.dropLast(location.suffix.count))
-                guard Self.isSupportedIdentifier(owner) else { continue }
+                guard Self.isSupportedIdentifier(owner), owners == nil || owners!.contains(owner) else { continue }
                 let installedOwner = ownerCache[owner] ?? ApplicationPresence.hasOwner(owner, installed: installed, lookup: lookup)
                 ownerCache[owner] = installedOwner
                 guard !installedOwner else { continue }
@@ -157,7 +164,7 @@ public struct LeftoverScanner: Scanner {
                     let item = try Filesystem.item(url, category: .related, safety: .review,
                         explanation: relationship.evidence + " No installed owner or helper was found; this is a review candidate.",
                         consequence: relationship.consequence,
-                        rule: "application.leftover.exact-identifier", owner: owner,
+                        rule: "application.leftover.exact-identifier", owner: owner, captureContents: true,
                         progress: { entries, bytes in emit(.progress(.init("Inspecting potential leftover", current: url.lastPathComponent, entries: entries, bytes: bytes))) })
                     if item.bytes > 0 { report.recordItem(item, emit: emit) }
                 } catch is CancellationError { throw CancellationError() }
@@ -166,7 +173,7 @@ public struct LeftoverScanner: Scanner {
             }
         }
         let namedPaths = ApplicationRelationships.namedPaths
-        for path in namedPaths where Self.isSupportedIdentifier(path.owner) {
+        for path in namedPaths where Self.isSupportedIdentifier(path.owner) && (owners == nil || owners!.contains(path.owner)) {
             try Task.checkCancellation()
             let url = home.appendingPathComponent(path.relativePath)
             guard !report.items.contains(where: { $0.url == url }),
@@ -176,7 +183,7 @@ public struct LeftoverScanner: Scanner {
                 let item = try Filesystem.item(url, category: .related, safety: .review,
                     explanation: relationship.evidence + " No installed owner or helper was found; this is a review candidate.",
                     consequence: relationship.consequence,
-                    rule: "application.leftover.exact-identifier", owner: path.owner,
+                    rule: "application.leftover.exact-identifier", owner: path.owner, captureContents: true,
                     progress: { entries, bytes in emit(.progress(.init("Inspecting known app data", current: url.lastPathComponent, entries: entries, bytes: bytes))) })
                 if item.bytes > 0 { report.recordItem(item, emit: emit) }
             } catch is CancellationError { throw CancellationError() }

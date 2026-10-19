@@ -7,6 +7,8 @@ struct RootView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @ViewState private var columnVisibility: NavigationSplitViewVisibility = .all
+    @ViewState private var scrollPosition = ScrollPosition(y: 0)
+    @ViewState private var pageOffsets: [Destination: CGFloat] = [:]
     var body: some View {
         @Bindable var model = model
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -19,12 +21,14 @@ struct RootView: View {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 28) {
                                 pageHeader.id("page-top")
-                                CleanupProgressPanel()
-                                ScanSessionPanel()
-                                if let target = model.currentScanTarget, target != .overview { CompletedScanCaption(target: target) }
+                                if model.uninstallingApp == nil && !model.residueMoving && !model.storageMoving { CleanupProgressPanel() }
+                                if model.destination != .storage { ScanSessionPanel() }
+                                if let target = model.currentScanTarget, target != .overview, target != .storage { CompletedScanCaption(target: target) }
                                 Group {
                                     switch model.destination ?? .overview {
                                     case .overview: OverviewView()
+                                    case .residues: LeftoversView().task { if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) { model.ensureResidues() } }
+                                    case .maintenance: MaintenanceEntryView()
                                     case .clean: CleanView()
                                     case .backups: DeviceBackupsView()
                                     case .downloads: DownloadsView()
@@ -40,6 +44,14 @@ struct RootView: View {
                                 }
                             }.padding(.horizontal, 36).padding(.top, 22).padding(.bottom, 30).frame(maxWidth: 1160)
                                 .frame(maxWidth: .infinity)
+                        }
+                        .scrollPosition($scrollPosition)
+                        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
+                            if let page = model.destination { pageOffsets[page] = y }
+                        }
+                        .onChange(of: model.destination) { _, page in
+                            let y = page.flatMap { pageOffsets[$0] } ?? 0
+                            DispatchQueue.main.async { scrollPosition.scrollTo(y: y) }
                         }
                         .onChange(of: model.monitoringFocus) { _, id in
                             guard let id else { return }
@@ -58,15 +70,11 @@ struct RootView: View {
                                 withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo("downloads-details", anchor: .bottom) }
                             }
                         }
-                        .onChange(of: model.storageDirectory) { _, _ in
-                            if model.destination == .storage { proxy.scrollTo("page-top", anchor: .top) }
-                        }
-                        .onChange(of: model.storageFocus) { _, id in
-                            if model.destination == .storage, id != nil {
-                                withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo("storage-details", anchor: .bottom) }
-                            }
-                        }
+
                     }
+                    if model.destination == .applications && model.applicationTab == .installed { ApplicationActionBar() }
+                    if model.destination == .residues || (model.destination == .applications && model.applicationTab == .leftovers) { ResidueActionBar() }
+                    if model.destination == .storage { StorageActionBar() }
                     WindowStatusBar()
                 }
             }
@@ -90,14 +98,20 @@ struct RootView: View {
             }
         }
         .tint(Palette.accent)
-        .frame(minWidth: 1010, minHeight: 700)
+        .frame(minWidth: 640, minHeight: 540)
         .sheet(isPresented: $model.showingReview) { ReviewSheet() }
-        .sheet(item: Binding(get: { model.cleanupSession.undoReview }, set: { model.cleanupSession.undoReview = $0 })) { UndoReviewSheet(review: $0) }
         .sheet(item: $model.inspectedApp) { app in AppFootprintView(app: app) }
         .alert("Luma needs your attention", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
-        .onChange(of: model.destination) { _, _ in model.selected = [] }
+        .onChange(of: model.destination) { _, _ in
+            model.cancelPendingReview()
+            if let page = model.destination, Destination.core.contains(page) {
+                UserDefaults.standard.set(page.rawValue, forKey: "luma.lastCorePage")
+            }
+        }
+        .onChange(of: model.applicationTab) { _, _ in model.cancelPendingReview() }
+        .onChange(of: model.downloadsTab) { _, _ in model.cancelPendingReview() }
         .task {
             model.showMainWindow = { openWindow(id: "main"); NSApplication.shared.activate() }
             model.showSettingsWindow = { openSettings(); NSApplication.shared.activate() }
@@ -117,7 +131,7 @@ struct RootView: View {
                 Button { model.cancel() } label: { Label(model.scanSessions.isBusy ? "Cancel scan" : "Cancel review", systemImage: "stop.circle") }.buttonStyle(.glass)
             }
             if [.overview, .clean, .applications].contains(model.destination ?? .overview) {
-                Button { model.runScan() } label: { Label(model.scanSessions.isBusy ? "Queue new scan" : model.destination == .overview ? "Smart Check" : "Scan again", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") }
+                Button { if model.destination == .applications { if model.applicationTab == .installed { model.ensureApplicationInventory(refresh: true) } else { model.ensureResidues(refresh: true) } } else { model.runScan() } } label: { Label(model.scanSessions.isBusy ? "Queue new scan" : model.destination == .overview ? "Smart Check" : model.destination == .applications && model.applicationTab == .installed ? "Refresh inventory" : "Scan again", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") }
                     .buttonStyle(.glass).controlSize(.large).font(.system(size: 11, weight: .medium)).keyboardShortcut("r", modifiers: .command).disabled(!model.canStartScan)
             }
         }
@@ -136,39 +150,76 @@ struct LumaMark: View {
 
 struct SearchView: View {
     @Environment(AppModel.self) private var model
+    @FocusState private var typing: Bool
+    @ViewState private var highlighted = 0
+    private struct Match: Identifiable {
+        let id: String
+        let title: String
+        let detail: String
+        let symbol: String
+        let activate: () -> Void
+    }
+    private var matches: [Match] {
+        var result = Destination.allCases.filter { model.search.isEmpty || $0.rawValue.localizedCaseInsensitiveContains(model.search) }.map { page in
+            Match(id: "page:" + page.id, title: page.rawValue, detail: "Open page", symbol: page.symbol) { model.openCore(page) }
+        }
+        if model.search.isEmpty || "Settings".localizedCaseInsensitiveContains(model.search) {
+            result.append(Match(id: "settings", title: "Settings", detail: "Preferences and permissions", symbol: "gearshape") { model.showSettingsWindow?() })
+        }
+        guard !model.search.isEmpty else { return result }
+        result += model.visibleApplications.filter { $0.name.localizedCaseInsensitiveContains(model.search) || $0.bundleID.localizedCaseInsensitiveContains(model.search) }.prefix(20).map { app in
+            Match(id: "app:" + app.id, title: app.name, detail: app.bundleID, symbol: "app") {
+                model.applicationSearch = app.name; model.openCore(.applications)
+            }
+        }
+        result += (model.storageIndex?.nodes.values.filter { $0.url.isFileURL && $0.url.path.localizedCaseInsensitiveContains(model.search) }.sorted { $0.bytes > $1.bytes }.prefix(40) ?? []).map { node in
+            Match(id: "file:" + node.id, title: node.url.lastPathComponent, detail: node.url.path, symbol: node.isDirectory ? "folder" : "doc") {
+                model.openCore(.storage)
+                model.storageLocation = "All locations"; model.storageFilter = "All items"
+                if node.hidden { model.storageShowHidden = true }
+                model.storageSearch = node.url.path; model.storageMode = node.isDirectory ? "Explore" : "Largest files"
+                if let parent = node.parentID { model.navigateStorage(parent) }
+                model.storageFocus = node.id
+            }
+        }
+        return result
+    }
     var body: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 14) {
-            TextField("Search tools, apps, and scanned files", text: $model.search).textFieldStyle(.roundedBorder)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Destination.allCases.filter { model.search.isEmpty || $0.rawValue.localizedCaseInsensitiveContains(model.search) }) { item in
-                        Button { model.destination = item; model.showingSearch = false } label: { Label(item.rawValue, systemImage: item.symbol).frame(maxWidth: .infinity, alignment: .leading).padding(8) }.buttonStyle(.plain)
-                    }
-                    if !model.search.isEmpty {
-                        if let index = model.storageIndex, let directory = model.storageDirectory {
-                            ForEach(index.children(of: directory).filter { $0.url.lastPathComponent.localizedCaseInsensitiveContains(model.search) }.prefix(20)) { node in
-                                Button {
-                                    model.destination = .storage
-                                    model.storageFocus = node.id
-                                    model.showingSearch = false
-                                } label: {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Search apps and discovered paths", text: $model.search).textFieldStyle(.roundedBorder)
+                .focused($typing).onSubmit { activate() }
+                .onKeyPress(.downArrow) { highlighted = min(max(0, matches.count - 1), highlighted + 1); return .handled }
+                .onKeyPress(.upArrow) { highlighted = max(0, highlighted - 1); return .handled }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(matches.enumerated()), id: \.element.id) { i, match in
+                            Button { highlighted = i; activate() } label: {
+                                HStack {
+                                    Image(systemName: match.symbol)
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(node.url.lastPathComponent)
-                                        Text(node.url.path).font(.caption).foregroundStyle(.secondary)
-                                    }.padding(8)
-                                }.buttonStyle(.plain)
-                            }
+                                        Text(match.title).lineLimit(1)
+                                        Text(match.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    }
+                                    Spacer()
+                                }.padding(8).background(highlighted == i ? Palette.accent.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                            }.buttonStyle(.plain).id(i)
                         }
-                        ForEach((model.cleanup + model.storage).filter { $0.name.localizedCaseInsensitiveContains(model.search) }.prefix(20)) { item in
-                            Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: {
-                                VStack(alignment: .leading, spacing: 3) { Text(item.name); Text(item.displayPath).font(.caption).foregroundStyle(.secondary) }.padding(8)
-                            }.buttonStyle(.plain)
-                        }
+                        if matches.isEmpty { Text("No matches in available observations.").font(.caption) }
+                        if model.storageIndex == nil { Text("Files are not indexed yet. Open Storage to discover readable locations.").font(.caption).foregroundStyle(.secondary) }
                     }
-                }
+                }.onChange(of: highlighted) { _, i in proxy.scrollTo(i) }
             }
-        }.padding(18).frame(width: 360, height: 370)
+        }.padding(18).frame(width: 400, height: 400)
+            .defaultFocus($typing, true)
+            .onChange(of: model.search) { _, _ in highlighted = 0 }
+            .onExitCommand { model.showingSearch = false }
+            .task { typing = true; if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) { model.ensureApplicationInventory() } }
+    }
+    private func activate() {
+        guard matches.indices.contains(highlighted) else { return }
+        matches[highlighted].activate(); model.showingSearch = false
     }
 }
 
@@ -201,7 +252,7 @@ struct SidebarView: View {
 
     private func navRow(_ destination: Destination) -> some View {
         let active = model.destination == destination
-        return Button { model.destination = destination } label: {
+        return Button { model.openCore(destination) } label: {
             HStack(spacing: 12) {
                 Image(systemName: destination.symbol).font(.system(size: 14, weight: active ? .semibold : .regular)).frame(width: 19)
                 Text(destination.rawValue).font(.system(size: 12, weight: active ? .semibold : .medium))
@@ -237,6 +288,9 @@ struct WindowStatusBar: View {
                     }
             }
             Spacer()
+            if model.cleanupSession.isRunning {
+                Button("Stop") { model.cleanupSession.stop() }.disabled(model.cleanupSession.stopping)
+            }
             Image(systemName: "lock"); Text("On this Mac. Only.")
         }.font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 28).padding(.vertical, 11)
             .background(.bar)

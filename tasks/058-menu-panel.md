@@ -1,6 +1,6 @@
 # 058 — Make the menu panel flat and immediately active
 
-Status: Planned
+Status: In progress
 Priority: P1  
 Depends on: [054](054-direct-uninstall.md) for the shared safe-termination boundary; panel geometry can be developed independently
 
