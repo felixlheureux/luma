@@ -64,6 +64,12 @@ Apple Silicon (`arm64`) is the only supported target, with M2 as reference hardw
 brew install --cask felixlheureux/luma/luma
 ```
 
+For an existing Homebrew installation:
+
+```sh
+brew upgrade --cask felixlheureux/luma/luma
+```
+
 The 0.2.1 development release includes the core cleanup, Storage, Overview/menu, M2 battery and Maintenance changes described above. It is not notarized; macOS may block first launch. See the [tested distribution behavior](Documentation/Distribution.md#personal-homebrew-tap-task-009). Official Homebrew cask submission remains separate.
 
 Create a local installer after building:
