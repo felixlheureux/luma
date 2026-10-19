@@ -23,11 +23,11 @@ struct ScanSummaryCard: View {
                 }
                 HStack(spacing: 18) {
                     ForEach([ItemCategory.caches, .developer, .logs]) { category in
-                        let items = report.items.filter { $0.category == category }
+                        let items = report.items.filter { $0.category == category && !model.isIgnored($0) }
                         VStack(alignment: .leading, spacing: 6) {
                             Label(category.rawValue, systemImage: category.symbol).font(.system(size: 11)).foregroundStyle(.secondary)
                             Text(formatBytes(report.generatedAccounting.bytes(for: items))).font(.system(size: 19, weight: .semibold)).monospacedDigit()
-                            Text("\(items.count) locations found").font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text("\(items.count) actionable locations").font(.system(size: 10)).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

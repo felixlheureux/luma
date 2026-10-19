@@ -75,6 +75,9 @@ struct LumaApp: App {
         }
         let arguments = CommandLine.arguments
         #if DEBUG
+        if let flag = arguments.firstIndex(of: "--check-maintenance"), arguments.indices.contains(flag + 1) {
+            checkMaintenance(output: arguments[flag + 1])
+        }
         if let flag = arguments.firstIndex(of: "--check-overview-input"), arguments.indices.contains(flag + 1) {
             checkOverviewInput(output: arguments[flag + 1])
         }

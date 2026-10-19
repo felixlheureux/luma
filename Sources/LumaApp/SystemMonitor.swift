@@ -132,7 +132,7 @@ struct SystemSample: Sendable {
                 proc_pid_rusage(pid, RUSAGE_INFO_V4, UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: rusage_info_t?.self))
             }
             return ProcessSample(pid: pid, parentPID: parent, executable: String(parts[4]), cpu: cpu,
-                                 memory: status == 0 ? Int64(usage.ri_phys_footprint) : rss * 1024, usesFootprint: status == 0)
+                                 memory: status == 0 ? Int64(usage.ri_phys_footprint) : rss * 1024, usesFootprint: status == 0, instance: status == 0 ? usage.ri_proc_start_abstime : nil, bundleIdentifier: NSRunningApplication(processIdentifier: pid)?.bundleIdentifier)
         }.sorted { $0.memory > $1.memory }
     }
 }

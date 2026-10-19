@@ -8,10 +8,12 @@ public struct ProcessSample: Identifiable, Sendable {
     public let cpu: Double
     public let memory: Int64
     public let usesFootprint: Bool
+    public let bundleIdentifier: String?
+    public let instance: UInt64?
     public var name: String { URL(fileURLWithPath: executable).lastPathComponent }
-    public init(pid: Int32, parentPID: Int32, executable: String, cpu: Double, memory: Int64, usesFootprint: Bool = true) {
+    public init(pid: Int32, parentPID: Int32, executable: String, cpu: Double, memory: Int64, usesFootprint: Bool = true, instance: UInt64? = nil, bundleIdentifier: String? = nil) {
         self.pid = pid; self.parentPID = parentPID; self.executable = executable
-        self.cpu = cpu; self.memory = memory; self.usesFootprint = usesFootprint
+        self.cpu = cpu; self.memory = memory; self.usesFootprint = usesFootprint; self.instance = instance; self.bundleIdentifier = bundleIdentifier
     }
 }
 
@@ -62,5 +64,18 @@ public enum ProcessGrouping {
             let mainPID = bundle == nil ? nil : processes.first(where: { !pids.contains($0.parentPID) && outerApplication($0.executable) == bundle })?.pid
             return ProcessGroup(id: key, name: name, bundleURL: bundle, processes: processes.sorted { $0.memory > $1.memory }, mainPID: mainPID)
         }.sorted { $0.memory > $1.memory }
+    }
+}
+
+public enum NormalQuitOutcome: Sendable { case unavailable, refused, requested }
+
+extension ProcessSample {
+    /// The sampled instance is authoritative; a current PID alone cannot retarget
+    /// a request. A sent request is deliberately distinct from confirmed exit.
+    public func requestNormalQuit(current: ProcessSample?, request: () -> Bool) -> NormalQuitOutcome {
+        guard let current, let instance, instance != 0, let bundleIdentifier,
+              pid == current.pid, instance == current.instance,
+              executable == current.executable, bundleIdentifier == current.bundleIdentifier else { return .unavailable }
+        return request() ? .requested : .refused
     }
 }

@@ -36,9 +36,9 @@ The scanner uses supported default locations only. Custom browser profile paths 
 
 ## Installer payload verification
 
-After a release build and packaging, run `bash Scripts/verify-dmg.sh dist/Luma-0.2.0-arm64.dmg` using the actual version/architecture filename. This mounts the image read-only, checks its app metadata against source, compares the executable with the built app and the icon/license/readme with their source files, verifies the Applications shortcut and mounted signature, then ejects it. The Release workflow runs the same check before checksumming/uploading. Packaging uses a fresh temporary staging folder so files from earlier installers cannot survive into a new payload.
+After a release build and packaging, run `bash Scripts/verify-dmg.sh dist/Luma-0.2.1-arm64.dmg` using the actual version/architecture filename. This mounts the image read-only, checks its app metadata against source, compares the executable with the built app and the icon/license/readme with their source files, verifies the Applications shortcut and mounted signature, then ejects it. The Release workflow runs the same check before checksumming/uploading. Packaging uses a fresh temporary staging folder so files from earlier installers cannot survive into a new payload.
 
-The current development version remains 0.2.0 after task 007’s user-directed closure with manual release checks deferred. Passing automated checks and creating a local installer do not establish the pending manual keyboard/VoiceOver, system accommodation, composited-appearance or reference-interaction review. Update the version/build and installer heading together only after those gates are reviewed; then verify the tag-triggered public download against its published checksum.
+The current development version is 0.2.1 (build 5). The owner requested this development release after the core corrections and Maintenance implementation. The version/build and installer heading are updated together. Automated and fixture checks do not establish exhaustive manual keyboard/VoiceOver, system accommodation or composited-appearance acceptance; this remains an ad-hoc signed, unnotarized development prerelease. Verify the public download against its published checksum before updating the tap.
 
 The app now includes `Luma_LumaCore.bundle/CleanupRules.yaml` (under the bundle's platform resource layout) and `Third-Party-Notices.txt`. The build copies both before signing. Installer verification compares the catalog and notices with source as well as the executable/icon/version. Do not distribute a bare executable without its package resource bundle; a missing or invalid catalog blocks scans and cleanup with an explicit error.
 
@@ -52,14 +52,14 @@ brew install --cask felixlheureux/luma/luma
 
 This exact command was verified from the public GitHub repository with Homebrew 7.0.9 on Apple Silicon/macOS 27.0.1, using a disposable app directory and fresh trust configuration. Homebrew automatically trusted this cask only. Source files are in `Distribution/Homebrew`, with a cask, a tap CI template and an exact prerelease-channel declaration.
 
-The cask pins the published 0.2.0 arm64 DMG, not a local development rebuild with the same filename/version. That published build predates current main-branch safety/UI/catalog work. Its declared and Mach-O minimum is macOS 26.0. Local Homebrew 7.0.9 style and online audit pass with the exact 0.2.0 prerelease declaration. This is a personal development channel; no signing/security exceptions are configured and official homebrew/cask submission remains separate.
+The cask pins the published 0.2.1 arm64 DMG after public payload/checksum verification, rather than a local rebuild. This release includes the current core corrections, battery reporting and Maintenance. Its declared and Mach-O minimum is macOS 26.0. Local Homebrew 7.0.9 style and online audit pass with the exact 0.2.0 prerelease declaration. This is a personal development channel; no signing/security exceptions are configured and official homebrew/cask submission remains separate.
 
 A disposable app-directory test installs published 0.1.2 and upgrades to published 0.2.0. Activity/history, ignore list and appearance/menu preferences remain unchanged. The cask has a plain app artifact and `uninstall quit: "app.luma.mac"`, with no zap/data-removal script. A synthetic matching-ID menu process tests normal Quit separately because the real build’s first launch was not established. On the tested Apple Silicon Mac running macOS 27.0.1, quarantine is preserved and Gatekeeper assessment rejects this ad-hoc build. Launch Services accepting an open request does not establish successful launch. The tap does not change that decision or promise a notarized app.
 
 After a release is published, prepare a reviewed update from the repository root:
 
 ```sh
-python3 Scripts/prepare_homebrew.py --tag v0.2.0 --output /path/to/homebrew-luma/Casks/luma.rb
+python3 Scripts/prepare_homebrew.py --tag v0.2.1 --output /path/to/homebrew-luma/Casks/luma.rb
 python3 -m unittest discover -s Scripts -p test_homebrew.py
 ```
 

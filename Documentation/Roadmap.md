@@ -6,9 +6,9 @@ The owner reset scope on 2026-10-19 after reviewing the app. [Product-Spec.md](P
 
 Main at `c03e185` implements 054–057: automatic app inventory and direct row uninstall, compact Undo and safe mutation draining, automatic residue observations, requested Storage discovery with saved browsing/direct Trash, and read-only iCloud metadata with owner-reported manual acceptance. Storage remains idle on opening; the owner's explicit Scan and optional picker decisions stand. Earlier app footprints/reset, verified cache rules, exact duplicates, analysis cache, central cleanup journal/recovery, and System/menu monitoring remain foundations.
 
-The follow-up review found uninstall/inventory/icon gaps, missing Overview, crowded residue/footer layouts, absent click-away focus, Storage selection/map inconsistencies and incomplete battery reporting. Task 060 corrects app eligibility, inventory and local-resource icon handling. Task 061 restores Overview and simplifies layout/focus. Task 062 corrects Storage selection, map membership and bounded rescan behavior; task 063 corrects battery reporting; they do not reopen completed implementation records or restart the deleted expansion backlog. Task 058 now implements the focused Liquid Glass companion and two-action footer. Finish correction 063 before new Maintenance work.
+The follow-up review found uninstall/inventory/icon gaps, missing Overview, crowded residue/footer layouts, absent click-away focus, Storage selection/map inconsistencies and incomplete battery reporting. Task 060 corrects app eligibility, inventory and local-resource icon handling. Task 061 restores Overview and simplifies layout/focus. Task 062 corrects Storage selection, map membership and bounded rescan behavior; task 063 corrects battery reporting; they do not reopen completed implementation records or restart the deleted expansion backlog. Task 058 now implements the focused Liquid Glass companion and two-action footer. Task 063 now verifies M2 battery details against the owner’s OS readings. Task 059 implements independently refreshed cache/local-Trash actions and memory help.
 
-Task records 001–006, 008–017, 047, 048 and 050 retain implementation evidence. Task 007 remains closed with manual release checks deferred. The published personal Homebrew tap pins the 0.2.0 development release; this reset does not claim a new released version.
+Task records 001–006, 008–017, 047, 048 and 050 retain implementation evidence. Task 007 remains closed with manual release checks deferred. The owner requested a 0.2.1 development release and Homebrew update after this core implementation. Release evidence is separate from exhaustive manual platform/UI acceptance.
 
 ## Core implementation
 
@@ -22,8 +22,8 @@ Task records 001–006, 008–017, 047, 048 and 050 retain implementation eviden
 | [060](../tasks/060-app-inventory-and-uninstall-corrections.md) | Implemented: bounded vendor inventory, supported bundle-only uninstall, optional-data retention, narrow companion filtering and local icon preservation; root-native/asset limits recorded |
 | [061](../tasks/061-overview-layout-and-input-focus.md) | Implemented: Overview first, residue hierarchy/spacing, click-away focus and compact Storage footer |
 | [062](../tasks/062-storage-selection-map-and-continuation.md) | Implemented: cross-folder Selected, shared map/list membership, local row reveal and truthful larger fresh scans |
-| [063](../tasks/063-m2-battery-reporting.md) | Planned: verified M2 battery readings and accurate compact partial-state presentation |
-| [059](../tasks/059-maintenance.md) | Small approved cache/Trash actions and honest memory help |
+| [063](../tasks/063-m2-battery-reporting.md) | Implemented: verified M2 condition/cycles/capacity, honest charging/estimate and partial states |
+| [059](../tasks/059-maintenance.md) | Implemented: one approval per cache/local-Trash action, bounded permanent removal and verified normal Quit/memory help |
 
 The System view stays at its current scope; 063 corrects its existing battery report. Reuse existing execution safeguards while changing the UX. Do not expand monitoring, privacy, photo/Mail tools, ecosystem coverage, scheduling, or distribution work. Only Apple Silicon (`arm64`), macOS 26+, with M2 as reference hardware, is supported.
 

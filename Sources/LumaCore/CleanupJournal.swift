@@ -35,6 +35,7 @@ struct JournalIntent: Codable {
     }
 }
 struct JournalState: Codable {
+    var trashSessions: [TrashRemovalSession]? = nil
     var version = 1
     var records: [CleanupRecord] = []
     var pending: [JournalIntent] = []
@@ -253,6 +254,9 @@ public actor CleanupJournal {
             guard state.pending.isEmpty else { throw LumaError.rejected("Review interrupted operations in Activity first.") }
             guard let stored = state.records.first(where: { $0.id == record.id }), !stored.restored,
                   let expected = stored.identity else { throw LumaError.rejected("This older activity entry has no stored file identity. Restore it through Finder’s Trash.") }
+            guard stored.permanentlyRemoved != true else {
+                throw LumaError.rejected("This item was permanently removed, partially emptied or has an unconfirmed removal. Complete Restore is unavailable; inspect remaining contents in Finder.")
+            }
             guard expected.location != nil else {
                 throw LumaError.rejected("This older activity entry has no parent-chain evidence. Restore it through Finder’s Trash.")
             }
@@ -334,6 +338,7 @@ public actor CleanupJournal {
         func item(_ status: UndoEligibility, _ detail: String) -> UndoReviewItem {
             UndoReviewItem(record: record, eligibility: status, detail: detail)
         }
+        if record.permanentlyRemoved == true { return item(.unavailable, "Permanently removed or partially emptied; cannot restore the complete item.") }
         if record.restored { return item(.restored, "Already restored") }
         guard let identity = record.identity, identity.location != nil else { return item(.unavailable, "Missing identity or parent evidence; use Finder.") }
         do {
@@ -562,6 +567,145 @@ public actor CleanupJournal {
             }
             return descriptor
         }
+    }
+
+    public func trashRemovalHistory() -> [TrashRemovalSession] {
+        (state.trashSessions ?? []).map { session in
+            var session = session
+            if !session.finished && session.phase == "running" { session.phase = "interrupted; not retried" }
+            for index in session.outcomes.indices where session.outcomes[index].state == "deleting" {
+                session.outcomes[index].state = "interrupted"
+                session.outcomes[index].detail = "Outcome unconfirmed; never automatically retried."
+            }
+            return session
+        }
+    }
+
+    /// Separate permanent operation, serialized with Trash/Restore by the same
+    /// actor flag and cross-process journal lock. No recursive remove API.
+    public func emptyTrash(_ review: TrashReview,
+                           progress: @Sendable (String) async -> Void = { _ in }) async throws -> TrashRemovalSession {
+        try requireIdle()
+        executingPlan = true; defer { executingPlan = false }
+        let lock = try acquireLock(); defer { flock(lock, LOCK_UN); close(lock) }
+        try reload()
+        guard state.pending.isEmpty else { throw LumaError.rejected("Resolve interrupted moves in Activity first.") }
+        guard !(state.trashSessions ?? []).contains(where: { $0.id == review.id }) else {
+            throw LumaError.rejected("This approval was already used. Refresh Trash before another action.")
+        }
+        let device = try NonMaterializingIO.perform {
+            let root = try PinnedPath(review.root)
+            guard root.location == review.location, root.value.st_uid == getuid() else {
+                throw LumaError.rejected("The Trash root changed; refresh before emptying.")
+            }
+            return root.value.st_dev
+        }
+        var session = TrashRemovalSession(id: review.id, date: Date(), root: review.root, outcomes: [], finished: false)
+        session.phase = "running"
+        var next = state; next.trashSessions = (next.trashSessions ?? []) + [session]; try commit(next)
+        for tree in review.trees {
+            if Task.isCancelled { break }
+            guard let top = tree.last else { continue }
+            do {
+                try NonMaterializingIO.perform {
+                    let root = try PinnedPath(review.root)
+                    guard root.location == review.location else { throw LumaError.rejected("Trash root changed.") }
+                    var visited = 0
+                    let fresh = try TrashReview.entries(at: top.url, device: device, visited: &visited, limit: 20_000)
+                    guard fresh == tree else { throw LumaError.rejected("Contents changed since approval; refresh before removing them.") }
+                }
+            } catch {
+                if error is CancellationError { break }
+                session.outcomes.append(.init(path: top.url, state: "skipped", detail: error.localizedDescription))
+                try persistTrashSession(session); continue
+            }
+            for entry in tree {
+                if Task.isCancelled { break }
+                var removed = false
+                var withdrawn: Set<UUID> = []
+                do {
+                    try NonMaterializingIO.perform {
+                        let root = try PinnedPath(review.root)
+                        guard root.location == review.location else { throw LumaError.rejected("Trash root changed.") }
+                        let pin = try PinnedPath(entry.url)
+                        let current = TrashEntry(url: entry.url, value: pin.value, location: pin.location)
+                        guard current.location == entry.location, pin.value.st_uid == getuid(),
+                              entry.matchesRemovalIdentity(current) else {
+                            throw LumaError.rejected("Entry changed; preserved for a later action.")
+                        }
+                        if entry.directory {
+                            guard try PinnedPath.names(in: pin.descriptor).isEmpty else {
+                                throw LumaError.rejected("Directory contains new or retained entries; preserved.")
+                            }
+                        }
+                        // Persist intent and conservatively withdraw complete Restore
+                        // before the irreversible syscall, including a partially emptied tree.
+                        var prepared = state
+                        for index in prepared.records.indices {
+                            let record = prepared.records[index]
+                            guard !record.restored, record.permanentlyRemoved != true,
+                                  Filesystem.isWithin(entry.url, root: record.trashed),
+                                  let expected = record.identity,
+                                  let approved = tree.first(where: { $0.url == record.trashed }),
+                                  expected.device == UInt64(UInt32(bitPattern: approved.device)), expected.inode == approved.inode else { continue }
+                            withdrawn.insert(record.id)
+                            prepared.records[index].permanentlyRemoved = true
+                        }
+                        try commit(prepared)
+                        session.outcomes.append(.init(path: entry.url, state: "deleting", detail: "Permanent removal started."))
+                        try persistTrashSession(session)
+                        try mutationCheckpoint?()
+                        try pin.revalidate(expected: entry.location)
+                        let final = try PinnedPath(entry.url)
+                        guard entry.matchesRemovalIdentity(TrashEntry(url: entry.url, value: final.value, location: final.location)) else {
+                            throw LumaError.rejected("Entry changed immediately before removal.")
+                        }
+                        // Descriptor-relative unlink never follows the leaf and rmdir
+                        // cannot recursively delete an arrival. A native name race remains.
+                        let parent = pin.descriptors[pin.descriptors.count - 2]
+                        guard unlinkat(parent, entry.url.lastPathComponent, entry.directory ? AT_REMOVEDIR : 0) == 0 else { throw PinnedPath.posixError() }
+                        removed = true
+                        session.outcomes[session.outcomes.count - 1].state = "removed"
+                        session.outcomes[session.outcomes.count - 1].detail = "Permanently removed; cannot be undone."
+                        try persistTrashSession(session)
+                    }
+                } catch {
+                    // A known pre-syscall/native failure preserves complete Restore
+                    // unless an earlier entry already withdrew it. Crash uncertainty
+                    // still retains the durable withdrawal and never replays removal.
+                    if !removed && !withdrawn.isEmpty {
+                        var retained = state
+                        for index in retained.records.indices where withdrawn.contains(retained.records[index].id) {
+                            retained.records[index].permanentlyRemoved = nil
+                        }
+                        try commit(retained)
+                    }
+                    if session.outcomes.last?.path == entry.url {
+                        session.outcomes[session.outcomes.count - 1].state = removed ? "removed" : "failed"
+                        session.outcomes[session.outcomes.count - 1].detail = removed
+                            ? "Permanently removed; persisting the confirmed outcome was retried."
+                            : error.localizedDescription
+                    } else {
+                        session.outcomes.append(.init(path: entry.url, state: "failed", detail: error.localizedDescription))
+                    }
+                    try persistTrashSession(session)
+                }
+                await progress(session.summary)
+            }
+        }
+        session.finished = !Task.isCancelled
+        session.phase = Task.isCancelled ? "cancelled at an entry boundary" : (session.outcomes.contains { $0.state != "removed" } ? "completed with retained/unconfirmed entries" : "completed")
+        try persistTrashSession(session)
+        return session
+    }
+
+    private func persistTrashSession(_ session: TrashRemovalSession) throws {
+        var next = state
+        guard let index = next.trashSessions?.firstIndex(where: { $0.id == session.id }) else {
+            throw LumaError.rejected("Permanent operation record is missing.")
+        }
+        next.trashSessions![index] = session
+        try commit(next)
     }
 
     private func reload() throws {

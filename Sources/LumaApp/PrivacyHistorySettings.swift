@@ -103,7 +103,9 @@ struct HistoryView: View {
                                         Text("\(record.date.formatted()) · \(formatBytes(record.bytes)) · \(record.restored ? "Restored" : "Moved to Trash")").font(.system(size: 10)).foregroundStyle(.tertiary)
                                     }
                                     Spacer()
-                                    if !record.restored {
+                                    if record.permanentlyRemoved == true {
+                                        Text("Permanently removed / partially emptied").font(.caption)
+                                    } else if !record.restored {
                                         if record.identity != nil {
                                             Button("Restore") { model.restore(record) }.buttonStyle(.glass).controlSize(.small).disabled(model.mutationUnavailableReason != nil)
                                         } else {

@@ -144,6 +144,7 @@ public struct CleanupRecord: Identifiable, Codable, Sendable {
     public let trashed: URL
     public let bytes: Int64
     public var restored: Bool
+    public var permanentlyRemoved: Bool? = nil
     public let identity: FileIdentity?
     public let planID: UUID?
     public let planSource: CleanupSource?

@@ -89,7 +89,7 @@ jobs:
           cat > release-notes.md <<'NOTES'
           Development build for Apple Silicon Macs running macOS 26 or later.
 
-          Download the DMG and compare its SHA-256 checksum with SHA256SUMS. Cleanup always requires review and moves selected files to the macOS Trash. See the repository README for implemented features and current limits.
+          Download the DMG and compare its SHA-256 checksum with SHA256SUMS. App and residue actions move selected files to the macOS Trash. Maintenance cache cleanup requires one approval; Empty Trash requires a separate explicit approval and permanently removes only supported unchanged local Trash entries. See the repository README for implemented features and current limits.
           NOTES
           gh release create "$RELEASE_TAG" "Luma-$RELEASE_VERSION-arm64.dmg" SHA256SUMS \
             --verify-tag --title "Luma $RELEASE_VERSION" \

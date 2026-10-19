@@ -5,16 +5,17 @@
 
 Luma is an open-source macOS maintenance app for understanding storage, reviewing app leftovers, finding exact duplicates, and monitoring application resources.
 
-Every proposed cleanup has a path, an explanation, an ownership rule, and a consequence. You choose what changes. Reviewed selections move to the macOS Trash, with a local activity record.
+Every proposed cleanup has a path, an explanation, an ownership rule, and a consequence. You choose what changes. App, residue and cache selections move to the macOS Trash, with a local activity record. Maintenance also offers separately approved permanent emptying of supported local Trash contents.
 
-**Status:** working development build for Apple Silicon (`arm64`), macOS 26 and later. The workflows below are implemented; the current core specification remains in progress.
+**Status:** working development build for Apple Silicon (`arm64`), macOS 26 and later. The core workflows below are implemented; remaining review limits are recorded with their tasks.
 
-## Current development focus
+## Implemented core
 
-The owner reset the scope on 2026-10-19, then reviewed implementation at `c03e185`. The [core task queue](tasks/README.md) is 054–063. Tasks 054–057 implement direct app uninstall/Undo, automatic residue observations with in-place Trash, requested Storage discovery with saved browsing, and read-only iCloud metadata with owner-reported integration acceptance. Storage opens without scanning; broad discovery starts only when requested, and the optional folder picker remains available. Task 058 implements a focused native Liquid Glass menu flush below the menu bar, with two primary actions. Task 060 corrects app inventory, supported bundle-only uninstall, optional-data retention and bounded local icon preservation. Task 061 restores Overview/layout/focus. Task 062 keeps selections visible across browsing filters, aligns the map with its list and offers truthful larger fresh scans. Correction 063 covers M2 battery reporting. Complete these corrections before the small Maintenance view in 059. The unstarted expansion backlog remains deleted; System keeps its current metric set.
+The owner reset the scope on 2026-10-19, then reviewed implementation at `c03e185`. The [core task queue](tasks/README.md) is 054–063. Tasks 054–057 implement direct app uninstall/Undo, automatic residue observations with in-place Trash, requested Storage discovery with saved browsing, and read-only iCloud metadata with owner-reported integration acceptance. Storage opens without scanning; broad discovery starts only when requested, and the optional folder picker remains available. Task 058 implements a focused native Liquid Glass menu flush below the menu bar, with two primary actions. Task 060 corrects app inventory, supported bundle-only uninstall, optional-data retention and bounded local icon preservation. Task 061 restores Overview/layout/focus. Task 062 keeps selections visible across browsing filters, aligns the map with its list and offers truthful larger fresh scans. Task 063 adds verified on-demand M2 battery condition, cycle count and maximum capacity, with honest charging and estimate states. Task 059 adds Maintenance with independently refreshed cache choices, local home Trash usage and permanent emptying, plus memory pressure and verified normal Quit. Cache cleanup and permanent Trash emptying each have one explicit approval in that view. The unstarted expansion backlog remains deleted; System keeps its current metric set.
 
 ## What you can do
 
+- **Maintain your Mac explicitly.** Open Maintenance for independently refreshed supported caches and generated files, local home Trash, and memory pressure. Nothing starts selected. Cache cleanup asks once before moving the captured selection to Trash. Empty Trash asks separately before permanently removing reviewed unchanged entries; external/provider bins, links and changed contents stay excluded. Resource consumers are explicit snapshots so refresh cannot redirect Quit; normal Quit revalidates the sampled app instance and reports requested versus exited. macOS manages reusable memory; no system-wide RAM reclaim is claimed.
 - **Review generated data.** Inspect Chrome, Safari, Firefox, Zen, Brave, and Edge caches; npm, Yarn Classic, and pnpm metadata caches; developer build files; simulator caches and logs; and verified VS Code 1.142.0 cache/log units. Cookies, sessions, project dependencies, shared stores, and device contents stay separate.
 - **Remove selected residues in place.** Open Residues for automatically discovered findings and saved observations during refresh. Select exact identifier groups or individual paths and use the fixed Move to Trash footer, with Stop, Activity and Undo. Data whose exact bundle identifier has no installed owner remains a review candidate. Luma checks application folders, embedded helpers, and macOS Launch Services. Exact identifiers and explicit rules cover supported named support folders. Ownership is checked again before Trash.
 - **Uninstall directly from the app list.** Inventory loads automatically. Click Uninstall on a supported row to move the bundle and verified exclusive caches/logs/preferences/saved state to Trash. Documents, support data and containers stay; shared or unknown ownership keeps all related data. Details remains optional, with separate footprint categories and honest unavailable sizes. Compact Undo checks eligible targets internally; Activity retains conflicts and individual Restore.
@@ -29,7 +30,7 @@ For troubleshooting, open an application's footprint and choose **Review reset**
 
 The interface follows **System appearance by default**, with optional Light and Dark overrides. Purple controls retain their deeper fill and white labels. Menu-bar visibility is enabled by default and can be changed in Settings. Closing the main window keeps the menu monitor running; choose Quit Luma to stop it. RAM usage and macOS memory pressure are shown separately: high usage alone does not mean high pressure.
 
-## What is still in progress
+## Core implementation status
 
 | Area | Core change |
 | --- | --- |
@@ -39,8 +40,8 @@ The interface follows **System appearance by default**, with optional Light and 
 | Storage | Implemented requested discovery/saved browsing/direct Trash, cross-folder Selected, consistent map/list and bounded fresh rescans |
 | iCloud | Implemented metadata discovery; owner-reported integration acceptance in 057 |
 | Menu companion | Implemented native Liquid Glass panel with Open Luma and Maintenance footer actions |
-| System | Keep current metrics; 063 corrects existing M2 battery reporting |
-| Maintenance | 059 planned after core corrections: approved cache/Trash actions and useful memory help |
+| System | Existing metrics retained; M2 cycles, condition and maximum capacity verified against the owner’s OS readings |
+| Maintenance | Supported cache choices, one approval per cache/Trash action, bounded local permanent removal, memory pressure and verified Quit |
 
 See the [roadmap](Documentation/Roadmap.md), [current specification](Documentation/Product-Spec.md), and [safety model](Documentation/Safety.md) for scope and current limits. No further feature track starts automatically after the core.
 
@@ -63,7 +64,7 @@ Apple Silicon (`arm64`) is the only supported target, with M2 as reference hardw
 brew install --cask felixlheureux/luma/luma
 ```
 
-This installs the published 0.2.0 development build, which predates current main-branch changes. It is not notarized; macOS may block first launch. See the [tested distribution behavior](Documentation/Distribution.md#personal-homebrew-tap-task-009). Official Homebrew cask submission remains separate.
+The 0.2.1 development release includes the core cleanup, Storage, Overview/menu, M2 battery and Maintenance changes described above. It is not notarized; macOS may block first launch. See the [tested distribution behavior](Documentation/Distribution.md#personal-homebrew-tap-task-009). Official Homebrew cask submission remains separate.
 
 Create a local installer after building:
 
@@ -95,6 +96,7 @@ Luma analyzes files locally. It has no telemetry, account system, root helper, o
 - Leftovers are **potentially unclaimed data**, not proof that a file is unnecessary. They can contain documents or preferences worth keeping for a reinstall.
 - Apple data, shared group containers, fuzzy folder-name matches, unsafe links, and protected locations are excluded from leftover cleanup.
 - The Safety Engine rechecks descriptor-pinned paths and parent chains, identities, owners, volumes, ignore rules, and stale results before Trash.
+- Empty Trash is a separate permanent operation restricted to the accessible current-user home Trash resolved by Foundation. It freezes top-level and descendant observations, preserves new/changed/unsupported items, never recursively removes a directory, records per-entry outcomes and disables complete Restore for affected trees. Interrupted removal is not retried automatically; journaling does not make permanent deletion reversible.
 - Multi-item cleanup stops on failure and records completed moves. Restore requires an unchanged Trash item and original parent chain; older records without parent evidence use Finder Restore.
 
 This is an early development build. Cleanup and Restore use a durable journal, with file identity checks and recovery review in Activity. Descriptor checks strengthen identity validation; the final native Trash pathname race remains documented. Read the [safety model](Documentation/Safety.md) before cleanup of important data.
@@ -153,6 +155,6 @@ Residue groups default to exact bundle-identifier order, with mixed-state group 
 
 Storage volume analysis currently has native read-only APFS-image evidence. HFS+, network/provider-managed storage and volumes without stable identifiers/current capability evidence are unsupported or unverified. Unmounting/replacing a target clears live results; a new explicit scan validates volume/root identity. Available-for-important-usage is a system estimate, filesystem free space is a separate observation, and neither is a promise of cleanup recovery.
 
-Debug native monitoring QA: after a debug build, run `bash Scripts/check-monitoring-depth.sh`. Injected providers verify single-interface rates, supported/missing battery fields, desktop states and menu-only monitoring in both appearances. It measures passive provider collection against the CPU/memory/disk core baseline and records actual hardware field availability. No active network test, mutation or personal-folder scan is invoked. `LUMA_MONITORING_QA_OUTPUT_DIR` retains temporary reports/captures.
+Debug native monitoring QA: after a debug build, run `bash Scripts/check-monitoring-depth.sh`. Injected providers verify single-interface rates, supported/missing battery fields, detail caching/coalescing/failure/source changes, desktop states and menu-only monitoring in Light/Dark/System. Actual Luma battery details are compared with the structured Apple Power report separately from fixtures. Battery details refresh on entering System or using Refresh, with five-minute reuse and their observation time displayed. It measures lightweight passive provider collection against the CPU/memory/disk core baseline and records actual hardware field availability. No active network test, mutation or personal-folder scan is invoked. `LUMA_MONITORING_QA_OUTPUT_DIR` retains temporary reports/captures.
 
 Task 060 keeps supported vendor-folder apps consistent across inventory, Search and Restore. Two-component identifiers can uninstall bundle-only; unsafe optional roots stay intact with an explanation. Ordinary macOS Trash rights apply to verified bundles without an administrator helper. Asset-catalog icons retain a generic fallback, and actual root/mixed-owner native moves remain unverified because administrator fixture authority was unavailable. See [the task evidence](tasks/060-app-inventory-and-uninstall-corrections.md) for accepted native checks and limits.

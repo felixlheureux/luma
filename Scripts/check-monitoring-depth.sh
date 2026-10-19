@@ -14,12 +14,16 @@ requested = os.environ.get("LUMA_MONITORING_QA_OUTPUT_DIR")
 context = contextlib.nullcontext(requested) if requested else tempfile.TemporaryDirectory(prefix="luma-monitoring-")
 with context as directory:
     pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
-    for appearance in ["light", "dark"]:
+    for appearance in ["light", "dark", "system"]:
         output = pathlib.Path(directory) / f"{appearance}.json"
-        subprocess.run([sys.argv[1], "--check-monitoring-depth", str(output), "-luma.appearance", appearance, "-luma.menuBar", "YES"], check=True, timeout=60)
+        output.unlink(missing_ok=True)
+        args = [sys.argv[1], "--check-monitoring-depth", str(output), "-luma.appearance", appearance, "-luma.menuBar", "YES"]
+        bundle = pathlib.Path(sys.argv[1]).resolve().parents[2]
+        command = ["/usr/bin/open", "-W", "-n", str(bundle), "--args", *args[1:]] if bundle.suffix == ".app" else args
+        subprocess.run(command, check=True, timeout=90)
         report = json.loads(output.read_text())
         assert "error" not in report, report
-        for key in ["singleInterfaceRate", "supportedBatteryFields", "desktopExplicit", "unsupportedFieldsUnavailable", "menuFitsScreen", "menuWithoutMainWindow", "memoryPressureDistinct"]:
+        for key in ["singleInterfaceRate", "supportedBatteryFields", "desktopExplicit", "unsupportedFieldsUnavailable", "menuFitsScreen", "menuWithoutMainWindow", "memoryPressureDistinct", "detailFieldsAndTime", "detailCacheReused", "detailRequestsCoalesced", "lightweightDuringDetails", "detailFailurePreservesReadings", "monitorContinuesAfterDetailFailure", "partialDetailsExplained", "actualLightweightIdentityAvailable", "actualLumaMatchesPowerReport", "staleSourceDetailsDiscarded"]:
             assert report.get(key) is True, (key, report)
         assert report["mutationInvoked"] is False and report["activeNetworkTestInvoked"] is False and report["personalFoldersScanned"] is False
         assert report["actualNetworkProviderAvailable"] is True, report

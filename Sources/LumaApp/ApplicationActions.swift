@@ -145,7 +145,7 @@ extension AppModel {
 
     func canUndo(_ session: CleanupSession) -> Bool {
         history.contains { record in
-            guard record.planID == session.id, !record.restored, record.identity?.location != nil else { return false }
+            guard record.planID == session.id, !record.restored, record.permanentlyRemoved != true, record.identity?.location != nil else { return false }
             guard let eligibility = undoEligibility[record.id]?.eligibility else { return true }
             return ![.missing, .unavailable, .restored].contains(eligibility)
         }

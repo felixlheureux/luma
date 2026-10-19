@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import Darwin
 import LumaCore
 
 struct SystemView: View {
@@ -69,13 +70,18 @@ struct ProcessList: View {
     @Environment(AppModel.self) private var model
     @ViewState private var sortCPU = false
     @ViewState private var expanded: Set<String> = []
-    @ViewState private var appToQuit: NSRunningApplication?
+    @ViewState private var frozenGroups: [ProcessGroup] = []
+    @ViewState private var quitMessages: [String: String] = [:]
+    @ViewState private var quitApps: [String: NSRunningApplication] = [:]
     private var groups: [ProcessGroup] {
-        Array((sortCPU ? model.system.processGroups.sorted { $0.cpu > $1.cpu } : model.system.processGroups).prefix(12))
+        Array((sortCPU ? frozenGroups.sorted { $0.cpu > $1.cpu } : frozenGroups).prefix(12))
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeading(title: "Resource consumers", detail: "Grouped by app · expand to inspect helpers")
+            HStack {
+                SectionHeading(title: "Resource consumers", detail: "Snapshot · refresh explicitly to keep Quit targets stable")
+                Button("Refresh consumers") { frozenGroups = model.system.processGroups; quitMessages = [:]; quitApps = [:] }
+            }
             Surface(padding: 18) {
                 VStack(spacing: 0) {
                     HStack {
@@ -119,8 +125,14 @@ struct ProcessList: View {
                             if let pid = group.mainPID, let app = NSRunningApplication(processIdentifier: pid),
                                app.activationPolicy == .regular, app.bundleIdentifier != Bundle.main.bundleIdentifier,
                                !["com.apple.finder", "com.apple.dock", "com.apple.systemuiserver", "com.apple.loginwindow"].contains(app.bundleIdentifier ?? "") {
-                                Button("Quit") { appToQuit = app }.buttonStyle(.bordered).controlSize(.mini)
+                                Button("Quit") { requestQuit(group) }.buttonStyle(.bordered).controlSize(.mini)
                                     .frame(width: 62).padding(.top, 16)
+                            }
+                        }
+                        if let message = quitMessages[group.id] {
+                            TimelineView(.periodic(from: .now, by: 2)) { _ in
+                                Text(quitApps[group.id]?.isTerminated == true ? "Exited · observe current memory pressure above." : message)
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                         }
                         if group.id != groups.last?.id { Divider() }
@@ -130,11 +142,38 @@ struct ProcessList: View {
             Text("Memory combines app processes using native physical footprint where available, with resident memory as a fallback. CPU can exceed 100% across cores.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
         }
-        .alert("Quit \(appToQuit?.localizedName ?? "application")?", isPresented: Binding(get: { appToQuit != nil }, set: { if !$0 { appToQuit = nil } })) {
-            Button("Cancel", role: .cancel) { appToQuit = nil }
-            Button("Quit application") { appToQuit?.terminate(); appToQuit = nil }
-        } message: { Text("The app will receive a normal quit request and may ask you to save open documents.") }
+        .task { frozenGroups = model.system.processGroups }
+        .onChange(of: model.system.processGroups.isEmpty) { _, empty in
+            if !empty && frozenGroups.isEmpty { frozenGroups = model.system.processGroups }
+        }
     }
+    private func requestQuit(_ group: ProcessGroup) {
+        guard let pid = group.mainPID, let sampled = group.processes.first(where: { $0.pid == pid }),
+              sampled.instance != nil, let app = NSRunningApplication(processIdentifier: pid),
+              !app.isTerminated, app.activationPolicy == .regular,
+              app.bundleURL == group.bundleURL, app.executableURL?.path == sampled.executable,
+              let sampledID = sampled.bundleIdentifier, app.bundleIdentifier == sampledID,
+              app.bundleIdentifier != Bundle.main.bundleIdentifier,
+              !["com.apple.finder", "com.apple.dock", "com.apple.systemuiserver", "com.apple.loginwindow"].contains(app.bundleIdentifier ?? "") else {
+            quitMessages[group.id] = "Quit unavailable: sampled application disappeared or cannot be verified. Refresh consumers."; return
+        }
+        var usage = rusage_info_v4()
+        let status = withUnsafeMutablePointer(to: &usage) {
+            proc_pid_rusage(pid, RUSAGE_INFO_V4, UnsafeMutableRawPointer($0).assumingMemoryBound(to: rusage_info_t?.self))
+        }
+        let current = status == 0 ? ProcessSample(pid: pid, parentPID: 0, executable: app.executableURL?.path ?? "", cpu: 0, memory: 0,
+            instance: usage.ri_proc_start_abstime, bundleIdentifier: app.bundleIdentifier) : nil
+        switch sampled.requestNormalQuit(current: current, request: { app.terminate() }) {
+        case .unavailable:
+            quitMessages[group.id] = "Quit refused: process instance changed or is unavailable. Refresh consumers."
+        case .refused:
+            quitMessages[group.id] = "Quit refused or unavailable. The app remains running."
+        case .requested:
+            quitApps[group.id] = app
+            quitMessages[group.id] = "Quit requested · awaiting save/exit. No memory savings confirmed."
+        }
+    }
+
 }
 
 struct OptimizerView: View {

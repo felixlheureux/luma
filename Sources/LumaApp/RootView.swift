@@ -22,9 +22,9 @@ struct RootView: View {
                             ScrollView {
                                 VStack(alignment: .leading, spacing: 28) {
                                     pageHeader.id("page-top")
-                                    if model.uninstallingApp == nil && !model.residueMoving && !model.storageMoving { CleanupProgressPanel() }
-                                    if model.destination != .storage { ScanSessionPanel() }
-                                    if let target = model.currentScanTarget, target != .overview, target != .storage { CompletedScanCaption(target: target) }
+                                    if model.destination != .maintenance && model.uninstallingApp == nil && !model.residueMoving && !model.storageMoving { CleanupProgressPanel() }
+                                    if model.destination != .storage && model.destination != .maintenance { ScanSessionPanel() }
+                                    if let target = model.currentScanTarget, target != .overview, target != .storage, model.destination != .maintenance { CompletedScanCaption(target: target) }
                                     Group {
                                         switch model.destination ?? .overview {
                                         case .overview: OverviewView()

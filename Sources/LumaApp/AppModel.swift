@@ -53,7 +53,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     let computerName = Host.current().localizedName ?? "This Mac"
     @ObservationIgnored weak var mainWindow: NSWindow?
     var processDetailsVisible: Bool {
-        mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false && mainWindow?.occlusionState.contains(.visible) == true && (destination == .system || destination == .optimizer)
+        mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false && mainWindow?.occlusionState.contains(.visible) == true && (destination == .system || destination == .optimizer || destination == .maintenance)
     }
     func openMain(_ target: Destination? = nil) {
         if let target { openCore(target) }
@@ -66,6 +66,43 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var runningApplicationIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
     var runningApplicationURLs = NSWorkspace.shared.runningApplications.compactMap(\.bundleURL)
     var monitoringFocus: String?
+    var batteryReport: BatteryPowerReport?
+    var batteryReportIdentity: String?
+    var batteryReportLoading = false
+    var batteryReportIssue: String?
+    @ObservationIgnored var batteryReportNow: @Sendable () -> Date = { Date() }
+    @ObservationIgnored var batteryReportGeneration = UUID()
+    @ObservationIgnored var batteryReportCollector: @Sendable (String) throws -> BatteryPowerReport = { identity in
+        guard BatteryProvider.collect().sourceIdentity == identity else { throw BatteryPowerReport.ReportError.invalid }
+        let report = try BatteryReportProvider.collect()
+        guard BatteryProvider.collect().sourceIdentity == identity else { throw BatteryPowerReport.ReportError.invalid }
+        return report
+    }
+
+    func refreshBatteryReport(force: Bool = false) async {
+        guard !batteryReportLoading else { return }
+        guard system.batteryDetails.presence == .available,
+              let identity = system.batteryDetails.sourceIdentity else {
+            if system.batteryDetails.presence == .available { batteryReportIssue = "Battery detail source identity is unavailable. See Battery Settings or System Information." }
+            return
+        }
+        if !force, batteryReportIdentity == identity, let report = batteryReport,
+           (0..<300).contains(batteryReportNow().timeIntervalSince(report.observedAt)) { return }
+        batteryReportLoading = true; batteryReportIssue = nil
+        let generation = batteryReportGeneration, collector = batteryReportCollector
+        let result = await Task.detached(priority: .utility) { () -> Result<BatteryPowerReport, Error> in
+            Result { try collector(identity) }
+        }.value
+        batteryReportLoading = false
+        guard generation == batteryReportGeneration, identity == system.batteryDetails.sourceIdentity else {
+            if destination == .system { await refreshBatteryReport() }
+            return
+        }
+        switch result {
+        case .success(let report): batteryReport = report; batteryReportIdentity = identity
+        case .failure: batteryReportIssue = "Battery details could not be refreshed. Live charge and power reporting continue."
+        }
+    }
     var networkInterface: String?
     var networkTracker = NetworkActivityTracker()
     @ObservationIgnored var wakeObserver: NSObjectProtocol?
@@ -189,6 +226,14 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     @ObservationIgnored var scanRunner: @Sendable (ScanRequest, @escaping ScanEmitter) async throws -> ScanResult = {
         try await ScanEngine.run($0, emit: $1)
     }
+    @ObservationIgnored var maintenanceTrashReader: @Sendable () throws -> TrashReview = { try TrashReview.currentUser() }
+    var maintenanceTrash: TrashReview?
+    var maintenanceTrashLoading = false
+    var maintenanceEmptying = false
+    var maintenanceCleaning = false
+    var maintenanceHistory: [TrashRemovalSession] = []
+    var maintenanceTrashStatus = "Checking supported local Trash…"
+    var maintenanceCacheStatus = "Nothing selected by default."
     var operationBusy = false
     var busy: Bool {
         get { operationBusy || scanSessions.isBusy }
@@ -369,6 +414,10 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                 if !includeProcesses { next.processes = system.processes; next.processGroups = system.processGroups }
                 if let observation = next.networkObservation {
                     next.network = networkTracker.consume(observation, selectedInterface: networkInterface)
+                }
+                if next.batteryDetails.sourceIdentity != system.batteryDetails.sourceIdentity {
+                    batteryReport = nil; batteryReportIdentity = nil; batteryReportIssue = nil
+                    batteryReportGeneration = UUID()
                 }
                 system = next
                 let running = NSWorkspace.shared.runningApplications
@@ -588,6 +637,21 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     /// Mutation outcomes invalidate the completed generated-data snapshot, even
     /// when only part of a plan moved. No stale category totals enter review.
+    func retainMaintenanceGenerated(after removed: URL) {
+        let oldID = completedSnapshots[.generatedData]?.sessionID.uuidString
+        cleanup.removeAll { $0.url == removed }
+        cleanupReport?.items.removeAll { $0.url == removed }
+        removeSelection(ids: [removed.path], prefix: "")
+        completedSnapshots.removeValue(forKey: .generatedData)
+        completedSnapshots.removeValue(forKey: .overview)
+        scanSessions.invalidateSnapshots(for: [.generatedData, .overview])
+        if let oldID {
+            for (key, value) in Array(selections) where key.hasSuffix(oldID) {
+                selections[String(key.dropLast(oldID.count)) + "pending"] = value
+            }
+        }
+    }
+
     func invalidateGeneratedFindings() {
         clearSelection(for: Destination.clean.rawValue); clearSelection(for: Destination.overview.rawValue)
         cleanup = []; cleanupReport = nil
@@ -840,6 +904,8 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         ignored.remove(path); UserDefaults.standard.set(Array(ignored), forKey: ignoreKey)
     }
     func openSettings(_ anchor: String) {
-        if let url = URL(string: "x-apple.systempreferences:\(anchor)") { NSWorkspace.shared.open(url) }
+        guard let url = URL(string: "x-apple.systempreferences:\(anchor)"), NSWorkspace.shared.open(url) else {
+            error = "System Settings could not be opened. Open it from the Apple menu and choose the requested pane."; return
+        }
     }
 }

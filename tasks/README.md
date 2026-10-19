@@ -20,8 +20,8 @@ Make the daily actions fast and obvious: uninstall from the app list, select res
 | 6 | 060 | [Correct app inventory, icons and uninstall eligibility](060-app-inventory-and-uninstall-corrections.md) | Done | 054, 055 |
 | 7 | 061 | [Restore Overview and refine layout and input focus](061-overview-layout-and-input-focus.md) | Done | 054–057; coordinate routes with 058 |
 | 8 | 062 | [Correct Storage selection, map and continuation](062-storage-selection-map-and-continuation.md) | Done | 056, 057 |
-| 9 | 063 | [Correct M2 battery reporting](063-m2-battery-reporting.md) | Planned | Existing monitoring; coordinate menu with 058 |
-| 10 | 059 | [Add simple Maintenance actions](059-maintenance.md) | Planned | 054, 055; core corrections first |
+| 9 | 063 | [Correct M2 battery reporting](063-m2-battery-reporting.md) | Done | Existing monitoring; coordinate menu with 058 |
+| 10 | 059 | [Add simple Maintenance actions](059-maintenance.md) | Done | 054, 055; core corrections first |
 
 Follow this order for a serial runner; dependencies permit independent work. Complete the current menu work and core corrections before adding Maintenance. Mark a task In progress when work starts. Mark it Done only after its behavior and meaningful validation are recorded. Preserve 054–057's implementation evidence; the follow-up defects are tracked in 060–063. This review changes tasks and guidance, not runtime code or a release.
 

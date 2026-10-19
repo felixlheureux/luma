@@ -25,12 +25,30 @@ private final class MonitoringFixture: @unchecked Sendable {
         case 1: result.batteryDetails = .init(presence: .notPresent)
         case 2: result.batteryDetails = .init(presence: .available, input: .init(current: 80, maximum: 100))
         default:
-            result.batteryDetails = .init(presence: .available, input: .init(current: 80, maximum: 100, nominal: 90, design: 100,
+            result.batteryDetails = .init(presence: .available, input: .init(current: 80, maximum: 100,
                 charging: false, externalPower: false, health: "Good", condition: "Fixture condition", cycles: 42, minutesToEmpty: 100))
         }
+        if result.batteryDetails.presence == .available { result.batteryDetails.sourceIdentity = "fixture-\(mode)" }
         result.battery = result.batteryDetails.charge
         result.charging = result.batteryDetails.charging == true; result.onExternalPower = result.batteryDetails.externalPower == true
         return result
+    }
+}
+
+private final class BatteryReportFixture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    private var fail = false
+    private var delay = 0.6
+    func setDelay(_ value: Double) { lock.lock(); delay = value; lock.unlock() }
+    func setFailure(_ value: Bool) { lock.lock(); fail = value; lock.unlock() }
+    var count: Int { lock.lock(); defer { lock.unlock() }; return calls }
+    func collect(_ identity: String) throws -> BatteryPowerReport {
+        lock.lock(); calls += 1; let shouldFail = fail, seconds = delay; lock.unlock()
+        Thread.sleep(forTimeInterval: seconds)
+        if shouldFail { throw BatteryPowerReport.ReportError.invalid }
+        let data = Data(#"{"SPPowerDataType":[{"_name":"spbattery_information","sppower_battery_health_info":{"sppower_battery_cycle_count":42,"sppower_battery_health":"Fixture condition","sppower_battery_health_maximum_capacity":"90 %"}}]}"#.utf8)
+        return try BatteryPowerReport.parse(data, observedAt: Date(timeIntervalSince1970: 1_700_000_000))
     }
 }
 
@@ -48,9 +66,14 @@ extension LumaAppDelegate {
     func checkMonitoringDepth(output: String) {
         Task { @MainActor in
             let model = AppModel.shared, original = AppModel.shared.monitoringCollector
-            let fixture = MonitoringFixture()
+            let fixture = MonitoringFixture(), details = BatteryReportFixture()
+            let originalDetails = model.batteryReportCollector, originalClock = model.batteryReportNow
+            var checkedWindow: NSWindow?
+            var originalFrame: NSRect?
             var report: [String: Any] = ["mutationInvoked": false, "activeNetworkTestInvoked": false, "personalFoldersScanned": false]
-            defer { model.monitoringCollector = original; hideMonitoringMenuForCheck(); NSApp.terminate(nil) }
+            defer {
+                if let checkedWindow, let originalFrame { checkedWindow.setFrame(originalFrame, display: true) }
+                model.batteryReportNow = originalClock; model.batteryReportCollector = originalDetails; model.monitoringCollector = original; hideMonitoringMenuForCheck(); NSApp.terminate(nil) }
             @MainActor func wait(_ predicate: @MainActor () -> Bool) async throws {
                 let deadline = Date().addingTimeInterval(25)
                 while !predicate() && Date() < deadline { try await Task.sleep(for: .milliseconds(40)) }
@@ -60,7 +83,9 @@ extension LumaAppDelegate {
                 try await Task.sleep(for: .seconds(2))
                 model.showMainWindow?()
                 try await Task.sleep(for: .milliseconds(250))
-                guard let window = NSApp.windows.first(where: { $0.isVisible && $0.frame.width > 800 && $0.frame.height > 500 }) else { throw LumaError.rejected("No main monitoring window") }
+                guard let window = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) && $0.contentView != nil }) else { throw LumaError.rejected("No main monitoring window") }
+                checkedWindow = window; originalFrame = window.frame
+                window.setContentSize(NSSize(width: 1050, height: 850))
                 let profile = await Task.detached(priority: .utility) { () -> MonitoringProfile in
                     var core: [Double] = [], extended: [Double] = []
                     for _ in 0..<20 {
@@ -85,28 +110,79 @@ extension LumaAppDelegate {
                 report["extendedP95Seconds"] = profile.extendedP95; report["actualNetworkProviderAvailable"] = profile.networkAvailable
                 report["actualInterfaceCount"] = profile.interfaceCount; report["actualBatteryPresence"] = profile.batteryPresence
                 report["actualBatteryFields"] = profile.batteryFields
+                let actualDetails = try await Task.detached(priority: .utility) { try BatteryReportProvider.collect() }.value
+                report["actualPowerReportCycles"] = actualDetails.cycles
+                report["actualPowerReportCondition"] = actualDetails.condition
+                report["actualPowerReportMaximumCapacity"] = actualDetails.maximumCapacityPercent
+                report["actualLightweightIdentityAvailable"] = model.system.batteryDetails.sourceIdentity != nil
+                model.destination = .system
+                try await Task.sleep(for: .milliseconds(350))
+                model.monitoringFocus = "battery-details"
+                await model.refreshBatteryReport(force: true)
+                report["actualLumaMatchesPowerReport"] = model.batteryReport?.cycles == actualDetails.cycles && model.batteryReport?.maximumCapacityPercent == actualDetails.maximumCapacityPercent && model.batteryReport?.condition == actualDetails.condition && model.batteryReport != nil
+                try await Task.sleep(for: .milliseconds(400))
+                try saveScanCheckWindow(window, path: output + "-actual-battery.png")
+                model.batteryReportNow = { Date(timeIntervalSince1970: 1_700_000_001) }
+                model.batteryReportCollector = { try details.collect($0) }
                 model.networkTracker = NetworkActivityTracker()
                 model.monitoringCollector = { _, _ in fixture.collect() }
                 model.destination = .system
                 try await wait { model.system.network.interface?.id == "fixture-wifi" && model.system.network.state == .measuring }
                 report["singleInterfaceRate"] = model.system.network.downloadRate == 50_000 && model.system.network.uploadRate == 20_000
-                report["supportedBatteryFields"] = model.system.batteryDetails.cycles == 42 && model.system.batteryDetails.maximumCapacityPercent == 90 && model.system.battery == 80
+                report["supportedBatteryFields"] = model.system.batteryDetails.cycles == 42 && model.system.battery == 80
                 model.monitoringFocus = "network-details"
                 try await Task.sleep(for: .milliseconds(500))
                 try saveScanCheckWindow(window, path: output + "-network.png")
                 model.monitoringFocus = "battery-details"
+                await model.refreshBatteryReport(force: true)
+                report["detailFieldsAndTime"] = model.batteryReport?.cycles == 42 && model.batteryReport?.maximumCapacityPercent == 90 && model.batteryReport?.observedAt == Date(timeIntervalSince1970: 1_700_000_000)
+                let calls = details.count
+                await model.refreshBatteryReport()
+                report["detailCacheReused"] = details.count == calls
+                let first = Task { await model.refreshBatteryReport(force: true) }
+                try await wait { model.batteryReportLoading }
+                await model.refreshBatteryReport(force: true)
+                await first.value
+                report["detailRequestsCoalesced"] = details.count == calls + 1
+                details.setFailure(true)
+                let countBefore = model.cpuHistory.count
+                let failed = Task { await model.refreshBatteryReport(force: true) }
+                try await wait { model.batteryReportLoading }
+                report["lightweightDuringDetails"] = model.system.battery == 80 && model.system.batteryDetails.state == "On battery power"
+                await failed.value
+                report["detailFailurePreservesReadings"] = model.batteryReport?.cycles == 42 && model.batteryReportIssue != nil && model.system.battery == 80
+                try await wait { model.cpuHistory.count > countBefore }
+                report["monitorContinuesAfterDetailFailure"] = true
+                details.setFailure(false)
                 try await Task.sleep(for: .milliseconds(400))
                 try saveScanCheckWindow(window, path: output + "-battery.png")
+                details.setDelay(3)
+                let staleRequest = Task { await model.refreshBatteryReport(force: true) }
+                try await wait { model.batteryReportLoading }
                 fixture.setMode(1)
                 try await wait { model.system.batteryDetails.presence == .notPresent }
-                report["desktopExplicit"] = model.system.batteryDetails.charge == nil && model.system.batteryDetails.cycles == nil
+                await staleRequest.value
+                report["staleSourceDetailsDiscarded"] = model.batteryReport == nil
+                details.setDelay(0.6)
+                report["desktopExplicit"] = model.system.batteryDetails.charge == nil && model.system.batteryDetails.cycles == nil && model.batteryReport == nil
                 try await Task.sleep(for: .milliseconds(350))
                 try saveScanCheckWindow(window, path: output + "-desktop.png")
+                details.setFailure(true)
                 fixture.setMode(2)
                 try await wait { model.system.batteryDetails.presence == .available && model.system.batteryDetails.health == nil }
                 report["unsupportedFieldsUnavailable"] = model.system.batteryDetails.cycles == nil && model.system.batteryDetails.maximumCapacityPercent == nil && model.system.batteryDetails.estimateMinutes == nil
+                try await wait { !model.batteryReportLoading }
+                await model.refreshBatteryReport(force: true)
+                // Remove any optional cached fields to exercise genuinely partial UI.
+                model.batteryReport = nil
+                report["partialDetailsExplained"] = model.batteryReportIssue != nil && model.system.batteryDetails.presence == .available
                 try await Task.sleep(for: .milliseconds(350))
                 try saveScanCheckWindow(window, path: output + "-unavailable.png")
+                let frame = window.frame
+                window.setContentSize(NSSize(width: 760, height: 900))
+                try await Task.sleep(for: .milliseconds(350))
+                try saveScanCheckWindow(window, path: output + "-narrow.png")
+                window.setFrame(frame, display: true)
                 let historyCount = model.cpuHistory.count
                 window.close()
                 try await Task.sleep(for: .milliseconds(100))

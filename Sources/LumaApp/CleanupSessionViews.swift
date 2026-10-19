@@ -85,15 +85,15 @@ struct CleanupSessionHistory: View {
                             let record = records.first { $0.original == path }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(path.path).font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
-                                Text(record.map { $0.restored ? "Restored" : "Moved to Trash" } ?? (session.phase == .recoveryNeeded ? "Not confirmed moved; review recovery" : (session.blockedPath == path ? "Blocked: \(session.detail ?? "Review Activity")" : "Unattempted")))
+                                Text(record.map { $0.permanentlyRemoved == true ? "Permanently removed or partially emptied; Restore unavailable" : ($0.restored ? "Restored" : "Moved to Trash") } ?? (session.phase == .recoveryNeeded ? "Not confirmed moved; review recovery" : (session.blockedPath == path ? "Blocked: \(session.detail ?? "Review Activity")" : "Unattempted")))
                                     .font(.caption).foregroundStyle(.secondary)
-                                if let record, !record.restored {
+                                if let record, !record.restored, record.permanentlyRemoved != true {
                                     if let eligibility = model.undoEligibility[record.id] {
                                         Text(eligibility.detail).font(.caption).foregroundStyle(.secondary)
                                     }
                                     if let message = model.restoreMessages[record.id] { Text(message).font(.caption).foregroundStyle(.secondary) }
                                     Button("Restore") { model.restore(record) }
-                                        .disabled(model.mutationUnavailableReason != nil || record.identity?.location == nil)
+                                        .disabled(model.mutationUnavailableReason != nil || record.identity?.location == nil || record.permanentlyRemoved == true)
                                 }
                             }.padding(.vertical, 4)
                         }
