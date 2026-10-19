@@ -42,9 +42,9 @@ These apply within 054–059, not as a separate framework or expansion task. Fix
 - Support narrow main windows through a collapsible sidebar and responsive content. The existing 1010-point minimum must not prevent narrow-window acceptance. Keep an action footer visible and avoid scrolling the whole browser to details on ordinary item focus; details stay optional and local to the browser.
 - Display collecting, unavailable and stale observations honestly, including existing System/menu metrics. Failed reads are not measured zero; metric labels must match the sampled value. Keep the System layout and feature scope.
 
-## Source audit — 44243ef
+## Source audit — 44243ef and b67c0b0
 
-Code review on 2026-10-19 found these concrete paths. This is source evidence, not native reproduction; macOS focus, scroll and layout still need the relevant task's native checks.
+Code review on 2026-10-19 found these concrete paths. This is source evidence, not native reproduction; macOS focus, scroll and layout still need the relevant task's native checks. Automatic refresh-loop and no-picker authorization cases are integration gaps for the planned discovery flow, not claims that automatic scans already run.
 
 | Finding | Owning task | Source |
 | --- | --- | --- |
@@ -55,6 +55,8 @@ Code review on 2026-10-19 found these concrete paths. This is source evidence, n
 | Restored apps stay absent from Installed; failed/stopped outcomes are overwritten; Restore/Undo eligibility is inconsistent | 054 | [AppModel](../Sources/LumaApp/AppModel.swift), [Activity UI](../Sources/LumaApp/CleanupSessionViews.swift) |
 | Residue actions sit after the long list; global Search does not search installed apps; obsolete routes are duplicated | 055, 056, 058 | [ApplicationsView](../Sources/LumaApp/ApplicationsView.swift), [RootView](../Sources/LumaApp/RootView.swift), [LumaApp](../Sources/LumaApp/LumaApp.swift) |
 | Quit/last-window close can interrupt a mutation; Navigate commands do not reopen the closed main window | 054, 058 | [LumaApp](../Sources/LumaApp/LumaApp.swift), [MenuCompanion](../Sources/LumaApp/MenuCompanion.swift) |
+| Ignored descendants can enter Trash through a selected parent; same-ID app copies do not establish exclusive related-data ownership | 054, 056 | [SafetyEngine](../Sources/LumaCore/SafetyEngine.swift), [ApplicationRelationships](../Sources/LumaCore/ApplicationRelationships.swift) |
+| Automatic whole-Mac discovery must replace picker-only local action authority and avoid index-write refresh loops; old-volume events must not cancel a new scope | 056 | [StorageScope](../Sources/LumaCore/StorageVolumes.swift), [AppModel](../Sources/LumaApp/AppModel.swift), [AnalysisEvents](../Sources/LumaCore/AnalysisEvents.swift) |
 | Live Quit rows need instance verification/outcomes; ignored cache summaries disagree; missing measurements render numeric zeros | 058, 059 | [MonitorViews](../Sources/LumaApp/MonitorViews.swift), [ScanSummaryView](../Sources/LumaApp/ScanSummaryView.swift), [SystemMonitor](../Sources/LumaApp/SystemMonitor.swift) |
 
 ## Deleted work

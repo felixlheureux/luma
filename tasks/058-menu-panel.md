@@ -29,6 +29,6 @@ The first menu icon click opens a flat-top companion in its final appearance, al
 
 ## Validation and starting points
 
-Inspect the actual native panel in both appearances and System mode, including first open from an inactive app. Check multiple-screen positioning with injected screen bounds plus available real displays. Check Navigate with the main window closed, safe Quit during injected mutation, process sampling visibility and unavailable telemetry. Update menu/window native smoke assertions; no new core test framework for cosmetic geometry. Record unavailable desktop/display checks honestly.
+Inspect the actual native panel in both appearances and System mode, including first open from an inactive app. Check multiple-screen positioning with injected screen bounds plus available real displays. Check Dock/reopen with only Settings or the companion visible (an unverified native edge case, not an established failure). Check Navigate with the main window closed, safe Quit during injected mutation, process sampling visibility and unavailable telemetry. Update menu/window native smoke assertions; no new core test framework for cosmetic geometry. Record unavailable desktop/display checks honestly.
 
 Start in `StatusBarController.swift`, `MenuCompanion`, appearance handling and existing lifecycle/native-UX checkers. The current `.transient` NSPopover neither activates Luma nor makes its content window key. Follow [README](README.md) for reference evidence.

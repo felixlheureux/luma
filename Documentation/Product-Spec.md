@@ -10,7 +10,7 @@ Apple Silicon (`arm64`) only, macOS 26+. The owner's M2 is the reference machine
 
 ## Applications
 
-The app list loads automatically and offers Uninstall on each supported row. One click starts moving the app to Trash from that list; opening a footprint inspector or selecting folders is never required. The standard action removes the bundle and verified exclusive generated caches/logs, preferences and saved state. Personal documents, unknown/shared support data and containers are excluded. The row exposes the scope before the action; optional details can explain retained data.
+The app list loads automatically and offers Uninstall on each supported row. One click starts moving the app to Trash from that list; opening a footprint inspector or selecting folders is never required. The standard action removes the bundle and verified exclusive generated caches/logs, preferences and saved state. Personal documents, unknown/shared support data and containers are excluded. If another installed copy has the same identifier, keep its shared related data and remove only the chosen bundle; unknown multiplicity does not establish exclusivity. The row exposes the scope before the action; optional details can explain retained data.
 
 Use exact ownership evidence and existing protection/running-app checks. Blocked operations give one actionable inline reason. Do not force-quit apps, require a manual rescan, or create an uninstall wizard. Confirmed moves update the row and offer compact Activity/Undo access. App reset is not a primary core action.
 
@@ -30,7 +30,7 @@ Discover roots and volumes automatically. Use standard macOS permission guidance
 
 Use a Space Lens-style proportional bubble map beside a size-ranked folder list, with linked hover/focus, breadcrumbs and back/forward/up navigation. A Largest files mode ranks files across the same discovered roots/index. Keep selection across folders/modes, with a fixed selected-count/size footer, an inline Selected filter and direct Move to Trash. Use a responsive list-first layout at narrow widths. Projects, Downloads and chosen-folder workflows are consolidated into Storage locations/filters. Remove their redundant top-level entry points and repeated scan prompts. Keep specialized deletion rules behind the list; never label source, dependencies or old downloads disposable merely because of their location or age.
 
-Storage's local personal-file selection authorizes only selected items in the supported home scope, with current evidence and the existing Trash engine. Automatically discovering a root grants inspection, not broad mutation authority. Preserve duplicate keep-one rules wherever known duplicate candidates are actionable.
+Storage's local personal-file selection authorizes only selected items in the supported home scope, with current evidence and the existing Trash engine. Automatically discovering a root grants inspection, not broad mutation authority. Explicitly selected supported home-local files obtain narrow action authority without the old folder picker; eligibility is per item, so a read-only broad root does not disable every home-file action. Preserve duplicate keep-one rules wherever known duplicate candidates are actionable.
 
 ## iCloud discovery
 
@@ -59,6 +59,8 @@ DNS flushing, search reindexing and broad troubleshooting are excluded.
 Normal app/residue Trash actions require no Luma confirmation beyond the direct action. Inspection, immutable planning, freshness checks, ownership, full duplicate verification, durable outcomes and non-overwriting recovery run internally. Optional details are not prerequisites.
 
 Primary navigation consists of Storage, Apps, Residues, Maintenance and System, with Activity/Settings secondary. Open the last valid core page or Storage on first launch; a scan-first Overview and settings-wrapper Privacy page are not primary destinations. Use that same route set in menus, search and the companion. App/file Search uses the existing observations/index and does not create another subsystem.
+
+Current ignores protect selected subtrees in both directions: an ignored child blocks moving its entire parent through normal cleanup. A newly added ignore updates ancestor eligibility and is enforced again at the final move. Automatic refresh settles after Luma-owned persistence writes and isolates volume invalidation to its affected scope.
 
 Read-only background discovery cannot lock unrelated core actions or clear their selections. Capture each action's feature, scope, exact targets and generation before awaiting; late callbacks cannot select another feature's items or reopen a dismissed panel. Navigation does not cancel an already authorized mutation; its captured operation and explicit Stop control retain ownership. Bind displayed results to their published scope and preserve useful unaffected observations. Known duplicate keeper evidence applies when the same members are selected through Storage. Hard-linked names retain per-path logical size while totals use declared unique accounting.
 
