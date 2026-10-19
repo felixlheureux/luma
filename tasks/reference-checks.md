@@ -284,3 +284,14 @@ Do not commit the DMG, extracted proprietary assets, personal filesystem screens
 - The read-only reference image was ejected after the final resource comparison.
 
 - Final native scan-lifecycle regression passes in both appearances from the original app location: 6,000-file inventory 1.701/1.698 s and maximum sampled main-actor delay 0.110/0.089 s, including monitoring after window close. An earlier concurrent-release-build run missed one 2.5-second monitoring assertion; a relocated-bundle retry confirmed monitoring but timed out in the footprint fixture. Neither failed run is counted as passing evidence. The original-location isolated rerun passes all assertions.
+
+
+## 2026-10-19 — Selectable residues and current CleanMyMac research
+
+- Platform decision: native Apple Silicon/arm64 only, M2 reference, macOS 26+. Intel-only reference tasks and legacy OS tasks are excluded and must not become implementation requirements.
+- Owner requirement: exact bundle-identifier residue groups must themselves be selectable. Task 055 now specifies none/some/all header state, child selection, collapse/filter behavior and no automatic selection of refresh arrivals.
+- Compared current official CleanMyMac guides (not only legacy X): Space Lens start/results/removal, My Clutter Large & Old Files, Maintenance, My Tools, edition differences and the RAM Menu. Official Space Lens/file-list screenshots were visually inspected. Current guide pages may use older captured UI; screenshots do not establish live behavior on the current OS.
+- Task 056 now names the proportional map + size-ranked list, linked focus, folder navigation/history, smaller-item access, global largest-files mode and persistent selected footer. Luma keeps automatic discovery and direct local Trash instead of importing the reference's scan/review staging.
+- Task 059 records the maintenance comparison and device/OS/edition distinctions. Kept the small cache/Trash/memory scope and direct independent action access; did not recreate deleted expansion tasks.
+- Inspection limits: no reference DMG was available/run in this environment, no proprietary algorithms inspected, and no cleanup, RAM recovery benchmark or personal-data operation performed. This research does not satisfy future implementation-time native QA.
+- Primary references and exact decisions are linked in [056](056-storage-discovery.md#cleanmymac-comparison--2026-10-19) and [059](059-maintenance.md#cleanmymac-comparison--2026-10-19).

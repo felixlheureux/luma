@@ -4,6 +4,10 @@
 
 Luma is a native, local-first macOS utility for removing apps, dealing with residues, understanding storage, viewing system resources, and performing a few explicit maintenance actions. The core must be pleasant to use before it grows.
 
+## Supported platform
+
+Apple Silicon (`arm64`) only, macOS 26+. The owner's M2 is the reference machine. Do not add Intel (`x86_64`) support, Intel-only features, universal binaries, Rosetta compatibility work or Intel test/release gates. Every shipped maintenance action must be useful and supported on Apple Silicon. Omit inapplicable reference features entirely from the interface.
+
 ## Applications
 
 The app list loads automatically and offers Uninstall on each supported row. One click starts moving the app to Trash from that list; opening a footprint inspector or selecting folders is never required. The standard action removes the bundle and verified exclusive generated caches/logs, preferences and saved state. Personal documents, unknown/shared support data and containers are excluded. The row exposes the scope before the action; optional details can explain retained data.
@@ -14,7 +18,9 @@ Use exact ownership evidence and existing protection/running-app checks. Blocked
 
 Opening Residues starts a bounded refresh automatically. Show saved observations immediately on return and publish usable results progressively; an initial discovery may take time but does not require a Scan click. Explain freshness, incomplete coverage and permissions without blanking the list.
 
-Users select residues and click Move to Trash in the same view. The selection is the authorization; no second panel, confirmation checkbox, or repeated review step follows. Inline details show paths and consequences beforehand. Unclaimed app data is not automatically junk; ownership must still be verified at execution. Preserve scroll, filters and unaffected results after cleanup.
+Residues are grouped by their exact full bundle identifier (for example `com.vendor.app`), with item count, unique size and a selectable group header. The header supports none/some/all selection and includes collapsed/offscreen eligible children; individual items remain selectable. Similar vendor prefixes do not merge owners, and refresh arrivals are not selected automatically.
+
+Users select residues or whole groups and click Move to Trash in the same view. The selection is the authorization; no second panel, confirmation checkbox, or repeated review step follows. Inline details show paths and consequences beforehand. Unclaimed app data is not automatically junk; ownership must still be verified at execution. Preserve scroll, filters and unaffected results after cleanup.
 
 ## Storage
 
@@ -22,7 +28,7 @@ Provide one useful Storage destination for large files and folders across access
 
 Discover roots and volumes automatically. Use standard macOS permission guidance, including a single Settings handoff for Full Disk Access where needed; do not make a recurring folder chooser the main flow. Show inaccessible/excluded locations as coverage, not zero bytes or an empty healthy system. Avoid scanning APFS firmlink aliases twice or traversing system/package internals just to fill a chart. System-managed space can be a read-only capacity category. External volumes are optional. Discovery limits retain useful prioritized results and visible remaining coverage; they must not send the user back to a smaller-folder picker. Allocated-byte observations are not guaranteed unique physical usage or reclaimed space on APFS.
 
-Use a readable size visualization synchronized with a sortable list, breadcrumbs, search and simple filters. Projects, Downloads and chosen-folder workflows are consolidated into Storage locations/filters. Remove their redundant top-level entry points and repeated scan prompts. Keep specialized deletion rules behind the list; never label source, dependencies or old downloads disposable merely because of their location or age.
+Use a Space Lens-style proportional bubble map beside a size-ranked folder list, with linked hover/focus, breadcrumbs and back/forward/up navigation. A Largest files mode ranks files across the same discovered roots/index. Keep selection across folders/modes, with a fixed selected-count/size footer, an inline Selected filter and direct Move to Trash. Use a responsive list-first layout at narrow widths. Projects, Downloads and chosen-folder workflows are consolidated into Storage locations/filters. Remove their redundant top-level entry points and repeated scan prompts. Keep specialized deletion rules behind the list; never label source, dependencies or old downloads disposable merely because of their location or age.
 
 Storage's local personal-file selection authorizes only selected items in the supported home scope, with current evidence and the existing Trash engine. Automatically discovering a root grants inspection, not broad mutation authority. Preserve duplicate keep-one rules wherever known duplicate candidates are actionable.
 
@@ -40,7 +46,7 @@ The menu companion has a flat top without an arrow/extrusion. The first icon cli
 
 ## Maintenance
 
-One view provides cache cleanup, Empty Trash and honest memory help. Reuse existing catalog coverage and memory telemetry. Keep choices, approval, progress and outcomes in this view; no guided multi-panel routine or automatic optimization.
+One view opens directly to cache cleanup, Empty Trash and honest memory help, with independently refreshed status and no full-machine scan gate. Reuse existing catalog coverage and memory telemetry. Keep choices, approval, progress and outcomes in this view; no guided multi-panel routine or automatic optimization.
 
 - **Caches:** show supported units with consequences, initially unselected. One approval cleans the chosen units through the normal Trash journal. Personal/session data and active app/tool data remain protected.
 - **Trash:** one explicit irreversible-action approval empties only the displayed, supported current-user local Trash scope. Use a separate bounded permanent-deletion operation, never a fallback in normal cleanup. Preserve later arrivals, report partial failures, and remove Restore eligibility for permanently removed items. Unsupported or unreadable scopes offer Open Trash.

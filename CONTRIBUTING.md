@@ -2,6 +2,8 @@
 
 Use [Product-Spec.md](Documentation/Product-Spec.md) for current product scope. [tasks/README.md](tasks/README.md) is the sole execution order; only tasks 054–059 are active in the core reset. Completed task evidence and [Roadmap.md](Documentation/Roadmap.md) describe implementation history, not additional authorized work. Build with Swift 6.2+ and a macOS 26+ SDK. Follow [Architecture.md](Documentation/Architecture.md) for code ownership, state/concurrency boundaries and testing; broad reorganization or formatter adoption is not a prerequisite for the core.
 
+Target native Apple Silicon (`arm64`) on macOS 26+; use M2 as reference hardware. Do not add Intel/x86_64 support, Intel-only features, universal builds, Rosetta compatibility work or Intel validation gates. CleanMyMac features that do not apply to this target are exclusions, not implementation requirements.
+
 Pick work from [tasks/README.md](tasks/README.md), respecting its dependencies and acceptance criteria. The user requires frequent comparisons with the reference DMGs in Downloads: inspect the relevant reference before implementation, after the first working change, and before completing a task. Record the image/version, observations, and inspection limits in [tasks/reference-checks.md](tasks/reference-checks.md). Keep Luma's assets and interface original; mount references read-only and eject them afterward.
 
 Run `bash Scripts/test.sh` before submitting implementation changes. Add regression fixtures for new filesystem behavior. Never test cleanup against real user data. Use `bash Scripts/preview.sh` to inspect native interface changes in both appearances. Planning/documentation-only changes need diff and link checks; they do not require a macOS build or native QA run.

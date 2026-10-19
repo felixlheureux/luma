@@ -1,5 +1,7 @@
 # Build and distribution details
 
+The only supported target is native Apple Silicon (`arm64`) on macOS 26+, with M2 as reference hardware. Do not add Intel/x86_64 artifacts, universal builds, Rosetta compatibility or Intel test/release gates. Generic toolchain behavior does not imply project support for another architecture.
+
 Development builds and CI releases require no paid Apple membership. The default build script uses ad-hoc signing (`codesign --sign -`). These builds are not notarized, and Gatekeeper can restrict downloaded apps. Luma does not alter quarantine attributes or system security settings.
 
 The Release workflow builds for Apple Silicon on macOS 26, verifies the local signature, packages and checks the DMG, and publishes a development prerelease when a matching version tag is pushed. A manual workflow run produces artifacts without publication. `SHA256SUMS` identifies the exact downloadable installer.

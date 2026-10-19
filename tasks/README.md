@@ -2,6 +2,10 @@
 
 Reset on 2026-10-19 after the owner's review of `78acaf5`. This is the only executable queue. The [product spec](../Documentation/Product-Spec.md) defines the current scope; completed task records describe earlier implementation, not requirements to recreate its screens.
 
+## Platform boundary
+
+Apple Silicon (`arm64`) only on macOS 26+, with M2 as the reference hardware. This applies to every active task, test requirement and release. Intel/x86_64 support, Intel-only maintenance actions, universal builds and Rosetta compatibility are out of scope. Reference-only Intel features below are explicit exclusions, not TODOs or disabled tiles to implement.
+
 ## Build the core first
 
 Make the daily actions fast and obvious: uninstall from the app list, select residues and move them to Trash in place, discover large files across the Mac without choosing folders, support iCloud discovery, fix the menu panel, and provide a small Maintenance view. Keep the existing System view and metrics.
@@ -20,7 +24,7 @@ Follow this order for a serial runner; dependencies permit independent work. Mar
 ## Interaction rules
 
 - **Apps:** click Uninstall in the row. No mandatory footprint panel, folder selection, review sheet, or acknowledgement checkbox. Optional details must stay optional.
-- **Residues:** open the view, see existing results while it refreshes, select items, click Move to Trash there. No second screen or confirmation ladder.
+- **Residues:** open the view, see existing results while it refreshes, select items or an exact bundle-identifier group, click Move to Trash there. No second screen or confirmation ladder.
 - **Storage:** open it and see large files and folders across accessible Mac storage. No folder picker or Scan button is required for the default flow. Projects and Downloads become filters/locations in Storage, rather than parallel tools asking the same question.
 - **Progress:** reserve a compact status area in the current view. No layout jumps, simulated percentages, validation checklist, or progress restart between internal phases. Keep completed results visible during refresh.
 - **Approval:** normal local app/residue Trash actions execute directly. Cache cleanup and permanent Trash emptying each have one clear approval, with consequences visible in the initiating view. OS permission prompts remain OS prompts.
@@ -34,7 +38,7 @@ Do not recreate tasks for privacy suites, photos, Mail, app update discovery, di
 
 ## Core acceptance
 
-Before proposing more features, demonstrate all six completed flows on macOS with synthetic data: direct app uninstall, in-place residue cleanup, automatic cold/warm discovery, iCloud local/online-only/missing-permission states, flat focused menu, and approved maintenance. Check Light/Dark/System appearance, keyboard access, narrow layouts, navigation during work, and continued System monitoring. Record first-results, warm-open and operation timings with fixture size and hardware; do not hide slow work behind a longer timeout or retry loop.
+Before proposing more features, demonstrate all six completed flows on native Apple Silicon macOS (M2 reference) with synthetic data: direct app uninstall, in-place residue cleanup, automatic cold/warm discovery, iCloud local/online-only/missing-permission states, flat focused menu, and approved maintenance. Check Light/Dark/System appearance, keyboard access, narrow layouts, navigation during work, and continued System monitoring. Record first-results, warm-open and operation timings with fixture size and hardware; do not hide slow work behind a longer timeout or retry loop.
 
 Keep the existing central safety, ownership, identity, provider and recovery regression coverage. Replace obsolete native QA assertions that demand the removed sheets with assertions for the new direct flows. Run checks appropriate to changed behavior once on the final candidate; repeat only after a relevant change or failure. Planning-only edits require link/status/diff checks, not the macOS app suite.
 

@@ -7,7 +7,7 @@ Luma is an open-source macOS maintenance app for understanding storage, reviewin
 
 Every proposed cleanup has a path, an explanation, an ownership rule, and a consequence. You choose what changes. Reviewed selections move to the macOS Trash, with a local activity record.
 
-**Status:** working development build for macOS 26 and later. The workflows below are implemented; the current core specification remains in progress.
+**Status:** working development build for Apple Silicon (`arm64`), macOS 26 and later. The workflows below are implemented; the current core specification remains in progress.
 
 ## Current development focus
 
@@ -49,7 +49,7 @@ See the [roadmap](Documentation/Roadmap.md), [current specification](Documentati
 
 ## Build and run
 
-Requires macOS 26+, Swift 6.2+, and a macOS 26+ SDK from Xcode or compatible Command Line Tools.
+Requires an Apple Silicon Mac, macOS 26+, Swift 6.2+, and a macOS 26+ SDK from Xcode or compatible Command Line Tools.
 
 ```sh
 git clone https://github.com/felixlheureux/luma.git
@@ -60,7 +60,7 @@ open dist/Luma.app
 
 Open `Package.swift` in Xcode for development. The bundled YAML catalog uses the MIT-licensed Yams/libyaml parser, and the disposable local analysis cache uses MIT-licensed GRDB with system SQLite, both pinned through Swift Package Manager; scanning and mutation policy remain project-owned. Third-party notices ship with the app.
 
-Builds target the local architecture, and the DMG filename includes its version and architecture. Automated releases currently target Apple Silicon. See [build and distribution details](Documentation/Distribution.md) for signing options. The personal [Luma Homebrew tap](https://github.com/felixlheureux/homebrew-luma) is available for Apple Silicon/macOS 26 or later:
+Apple Silicon (`arm64`) is the only supported target, with M2 as reference hardware. Intel/x86_64, universal binaries and Rosetta compatibility are outside the project scope. The DMG filename includes its version and architecture. Automated releases target Apple Silicon. See [build and distribution details](Documentation/Distribution.md) for signing options. The personal [Luma Homebrew tap](https://github.com/felixlheureux/homebrew-luma) is available for Apple Silicon/macOS 26 or later:
 
 ```sh
 brew install --cask felixlheureux/luma/luma
