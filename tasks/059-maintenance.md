@@ -1,0 +1,36 @@
+# 059 — Add small, explicit Maintenance actions
+
+Status: Planned  
+Priority: P1  
+Depends on: [054](054-direct-uninstall.md), [055](055-residues.md); existing verified cache catalog and System telemetry
+
+## Outcome
+
+One Maintenance view offers cache cleanup, Empty Trash and useful memory help. Choices, at most one approval per consequential action, compact progress and outcomes stay in that view.
+
+## Scope
+
+- Move/reuse the current generated-cache selection here rather than adding another cleaner. Show supported cache units, current size/coverage and consequences, with empty initial selection. One approval trashes selected units through 054's direct action seam and the existing journal. Keep active app/tool checks and personal/session data exclusions. No broad rule/catalog expansion.
+- Show the supported current-user local Trash scope and observed usage. Empty Trash has one explicit confirmation that removal is permanent. v1 supports only the accessible current-user local Trash root resolved using public Foundation APIs; external-volume and provider Trash are not silently included. An unreadable root offers Open Trash and a clear unavailable state.
+- Implement Empty Trash as a separate bounded operation, not a permanent-delete fallback in CleanupJournal. Capture the reviewed top-level targets and recheck root/volume/owner/object/descendant identities without following links. Freeze the approved descendant snapshot as well as top-level targets. Delete only those unchanged entries; never recursively remove a directory wholesale or remove the Trash root itself. Remove an approved directory only when empty, so new arrivals or changed subtrees remain for a later action. Document the remaining native pathname race rather than promising atomic deletion. Serialize against cleanup/restore. Persist per-item outcomes and invalidate Restore/Undo eligibility for items actually removed. No shell commands, Finder scripting, root helper or user-supplied paths.
+- Report confirmed emptied, skipped, failed and cancelled results honestly in place. Cancellation stops only at safe item boundaries; interrupted deletion is not automatically repeated. Mark a partially deleted tree as no longer fully restorable, even if deleting its root failed; never claim the whole Trash was emptied when items remain or scopes were unavailable. Do not claim file-level journaling makes permanent deletion reversible.
+- Reuse current memory pressure/usage and existing normal per-app Quit controls, inline. Under low pressure show that no action is needed. Measure observed state after an explicit supported action; do not claim guaranteed freed RAM. Luma can release its own caches, described only as Luma-owned memory. No supported beneficial system-wide RAM reclaim API is established: do not invent a Clear RAM button, run `purge`, induce allocation pressure, delete swap or add an app-quit wizard.
+- Consolidate the existing Clean/Optimizer primary destinations into Maintenance as needed; preserve System's current display and sampling. No DNS flush, Spotlight/Mail repair, new diagnostics, scheduling, bundled Run All routine or automatic cleanup.
+
+## Acceptance
+
+- [ ] One screen provides supported cache choices, Empty Trash and memory state/help, with each action/result kept in place.
+- [ ] Cache cleanup and permanent Trash emptying each require exactly one clear Luma approval; cancellation leaves unapproved work untouched.
+- [ ] Empty Trash is restricted to the displayed local user scope, preserves new/changed items, handles denied/partial/interrupted states and updates recovery eligibility correctly.
+- [ ] Ordinary app/residue/cache Trash never falls back to permanent deletion. Memory help never advertises unproven system RAM reclamation or automatically quits apps.
+- [ ] Progress occupies stable space and remains truthful; existing System/menu monitoring continues while maintenance runs.
+
+## Validation and starting points
+
+Use generated cache and Trash roots and injected movers/removers/telemetry. Never empty personal Trash or quit personal apps for validation. Cover new arrivals, changed descendants, links, stale/foreign ownership, partial deletion, permission loss, cancellation, crash/restart reconciliation, operation serialization and affected/unaffected Restore eligibility. Update safety documentation for the separate permanent operation when it is implemented. Verify one approval and stable feedback natively in Light/Dark/System.
+
+Start in `CleanStorageViews.swift`, `GeneratedDataGroupsView`, `OptimizerView`, `SystemMonitor.swift`, `MemoryAccounting.swift`, `CleanupActivity.swift`, `CleanupJournal.swift` and 054's action presentation. Use a narrow maintenance operation owner, not a general command runner. Follow [README](README.md) for reference evidence.
+
+## Primary platform evidence
+
+Reviewed 2026-10-19: [Apple's Trash directory](https://developer.apple.com/documentation/foundation/url/trashdirectory), [explicit removal API](https://developer.apple.com/documentation/foundation/filemanager/removeitem(at:)), [permanent Trash behavior](https://support.apple.com/guide/mac-help/delete-files-and-folders-on-mac-mchlp1093/mac), [memory pressure/cached files](https://support.apple.com/guide/activity-monitor/view-memory-usage-actmntr1004/mac), and [app-owned purgeable memory](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/ManagingMemory/Articles/CachingandPurgeableMemory.html). These document primitives and semantics; they do not establish global Finder-equivalent Trash scope or a general RAM-reclaim service.

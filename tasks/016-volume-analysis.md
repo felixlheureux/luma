@@ -1,5 +1,7 @@
 # 016 — Add volume selection and read-only external analysis
 
+> Core reset, 2026-10-19: 056 replaces default manual volume/folder selection with automatic discovery; inspection does not broaden cleanup authority. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 Priority: P2  
 Phase: B — Speed and deeper storage analysis  

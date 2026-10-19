@@ -1,5 +1,7 @@
 # 048 — Show cleanup-session progress, safe stopping, and batch Undo
 
+> Core reset, 2026-10-19: 054/055 replace mandatory review/progress panels with direct stable feedback; journal and recovery guarantees remain. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 
 Priority: P1  

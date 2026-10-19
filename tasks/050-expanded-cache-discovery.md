@@ -34,7 +34,7 @@ Use realistic synthetic app/container layouts, absent/denied roots, changed owne
 
 ## Starting points
 
-[Rules.swift](../Sources/LumaCore/Rules.swift), [Scanners.swift](../Sources/LumaCore/Scanners.swift), [SafetyEngine.swift](../Sources/LumaCore/SafetyEngine.swift), task 005's ownership work where available, and the [compiled audit](compiled-reference-audit.md). Primary lead: [Electron app paths](https://www.electronjs.org/docs/latest/api/app). Spec: sections 8–13, 15, 80–86 and 96–97.
+[Rules.swift](../Sources/LumaCore/Rules.swift), [Scanners.swift](../Sources/LumaCore/Scanners.swift), [SafetyEngine.swift](../Sources/LumaCore/SafetyEngine.swift), task 005's ownership work where available, and the contemporaneous audit (deleted in the core reset). Primary lead: [Electron app paths](https://www.electronjs.org/docs/latest/api/app). Spec: sections 8–13, 15, 80–86 and 96–97.
 
 Reference checkpoints: compare category coverage, per-app grouping, details, active-owner messaging and partial coverage before/during/completion. Record evidence in [reference-checks.md](reference-checks.md).
 

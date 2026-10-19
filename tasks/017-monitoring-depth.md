@@ -11,7 +11,7 @@ The menu companion should answer more everyday questions than CPU, used RAM, and
 
 ## Scope
 
-Deliver passive network rates/interface/session usage first; reliable battery details are a second independently reviewable slice. Both slices must complete before marking this whole task Done. Task 052 owns active network testing.
+Deliver passive network rates/interface/session usage first; reliable battery details are a second independently reviewable slice. Both slices must complete before marking this whole task Done. Active network testing was assigned to former task 052, deleted in the core reset.
 
 - Add passive upload/download rates and session totals from supported interface counters, with a clear selected/active interface policy and monotonic sampling.
 - Show supported connection type/local address in Network details with explicit privacy and permission states. Do not guess Wi-Fi names, attribute total traffic to apps, or double-count physical and VPN/tunnel counters.
@@ -55,6 +55,6 @@ Primary contracts were checked against the installed macOS SDK's IOPSKeys.h, IOP
 - The optimized app builds successfully and passes strict deep signature verification.
 - All 72 native page/layout samples across Light, Dark, System and increased-contrast appearances pass with continued menu monitoring. Full keyboard/VoiceOver traversal remains a manual release gate.
 
-Task 052 retains active quality diagnostics. Task 018 is next in the queue and was not started: the user requested stopping after task 017.
+At completion, active quality diagnostics and process insights were still unstarted. Those expansion tasks were deleted in the 2026-10-19 core reset; follow [the current queue](README.md).
 
 - Final native scan-lifecycle regression passes in both appearances from the original app location: 6,000-file inventory 1.701/1.698 s and maximum sampled main-actor delay 0.110/0.089 s, including monitoring after window close. An earlier concurrent-release-build run missed one 2.5-second monitoring assertion; a relocated-bundle retry confirmed monitoring but timed out in the footprint fixture. Neither failed run is counted as passing evidence. The original-location isolated rerun passes all assertions.

@@ -1,5 +1,7 @@
 # 006 — Add explicit application reset
 
+> Core reset, 2026-10-19: Reset remains an optional existing capability, outside the primary core flow; 054 owns direct uninstall. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 Priority: P1  
 Milestone: 0.3.0  

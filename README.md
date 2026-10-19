@@ -7,7 +7,11 @@ Luma is an open-source macOS maintenance app for understanding storage, reviewin
 
 Every proposed cleanup has a path, an explanation, an ownership rule, and a consequence. You choose what changes. Reviewed selections move to the macOS Trash, with a local activity record.
 
-**Status:** working development build for macOS 26 and later. The workflows below are implemented; the complete product specification remains in progress.
+**Status:** working development build for macOS 26 and later. The workflows below are implemented; the current core specification remains in progress.
+
+## Current development focus
+
+The owner reset the scope on 2026-10-19. The only active [task queue](tasks/README.md) is 054–059: direct app uninstall, automatically available residues with in-place Trash, automatic large-file discovery, iCloud metadata browsing, a flat focused menu panel and simple Maintenance. The unstarted expansion backlog was deleted. These are planned changes; the workflows below describe the current build, which still has manual scans and review panels. The existing System view stays at its current scope.
 
 ## What you can do
 
@@ -31,17 +35,17 @@ The interface follows **System appearance by default**, with optional Light and 
 
 ## What is still in progress
 
-| Area | Current scope | Remaining work |
-| --- | --- | --- |
-| Clean | 22 validated catalog rules; verified VS Code cache/log units, app/category grouping, unique logical totals, browser/package caches, simulator diagnostics and scan coverage | More cache versions and ecosystems, finer selection |
-| Applications | Inventory, categorized footprints, shared ownership evidence, reviewed uninstall/reset, potential leftovers | Update discovery |
-| Storage | Cached hierarchy, supported local-volume picker, inspection-only external/system targets, map/list details, filters and explicit home-folder review | Finer incremental subtree reuse and broader filesystem support |
-| Duplicates | Exact content verification, copy comparison, filters and explicit keeper previews | Similar-photo analysis and comparison |
-| Optimizer | Grouped resource consumers and normal quit requests | Measured recommendations and audited maintenance |
-| Privacy | macOS permission shortcuts; separation from cache cleanup | Browser privacy workflows and a permissions overview |
-| System | CPU, memory, swap, thermals, uptime, passive network rates/session totals, battery details where reported | Active network quality tests, disk diagnostics, and connected devices |
+| Area | Core change |
+| --- | --- |
+| Applications | Uninstall directly from a supported app row; optional details |
+| Residues | Saved/progressive findings on entry; select and Trash in place |
+| Storage | One automatic large-file/folder browser instead of repeated folder pickers |
+| iCloud | Non-materializing metadata discovery with local/online-only size states |
+| Menu companion | Flat top and correct active appearance on first open |
+| Maintenance | Approved cache cleanup and local Trash emptying; useful memory help |
+| System | Keep the current metrics and lightweight monitoring |
 
-See the [roadmap](Documentation/Roadmap.md), [complete specification](Documentation/Product-Spec.md), and [safety model](Documentation/Safety.md) for scope and current limits.
+See the [roadmap](Documentation/Roadmap.md), [current specification](Documentation/Product-Spec.md), and [safety model](Documentation/Safety.md) for scope and current limits. No further feature track starts automatically after the core.
 
 ## Build and run
 

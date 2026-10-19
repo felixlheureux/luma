@@ -1,5 +1,7 @@
 # 011 — Build a focused Downloads review
 
+> Core reset, 2026-10-19: 056 consolidates Downloads into Storage rather than a separate folder-picker workflow. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 Priority: P2  
 Phase: A — More useful space recovery  

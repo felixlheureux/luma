@@ -1,5 +1,7 @@
 # Reference DMG checks
 
+This is an implementation/reference evidence log. Planning entries before 2026-10-19 describe earlier decisions; the [current core queue](README.md) is the only execution order. Deleted expansion tasks must not be resumed from this log.
+
 Check the images in Downloads before implementation, after the first working change, and before completing each task. Repeat relevant checks during the release review. See the [task queue](README.md#reference-dmgs-check-throughout-the-work) for the workflow.
 
 ## Reference inventory
@@ -47,7 +49,7 @@ Do not commit the DMG, extracted proprietary assets, personal filesystem screens
 ## 2026-10-17 — Compiled scope audit and task 001 checkpoints
 
 - Reference: the same CleanMyMac 5.7.2 image, mounted read-only at a temporary path. Luma baseline `d471bbc` plus task 001 working changes.
-- Method: linked-framework inventory, static strings from top-level framework executables, arm64 SystemJunkScanning symbol inspection, and relevant localization resources. All 48 original task scopes mapped in [compiled-reference-audit.md](compiled-reference-audit.md).
+- Method: linked-framework inventory, static strings from top-level framework executables, arm64 SystemJunkScanning symbol inspection, and relevant localization resources. All 48 original task scopes mapped in the contemporaneous compiled audit (deleted in the core reset).
 - Findings: explicit user/sandbox/Electron cache and log scanners, Xcode/Gradle categories, per-file cache models, provider-aware storage states, agent-footprint and local-model scanners. Broadened task 031's named assessment batches, clarified tasks 011/020, and added task 049.
 - Task 001: review/cleaning coordinators, cancellation types, incomplete-scan and partial-cleaned resource entries support the need for clear review/cancellation/outcome states. No evidence establishes the reference's core keep-one, journal, full-hash, identity, or recovery algorithms. Those guarantees are validated independently in Luma fixtures.
 - Interaction limit: opening the mounted app routed to an already-running installed reference. Accessibility automation was unavailable. No reference scan or cleanup was run, no helpers installed, and existing reference processes were left running. No visual or end-to-end validation is claimed.

@@ -1,5 +1,7 @@
 # 004 — Build a hierarchical storage browser
 
+> Core reset, 2026-10-19: 056 replaces the folder-first entry and mandatory storage review UI; core storage safety remains. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 
 Priority: P1  

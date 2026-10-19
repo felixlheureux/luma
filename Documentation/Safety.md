@@ -1,8 +1,19 @@
 # Safety model and current limits
 
+## Core reset — intended changes, not yet implemented
+
+The [current product spec](Product-Spec.md) and [054–059 queue](../tasks/README.md) replace the former full-product plan. The sections below document the existing engine and earlier implementation. Their mandatory review sheets, chosen-folder entry points and blanket provider browsing exclusion are not requirements to recreate those flows.
+
+- 054/055 move normal local app/residue actions directly from their lists. The direct action authorizes its defined scope; immutable plans, current evidence, whole-plan/final validation, durable journal and recovery stay internal. No extra sheet or acknowledgement is required.
+- 056 discovers storage automatically. An automatic inspection root never grants whole-volume cleanup authority; local personal-file actions stay in the supported home scope with explicit selection and fresh evidence.
+- 057 adds a distinct read-only cloud metadata capability, including non-materializing ancestor access. Cloud content reads and cloud mutation remain excluded. Existing provider cleanup restrictions are preserved.
+- 059 adds exactly approved permanent emptying of the supported local user Trash through a separate operation. Ordinary cleanup still has no permanent-delete fallback. Cache approval, permanent-action scope, partial outcomes and recovery invalidation must be implemented and tested before that capability is claimed.
+
+## Existing implementation
+
 Scanners produce immutable candidates; they cannot delete files. Each candidate contains its path, logical size, classification, scanner rule, ownership evidence, consequence, scan time, and a filesystem identity and metadata-tree digest.
 
-The UI starts with no selections. A review sheet lists the exact paths and removal consequences, and requires explicit acknowledgement. Review builds an immutable core cleanup plan with a session ID, exact items, authorized roots, duplicate-group evidence, and verified logical totals. `CleanupJournal.execute` is the only cleanup entry point: it preflights the complete plan, then uses the Safety Engine to revalidate each item before recording an intent and again immediately before calling Apple’s `FileManager.trashItem(at:resultingItemURL:)`. There is no permanent-delete fallback.
+The existing build starts with no selections. Its review sheet lists the exact paths and removal consequences, and requires explicit acknowledgement. Review builds an immutable core cleanup plan with a session ID, exact items, authorized roots, duplicate-group evidence, and verified logical totals. `CleanupJournal.execute` is the only cleanup entry point: it preflights the complete plan, then uses the Safety Engine to revalidate each item before recording an intent and again immediately before calling Apple’s `FileManager.trashItem(at:resultingItemURL:)`. There is no permanent-delete fallback.
 
 ## Validation
 

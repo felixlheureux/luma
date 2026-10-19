@@ -1,5 +1,7 @@
 # 005 — Unify app ownership and footprint review
 
+> Core reset, 2026-10-19: 054 replaces mandatory footprint/bundle-data selection with direct uninstall; ownership and recovery guarantees remain. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 Priority: P1  
 Milestone: 0.3.0  

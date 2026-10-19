@@ -1,5 +1,7 @@
 # 014 — Make repeated scans faster with a local index
 
+> Core reset, 2026-10-19: 056 extends observations for immediate browsable results; completed hash-cache work alone does not satisfy that task. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 Priority: P2  
 Phase: B — Speed and deeper storage analysis  

@@ -1,16 +1,16 @@
 # Code organization and maintenance
 
-Reviewed on 2026-10-17 against the working tree after tasks 001–003. This records the intended boundaries and incremental migration; the folder tree below is a target, not the current layout.
+Core scope revised on 2026-10-19. [Product-Spec.md](Product-Spec.md) defines current scope and [tasks/README.md](../tasks/README.md) is the sole execution order; only tasks 054–059 are active. The implementation notes below retain observed behavior from completed work, not authorization to expand it. The folder tree is organizational guidance, not the current layout or a required migration.
 
 ## Current assessment
 
 The package already separates LumaCore from the executable UI, and filesystem mutation has one journal execution boundary. `DescriptorFilesystem.swift` owns pinned path traversal and exact-byte location evidence; `Filesystem.swift` owns bounded tree inspection and hashing. `FilesystemAccess.swift` owns shared provider capabilities and synchronous thread-scoped no-materialization access; future scanners/indexers/previews must use it. Object equality excludes location so journal recovery can identify a renamed item; cleanup separately requires its saved location, and Restore requires its original parent chain. Safety, ownership, hashing, memory accounting, and process grouping have useful fixture coverage. Build products and screenshots are ignored.
 
-The main growth risks are responsibility rather than file size: AppModel still composes feature results and cleanup operations, SystemSample combines collection with presentation, Scanners.swift still combines independent scanners, and some UI files group unrelated screens. Formatting is not automated. Task 028 now addresses these concerns early rather than waiting for community rules and a release.
+The main growth risks are responsibility rather than file size: AppModel still composes feature results and cleanup operations, SystemSample combines collection with presentation, Scanners.swift still combines independent scanners, and some UI files group unrelated screens. Formatting is not automated. Address a boundary only when an active core task needs it; broad refactoring, directory migration and formatter adoption are not prerequisites.
 
-## Target layout
+## Organization guidance
 
-The app and core remain separate Swift package targets; task 008 adds a small core-dependent `LumaRuleValidator` executable for contributor/CI validation. Introduce another target only when dependency direction or a practical testing requirement warrants it. Swift Package Manager can discover nested source folders; folder reorganization does not need a new framework per feature.
+The app and core remain separate Swift package targets; completed task 008 added the small core-dependent `LumaRuleValidator` executable for contributor/CI validation. Introduce another target only when dependency direction or a practical testing requirement warrants it. Swift Package Manager can discover nested source folders; folder reorganization does not need a new framework per feature. Names below describe responsibilities and existing features; they do not add product scope to the active queue.
 
 ```text
 Sources/
@@ -45,17 +45,18 @@ Documentation/           architecture, safety, distribution, roadmap and spec
 tasks/                  acceptance criteria, dependencies and evidence
 ```
 
-Use folder names consistently when migration lands; do not add empty placeholders. A small private helper can stay beside its only caller. Split unrelated screens/scanners as their feature changes. Avoid generic Utils/Managers/Helpers dumping grounds and giant Models.swift files as new domains arrive.
+If an active task needs a file move, use folder names consistently; do not add empty placeholders. A small private helper can stay beside its only caller. Split unrelated screens/scanners only as needed for that task. Avoid generic Utils/Managers/Helpers dumping grounds and giant Models.swift files as new domains arrive.
 
 ## Dependency and state boundaries
 
 - Views display state and dispatch explicit user actions. They do not traverse files, hash content, mutate the filesystem, or run subprocesses while rendering.
-- Keep an app-level composition/lifecycle/navigation owner. ScanController now owns scan lifecycle; ScanEngine dispatches requests and ScanReporting shares coverage. AppModel maps completed snapshots into feature state and gates review on their membership. Move cleanup/recovery, monitoring and further feature selection into focused owners as tasks 048/017 land. The menu and main window share services; they do not create duplicate polling loops.
+- Keep an app-level composition/lifecycle/navigation owner. ScanController owns scan lifecycle; ScanEngine dispatches requests and ScanReporting shares coverage. AppModel maps completed snapshots into feature state and gates cleanup intent on their membership. CleanupSessionModel owns mutation/recovery presentation, and the existing monitoring loop remains shared. The menu and main window share services; they do not create duplicate polling loops.
 - Prefer explicit construction of dependencies at the composition root. Existing AppModel.shared is a migration boundary; new features must not reach into it for hidden dependencies. Do not replace one global object with a global service locator.
 - Core values do not depend on SwiftUI, colors, localized display strings for logic, or view models. Platform code may use AppKit/CoreServices where needed, isolated behind narrow adapters. The package is macOS-specific; making every file platform-neutral is not a goal.
 - Inject clocks, filesystem/provider inspection, process/system sampling and subprocess boundaries where deterministic tests or alternate real providers need them. Simple pure functions and values need no protocol/factory hierarchy.
 - Prefer enums and typed outcomes for operation/metric states. Unknown, unavailable, partial, cancelled and stale are different from zero, healthy or completed. Convert these into localized labels/colors in the UI.
-- Keep user intent and immutable reviewed plans distinct from live observations. Only CleanupJournal.execute may perform ordinary cleanup; Restore remains identity-verified and non-overwriting. Typed future provider/runtime operations must not pretend to have file Trash semantics.
+- Keep user intent and immutable authorized plans distinct from live observations. Direct list actions for app uninstall and selected residues prepare their plans internally; no mandatory ReviewSheet, second selection panel or extra acknowledgement belongs in those flows. Only CleanupJournal.execute may perform ordinary cleanup; Restore remains identity-verified and non-overwriting. Cache removal and permanent Trash emptying retain their specific maintenance approval. Typed provider/runtime operations must not pretend to have file Trash semantics.
+- Keep metadata discovery, safe local-content access and supported mutation capabilities distinct. The current provider policy excludes cloud items; the active iCloud work must add supported discovery without triggering downloads or interpreting discovery alone as cleanup authority.
 
 ## Concurrency and errors
 
@@ -69,26 +70,31 @@ Surface meaningful operation errors and partial coverage. Avoid catch-and-empty 
 
 Use clear Swift names, explicit access control, focused methods and readable statements. Avoid packing unrelated mutations onto one line to save space. Document safety/concurrency/units invariants and the reasons for exceptions; routine syntax needs no narration. File length is a review signal, not an arbitrary hard limit.
 
-Task 028 pins a compatible SwiftFormat version and a small configuration shared by local and CI checks. Keep the first mechanical format commit separate from behavior changes. Do not introduce competing formatters or broad lint rule sets without demonstrated value. Follow [Swift API design guidance](https://www.swift.org/documentation/api-design-guidelines/) and [SwiftFormat's documented check mode](https://github.com/nicklockwood/SwiftFormat).
+Keep formatting consistent with the existing Swift source. Do not introduce a formatter, broad lint rule set or mechanical cleanup as a prerequisite for the core tasks. Any necessary mechanical changes should remain separately reviewable from behavior changes. Follow [Swift API design guidance](https://www.swift.org/documentation/api-design-guidelines/).
 
 ## Tests and repository hygiene
 
 - Keep deterministic core tests around behavior and failure boundaries, especially changed paths, ignored/provider-owned files, duplicates, recovery and process identity. Share small fixture builders rather than duplicating fake filesystems throughout tests.
-- State/lifecycle tests cover replacement, cancellation and late events; native QA covers sheet/window/menu integration. Do not mirror implementation details or add screenshot snapshots for every cosmetic change.
+- State/lifecycle tests cover replacement, cancellation and late events; native QA covers approved action/window/menu integration. Existing assertions that require review sheets or separate bundle/data selection describe the old UI; replace them during the corresponding core task while preserving core safety, stale-evidence and recovery tests. Do not mirror implementation details or add screenshot snapshots for every cosmetic change.
 - Keep fixtures synthetic and temporary. Exclude personal reports, logs, extracted reference content, credentials, build products and distribution images from commits. Generated original assets already tracked are changed only through the documented asset workflow.
 - Make formatter/test/build/signature checks reproducible from a clean checkout. Introduce narrowly useful static boundary checks only where they protect a real invariant; avoid a fragile custom architecture-lint framework.
 - Reorganization, formatting and behavioral changes should be separate reviewable commits. Validate the supported behavior after meaningful moves, preserve public rule IDs/journal compatibility, and avoid unrelated churn.
-- The canonical spec, roadmap and tasks have distinct roles. Update status and evidence in their existing locations; do not create another competing feature inventory. Record architectural decisions here or in a focused decision note when a real tradeoff arises.
+- Product-Spec.md defines current scope, tasks/README.md alone orders active work, and the roadmap records status. Update evidence in its existing location; do not create another competing feature inventory or infer new work from completed-task notes. Record architectural decisions here or in a focused decision note when a real tradeoff arises.
+- Documentation/planning-only changes need diff and link checks; native builds and implementation QA are required when the corresponding behavior changes.
 
-## Migration order
+## Changes within the core tasks
 
-Task 028 phase A establishes the conventions and formatting baseline now. Task 003 delivered isolated scan ownership, immutable request scopes, bounded event mailboxes and explicit completed-snapshot boundaries. Task 048 extracts cleanup/recovery presentation state. Tasks 017/018 isolate typed samples and system adapters from colors/UI. Split and relocate feature files during these focused changes; retain the existing core execution guarantees throughout.
+Follow tasks 054–059 in the queue, with only the structural changes each needs. Task 003 delivered isolated scan ownership, immutable request scopes, bounded event mailboxes and explicit completed-snapshot boundaries; task 048 delivered cleanup/recovery presentation state, and task 017 delivered passive provider boundaries. These are existing foundations. Keep System monitoring as implemented and retain core execution guarantees while simplifying the active flows.
 
-## Scan execution boundary
+## Observed implementation boundaries
+
+The following notes describe completed implementation. References to review sheets, explicit folder/volume pickers or excluded provider content record the behavior being revised; the current spec and active task acceptance criteria determine the new UI and capability boundaries.
+
+### Scan execution boundary
 
 One ScanController worker owns expensive analysis. A stopped worker retains its slot until it exits; a single queued replacement cannot run alongside it. Main-actor polling coalesces synchronous scanner events, instead of spawning an unbounded Task per file. AppModel's scan busy state is composed with its separate review/mutation busy state; scan completion never calls the mutation finish helper. Monitoring has its independent lightweight sampling loop.
 
-The controller exposes read-only previews and completed snapshots separately. AppModel accepts cleanup review only from its completed feature snapshot. Generated data, inventory, leftovers, footprints, storage and duplicates share the same lifecycle. Overview composes supported checks sequentially and commits each completed subcheck independently through the same mailbox; partial events remain read-only previews. A native fixture runner is injected only by the debug QA entry point; production uses ScanEngine. The new files stay beside the existing core code for now; broader mechanical folder moves remain task 028.
+The controller exposes read-only previews and completed snapshots separately. AppModel currently accepts cleanup review only from its completed feature snapshot; direct actions must retain fresh executable evidence without requiring that review UI. Generated data, inventory, leftovers, footprints, storage and duplicates share the same lifecycle. Overview composes supported checks sequentially and commits each completed subcheck independently through the same mailbox; partial events remain read-only previews. A native fixture runner is injected only by the debug QA entry point; production uses ScanEngine. The files stay beside the existing core code unless an active task needs a focused move.
 
 
 Task 050 adds `VerifiedGeneratedOwner.swift` for released product-layout evidence, `GeneratedDataSummary.swift` for transient logical-content accounting and app/category grouping, and `GeneratedDataGroupsView.swift` for Clean presentation. Views use recorded scan evidence for sizes rather than traversing files. ScanController now exposes completed-snapshot invalidation so mutation outcomes cannot retain stale generated evidence in either state owner. The catalog remains in Rules.swift until task 008. Test-only owner-root and process-collection seams are task-local and do not alter production wiring.

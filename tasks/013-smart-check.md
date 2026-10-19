@@ -1,5 +1,7 @@
 # 013 — Turn Overview into a useful progressive Smart Check
 
+> Core reset, 2026-10-19: Automatic availability in 055/056 replaces mandatory scan-first entry for residues/storage; do not expand Smart Check. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 Priority: P2  
 Phase: A — More useful space recovery  

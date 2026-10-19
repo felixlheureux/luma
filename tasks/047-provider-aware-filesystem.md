@@ -1,5 +1,7 @@
 # 047 — Centralize cloud/provider-aware filesystem policy
 
+> Core reset, 2026-10-19: 057 adds read-only cloud metadata observations; existing content/mutation safeguards remain. See [the current queue](README.md). This file retains earlier implementation evidence.
+
 Status: Done
 
 Priority: P0  
