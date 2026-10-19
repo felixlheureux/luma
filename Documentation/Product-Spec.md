@@ -1,6 +1,6 @@
 # Luma product specification
 
-**Current scope: core reset, 2026-10-19.** This replaces the former full-product expansion specification. [tasks/README.md](../tasks/README.md) is the sole execution order. This document defines intended behavior; [Safety.md](Safety.md) records the existing engine and limits. New behavior is not implemented merely because it is specified here.
+**Current scope: core reset and owner follow-up review, 2026-10-19.** This replaces the former full-product expansion specification. The follow-up at `c03e185` restores Overview and corrects the implemented core. [tasks/README.md](../tasks/README.md) is the sole execution order. This document defines intended behavior; [Safety.md](Safety.md) records the existing engine and limits. New behavior is not implemented merely because it is specified here.
 
 Luma is a native, local-first macOS utility for removing apps, dealing with residues, understanding storage, viewing system resources, and performing a few explicit maintenance actions. The core must be pleasant to use before it grows.
 
@@ -14,11 +14,17 @@ The app list loads automatically and offers Uninstall on each supported row. One
 
 Use exact ownership evidence and existing protection/running-app checks. Blocked operations give one actionable inline reason. Do not force-quit apps, require a manual rescan, or create an uninstall wizard. Confirmed moves update the row and offer compact Activity/Undo access. App reset is not a primary core action.
 
+Separate bundle-removal eligibility from conservative related-data matching. A valid bundle identifier need not match a residue rule. Unsupported or unreadable optional related roots stay untouched with a concise outcome; they do not block an independently verified supported bundle. An unrelated application's helper read must not block the chosen app. Keep inspection and final mutation checks for the bundle itself.
+
+Use a stable, consistent app inventory before and after visiting Residues or restoring an app. Supported genuine apps in vendor subfolders need a matching uninstall path. Exclude verified vendor companion uninstallers from ordinary app rows while retaining their ownership presence; do not hide independent utilities with a blanket name filter. Preserve or safely enrich legitimate local app icons across refresh and Undo, respecting actual macOS icon keys and the no-download boundary. Explain genuine unsupported/protected cases inline.
+
 ## Residues
 
 Opening Residues starts a bounded refresh automatically. Show saved observations immediately on return and publish usable results progressively; an initial discovery may take time but does not require a Scan click. Explain freshness, incomplete coverage and permissions without blanking the list.
 
 Residues are grouped by their exact full bundle identifier (for example `com.vendor.app`), with item count, unique size and a selectable group header. The header supports none/some/all selection and includes collapsed/offscreen eligible children; individual items remain selectable. Similar vendor prefixes do not merge owners, and refresh arrivals are not selected automatically.
+
+Indent child rows beneath their group. Align explanatory text with the child path label and leave a clear top gap. Avoid duplicate headings and repeated paragraphs; item-specific paths and consequences remain accessible in place, without another review panel.
 
 Users select residues or whole groups and click Move to Trash in the same view. The selection is the authorization; no second panel, confirmation checkbox, or repeated review step follows. Inline details show paths and consequences beforehand. Unclaimed app data is not automatically junk; ownership must still be verified at execution. Preserve scroll, filters and unaffected results after cleanup.
 
@@ -32,6 +38,8 @@ Use a Space Lens-style proportional bubble map beside a size-ranked folder list,
 
 Storage's local personal-file selection authorizes only selected items in the supported home scope, with current evidence and the existing Trash engine. Automatically discovering a root grants inspection, not broad mutation authority. Explicitly selected supported home-local files obtain narrow action authority without the old folder picker; eligibility is per item, so a read-only broad root does not disable every home-file action. Preserve duplicate keep-one rules wherever known duplicate candidates are actionable.
 
+Selected exposes every captured target even after location/search/hidden filters change, with a count consistent with the action. Explore's bubbles, visible rows and Other items use the same membership under all sorts; focusing a bubble reveals its row. Continue must make bounded forward progress, or explicitly offer only a larger fresh scan when the limit can actually increase. Do not imply resumable discovery when it reruns the same prefix.
+
 ## iCloud discovery
 
 Include iCloud Drive and synced Desktop/Documents in Storage through a distinct read-only metadata capability. Show downloaded, online-only, unavailable and unknown states. Keep logical file size separate from locally allocated bytes; unknown allocated size is not zero, and online-only logical bytes are not reclaimable local storage.
@@ -42,7 +50,11 @@ Do not download content to scan, size, preview, hash or draw icons. Do not treat
 
 Keep the current System view, its metrics and lightweight sampling. Do not start the deleted process/network/device expansion tracks.
 
+Correct the existing battery report on the reference M2. Compare condition, maximum capacity and cycle count with Battery Settings and System Information, and investigate verified public read-only sources for information macOS reports. Keep slower health collection separate from lightweight polling and cache its observation time. Charge and actual power/charging state lead; optional available details and one concise partial-data explanation replace an empty Unavailable grid. Preserve calculating, inapplicable, missing and failed estimate states, using documented units and explicit OS charging/charged flags. A present battery with a missing charge reading remains a battery state in the menu. Do not invent health from normalized charge capacity or unsupported private fields.
+
 The menu companion has a flat top without an arrow/extrusion. The first icon click opens an interactive, correctly focused panel using the final Light/Dark/System appearance. Clicking inside must not change its inactive tint. Retain icon toggle, outside-click/Escape dismissal, keyboard access, screen-edge positioning and menu-only lifecycle. Focusing the panel must not open the main window.
+
+Its footer has two labeled primary actions: Open Luma and Maintenance. Keep Settings and Quit accessible in one compact secondary menu. Do not add a footer button for every sidebar destination or fill the compact panel with repeated guidance.
 
 ## Maintenance
 
@@ -58,7 +70,7 @@ DNS flushing, search reindexing and broad troubleshooting are excluded.
 
 Normal app/residue Trash actions require no Luma confirmation beyond the direct action. Inspection, immutable planning, freshness checks, ownership, full duplicate verification, durable outcomes and non-overwriting recovery run internally. Optional details are not prerequisites.
 
-Primary navigation consists of Storage, Apps, Residues, Maintenance and System, with Activity/Settings secondary. Open the last valid core page or Storage on first launch; a scan-first Overview and settings-wrapper Privacy page are not primary destinations. Use that same route set in menus, search and the companion. App/file Search uses the existing observations/index and does not create another subsystem.
+Primary navigation consists of Overview, Storage, Apps, Residues, Maintenance and System, in that order, with Activity/Settings secondary. Start each new launch at Overview; reopening the running main window may retain its current page. Restore Overview's actual route and concise observed summaries/shortcuts to current core views. It must not resurrect Smart Check, a scan-first gate, duplicate workflows or automatic Storage discovery. Use the same route order in sidebar, Navigate, search and Command-1 through Command-6. The companion's two footer actions stay independent of that list. App/file Search uses existing observations/index and does not create another subsystem. The settings-wrapper Privacy page remains secondary.
 
 Current ignores protect selected subtrees in both directions: an ignored child blocks moving its entire parent through normal cleanup. A newly added ignore updates ancestor eligibility and is enforced again at the final move. Automatic refresh settles after Luma-owned persistence writes and isolates volume invalidation to its affected scope.
 
@@ -68,6 +80,8 @@ Keep operation outcomes distinct through invalidation; confirmed app recovery up
 
 Keep progress in stable space in the initiating view. Fast actions finish directly; longer work uses truthful compact status. A validation percentage must not reach 100% and restart for moving. No artificial delays, repeated verification screens, invented retries or timeout increases as a performance fix.
 
+Keep the Storage footer compact: one action row with conditional useful status/outcome content, no blank reserved rows or duplicate idle hints. Preserve Stop, Undo and clear partial/failure outcomes without covering the list at narrow sizes. Clicking outside any text input ends editing, preserves its value and delivers the first click to the intended control. Native keyboard navigation and search shortcuts remain intact.
+
 Keep scanners read-only. Separate display observations from executable current evidence. Use existing services and narrow changes; a broad architecture rewrite or new framework is not a core prerequisite. Maintain keyboard access, appearance, reduced-motion/transparency support, synthetic-data safety tests and meaningful native flow checks.
 
-The core consists only of tasks 054–059. Further features require a new owner decision after those flows are demonstrated. Existing implemented secondary tools can remain reachable through optional details where useful, but must not crowd the primary flows or become dependencies.
+The core consists only of tasks 054–063, including the owner's corrective review tasks 060–063. Complete those corrections before new Maintenance implementation. Further features require a new owner decision after the core flows are demonstrated. Existing implemented secondary tools can remain reachable through optional details where useful, but must not crowd the primary flows or become dependencies.

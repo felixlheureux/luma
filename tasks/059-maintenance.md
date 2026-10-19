@@ -4,6 +4,8 @@ Status: Planned
 Priority: P1  
 Depends on: [054](054-direct-uninstall.md), [055](055-residues.md); existing verified cache catalog and System telemetry
 
+Execution order: finish the in-progress [058](058-menu-panel.md) and owner-requested corrections 060–063 before starting this new view. Follow [the queue](README.md); the earlier task number does not take priority over core fixes.
+
 ## Outcome
 
 One Maintenance view offers cache cleanup, Empty Trash and useful memory help. Choices, at most one approval per consequential action, compact progress and outcomes stay in that view.

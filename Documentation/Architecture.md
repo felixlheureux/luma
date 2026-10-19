@@ -1,6 +1,6 @@
 # Code organization and maintenance
 
-Core scope revised on 2026-10-19. [Product-Spec.md](Product-Spec.md) defines current scope and [tasks/README.md](../tasks/README.md) is the sole execution order; only tasks 054–059 are active. The implementation notes below retain observed behavior from completed work, not authorization to expand it. The folder tree is organizational guidance, not the current layout or a required migration.
+Core scope revised on 2026-10-19, including the owner's follow-up review of `c03e185`. [Product-Spec.md](Product-Spec.md) defines current scope and [tasks/README.md](../tasks/README.md) is the sole execution order for 054–063; 054–057 are completed foundations and 058–063 are remaining work. The implementation notes below retain observed behavior from completed work, not authorization to expand it. The folder tree is organizational guidance, not the current layout or a required migration.
 
 ## Current assessment
 
@@ -84,7 +84,7 @@ Keep formatting consistent with the existing Swift source. Do not introduce a fo
 
 ## Changes within the core tasks
 
-Follow tasks 054–059 in the queue, with only the structural changes each needs. Task 003 delivered isolated scan ownership, immutable request scopes, bounded event mailboxes and explicit completed-snapshot boundaries; task 048 delivered cleanup/recovery presentation state, and task 017 delivered passive provider boundaries. These are existing foundations. Keep System monitoring as implemented and retain core execution guarantees while simplifying the active flows.
+Follow tasks 054–063 in the queue's stated order, with only the structural changes each needs. Task 003 delivered isolated scan ownership, immutable request scopes, bounded event mailboxes and explicit completed-snapshot boundaries; task 048 delivered cleanup/recovery presentation state, and task 017 delivered passive provider boundaries. These are existing foundations. Keep System's metric set, correct existing battery reporting in 063 and retain core execution guarantees while simplifying the active flows.
 
 ## Observed implementation boundaries
 

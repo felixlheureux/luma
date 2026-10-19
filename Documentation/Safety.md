@@ -2,7 +2,7 @@
 
 ## Core reset — implementation status
 
-The [current product spec](Product-Spec.md) and [054–059 queue](../tasks/README.md) replace the former full-product plan. The sections below document the existing engine and earlier implementation. Their mandatory review sheets, chosen-folder entry points and blanket provider browsing exclusion are not requirements to recreate those flows.
+The [current product spec](Product-Spec.md) and [054–063 queue](../tasks/README.md) replace the former full-product plan. The sections below document the existing engine and earlier implementation. Their mandatory review sheets, chosen-folder entry points and blanket provider browsing exclusion are not requirements to recreate those flows.
 
 - 054/055 move normal local app/residue actions directly from their lists. The direct action authorizes its defined scope; immutable plans, current evidence, whole-plan/final validation, durable journal and recovery stay internal. No extra sheet or acknowledgement is required.
 - 056 discovers storage only after an explicit scan request. A discovered inspection root never grants whole-volume cleanup authority; local personal-file actions stay in the supported home scope with explicit selection and fresh evidence.

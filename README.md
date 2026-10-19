@@ -11,7 +11,7 @@ Every proposed cleanup has a path, an explanation, an ownership rule, and a cons
 
 ## Current development focus
 
-The owner reset the scope on 2026-10-19. The [core task queue](tasks/README.md) is 054–059: direct app uninstall, automatically available residues with in-place Trash, large-file discovery, iCloud metadata browsing, a flat focused menu panel and simple Maintenance. The unstarted expansion backlog was deleted. Task 054 now implements direct uninstall and compact Undo. Task 055 adds automatic residue observations and direct selected-item Trash. Task 056 adds Storage discovery, saved browsing, cross-folder selection and direct local Trash. Storage opens without scanning; broad discovery starts only when requested, and the existing optional folder picker stays available. Task 057 adds read-only iCloud metadata rows, with manual integration accepted by the owner. Task 058 is in progress; 059 remains planned. The existing System view stays at its current scope.
+The owner reset the scope on 2026-10-19, then reviewed implementation at `c03e185`. The [core task queue](tasks/README.md) is 054–063. Tasks 054–057 implement direct app uninstall/Undo, automatic residue observations with in-place Trash, requested Storage discovery with saved browsing, and read-only iCloud metadata with owner-reported integration acceptance. Storage opens without scanning; broad discovery starts only when requested, and the optional folder picker remains available. Task 058 is in progress for a flat focused menu with two primary actions. Planned corrections 060–063 cover app inventory/icons/uninstall eligibility, restored Overview/layout/focus, Storage selection/map behavior and M2 battery reporting. Complete these corrections before the small Maintenance view in 059. The unstarted expansion backlog remains deleted; System keeps its current metric set.
 
 ## What you can do
 
@@ -33,12 +33,14 @@ The interface follows **System appearance by default**, with optional Light and 
 
 | Area | Core change |
 | --- | --- |
-| Residues | Implemented: automatic observations and in-place Trash/Undo |
-| Storage | Implemented: requested local discovery, saved browsing and direct selected-file Trash |
-| iCloud | Non-materializing metadata discovery with local/online-only size states |
-| Menu companion | Flat top and correct active appearance on first open |
-| Maintenance | Approved cache cleanup and local Trash emptying; useful memory help |
-| System | Keep the current metrics and lightweight monitoring |
+| Apps | Implemented direct uninstall; 060 corrects eligibility, inventory, companion filtering and icons |
+| Overview and layout | 061 restores Overview first and fixes residue spacing, click-away focus and footer height |
+| Residues | Implemented automatic observations and in-place Trash/Undo; layout correction in 061 |
+| Storage | Implemented requested discovery/saved browsing/direct Trash; 062 corrects selection, map and continuation |
+| iCloud | Implemented metadata discovery; owner-reported integration acceptance in 057 |
+| Menu companion | 058 in progress: flat focused panel with Open Luma and Maintenance footer actions |
+| System | Keep current metrics; 063 corrects existing M2 battery reporting |
+| Maintenance | 059 planned after core corrections: approved cache/Trash actions and useful memory help |
 
 See the [roadmap](Documentation/Roadmap.md), [current specification](Documentation/Product-Spec.md), and [safety model](Documentation/Safety.md) for scope and current limits. No further feature track starts automatically after the core.
 
@@ -98,7 +100,7 @@ Luma analyzes files locally. It has no telemetry, account system, root helper, o
 This is an early development build. Cleanup and Restore use a durable journal, with file identity checks and recovery review in Activity. Descriptor checks strengthen identity validation; the final native Trash pathname race remains documented. Read the [safety model](Documentation/Safety.md) before cleanup of important data.
 
 
-Local Storage traversal and ordinary cleanup skip reported cloud/provider scopes, dataless content, network storage and unavailable metadata. A separate read-only adapter supplements Storage with available iCloud filesystem and provisional indexed metadata, including recognized synced Desktop/Documents roots. Cloud rows distinguish downloaded, online-only and unknown states, logical size and known local allocation, with generic icons and Finder management. They never enter local totals or Trash, including downloaded provider files. Discovery does not request downloads; unavailable or unindexed hierarchy remains partial. Real iCloud integration acceptance is still pending. Coverage explains skipped locations and offers Finder handoffs; app icons use bounded, policy-checked local bundle resources with a symbol fallback. See [the safety model](Documentation/Safety.md#provider-aware-access-task-047) for detection limits and supported local behavior.
+Local Storage traversal and ordinary cleanup skip reported cloud/provider scopes, dataless content, network storage and unavailable metadata. A separate read-only adapter supplements Storage with available iCloud filesystem and provisional indexed metadata, including recognized synced Desktop/Documents roots. Cloud rows distinguish downloaded, online-only and unknown states, logical size and known local allocation, with generic icons and Finder management. They never enter local totals or Trash, including downloaded provider files. Discovery does not request downloads; unavailable or unindexed hierarchy remains partial. The owner reports manual iCloud integration acceptance in task 057. Coverage explains skipped locations and offers Finder handoffs; app icons use bounded, policy-checked local bundle resources with a symbol fallback. See [the safety model](Documentation/Safety.md#provider-aware-access-task-047) for detection limits and supported local behavior.
 
 ## Development
 
@@ -118,6 +120,8 @@ The tests cover verified app layouts, adjacent-data exclusions, hard-link-aware 
 The preview script captures light and dark app windows without cleaning files. Its fallback cannot reproduce every native composited glass layer when window capture is unavailable. Generated screenshots and local diagnostics are excluded from the repository.
 
 Shortcuts: `Command-K` searches, `Command-R` refreshes supported views, `Command-1` through `Command-5` open Storage/Apps/Residues/Maintenance/System, `Command-9` opens Activity, and `Shift-Command-D` changes the manual appearance override. Choose System in Settings to follow macOS again.
+
+Task 061 will restore Overview as the first primary page and new-launch default, updating the primary shortcuts to `Command-1` through `Command-6` for Overview/Storage/Apps/Residues/Maintenance/System. This routing change is planned, not implemented by the review.
 
 ## Contributing
 
