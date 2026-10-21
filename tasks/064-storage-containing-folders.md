@@ -65,3 +65,13 @@ Add focused Swift Testing cases to `Tests/LumaCoreTests/StorageDiscoveryTests.sw
 - Intermediate failures are excluded: a fixture compared directory URL spelling instead of exact paths; an unsupported SF Symbol produced an empty Inspect hit target; native checks needed an active-window precondition, and repeated uncached folder eligibility work delayed the double-click gesture. The final standard icon/hit area, explicit test activation and correctly invalidated eligibility cache pass without extending timeouts. Reference comparisons and read-only image ejection are recorded in [reference-checks.md](reference-checks.md).
 
 Task 064 is complete. Task 065 is next in the executable queue; no hidden-data residue or Homebrew inventory behavior was added here.
+
+## Owner follow-up for 0.2.4 — 2026-10-21
+
+The owner reported excessive Storage list background height with few results. List surfaces now fit measured content up to the existing 420-point scrolling cap, with exact eager layout for up to 12 results and independent measurements for responsive alternatives. Expanded details contribute to height; empty states retain their readable 220-point content area. Selection, plan and map behavior are unchanged.
+
+Final native Storage checks pass Light/Dark/System on M2/16 GB/macOS 27.0.1 with the generated 1,400-item fixture (bounded observations: 1,300/1,400/1,353). First results take 0.58–0.64 s, warm opening 0.14–0.16 s, maximum main-actor delays 0.13–0.21 s, fixture Trash 0.47–0.49 s and Undo 0.81–1.63 s. Exact parent inspection/analysis, folder Trash/Undo, map/list/selection, keyboard, narrow/empty views and persistence checks pass. Own-process final short-list and long-list renders were inspected.
+
+The checker sends native pointer events directly to its own fixture window, matching its existing keyboard dispatch. Reopening the app bundle could activate another Luma instance; intermediate activation-limited runs are excluded. This does not establish physical desktop pointer/window-manager integration or fully composited appearance. No personal scan, actual Trash or personal-app quit is used.
+
+The standard `Scripts/preview.sh` was also rerun on final source. It repeats the previously recorded missing `overview.png` launch failure; dedicated own-process Storage/Homebrew/Maintenance renders and their native checkers provide the applicable view evidence. This general preview-launcher failure is not counted as a pass.
