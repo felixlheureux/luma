@@ -100,6 +100,8 @@ public enum RuleLoader {
         let reviewedOn: String
     }
     private struct OwnershipRecord: Decodable {
+        let cliNames: [String]?
+        let otherOwners: [String]?
         let relativePath: String
         let owner: String
         let classification: String
@@ -111,7 +113,7 @@ public enum RuleLoader {
 
     private static let rootKeys: Set<String> = ["schemaVersion", "catalogVersion", "locale", "generated", "ownership"]
     private static let ruleKeys: Set<String> = ["id", "relativePath", "category", "safety", "name", "explanation", "consequence", "owner", "profileLeaves", "chromiumProfiles", "tools", "appName", "requiredApplication", "regeneration", "provenance", "reviewedOn"]
-    private static let ownershipKeys: Set<String> = ["relativePath", "owner", "classification", "explanation", "consequence", "provenance", "reviewedOn"]
+    private static let ownershipKeys: Set<String> = ["cliNames", "otherOwners", "relativePath", "owner", "classification", "explanation", "consequence", "provenance", "reviewedOn"]
     private static let applicationKeys: Set<String> = ["bundleName", "bundleID", "productName", "version", "commit"]
 
     /// Validate duplicate/unknown keys and YAML features before constructing Swift values.
@@ -188,16 +190,23 @@ public enum RuleLoader {
         for record in document.ownership {
             try path(record.relativePath, field: "ownership")
             try identifier(record.owner, field: record.relativePath, allowApple: false)
-            guard record.classification == "review", ["Library/Application Support/", "Library/Caches/", "Library/Logs/", "Library/Preferences/", "Library/Saved Application State/"].contains(where: { record.relativePath.hasPrefix($0) }) else {
+            guard record.classification == "review", (["Library/Application Support/", "Library/Caches/", "Library/Logs/", "Library/Preferences/", "Library/Saved Application State/"].contains(where: { record.relativePath.hasPrefix($0) }) || HiddenAppData.permitsMapping(record.relativePath)) else {
                 throw RuleCatalogError("\(record.relativePath): ownership requires a bounded app-data path classified review.")
             }
+            if record.relativePath.hasPrefix(".") && (record.cliNames?.isEmpty != false) {
+                throw RuleCatalogError("Hidden ownership requires explicit CLI guards.")
+            }
+            for name in record.cliNames ?? [] {
+                guard name.range(of: "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$", options: .regularExpression) != nil else { throw RuleCatalogError("Invalid CLI guard.") }
+            }
+            for owner in record.otherOwners ?? [] { try identifier(owner, field: record.relativePath, allowApple: false) }
             try text(record.explanation, field: record.relativePath + ".explanation")
             try text(record.consequence, field: record.relativePath + ".consequence")
             try evidence(record.provenance, reviewedOn: record.reviewedOn, field: record.relativePath)
             guard !ownership.contains(where: { $0.relativePath.lowercased() == record.relativePath.lowercased() }) else {
                 throw RuleCatalogError("Duplicate ownership path: \(record.relativePath).")
             }
-            ownership.append(.init(relativePath: record.relativePath, owner: record.owner, explanation: record.explanation, consequence: record.consequence))
+            ownership.append(.init(relativePath: record.relativePath, owner: record.owner, explanation: record.explanation, consequence: record.consequence, cliNames: record.cliNames ?? [], otherOwners: record.otherOwners ?? []))
         }
         let derived = rules.compactMap { rule -> KnownLeftoverPath? in
             guard let owner = rule.owner else { return nil }
@@ -262,7 +271,7 @@ public enum RuleLoader {
 
     private static func path(_ value: String, field: String) throws {
         let parts = value.split(separator: "/", omittingEmptySubsequences: false)
-        guard value.utf8.count <= 1_024, parts.count >= 2, !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }),
+        guard value.utf8.count <= 1_024, (parts.count >= 2 || (field == "ownership" && HiddenAppData.permitsMapping(value))), !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }),
               !value.contains(where: { $0.isNewline || $0.asciiValue.map { $0 < 32 || $0 == 127 } == true || "~$%\\*?[]{}<>:".contains($0) }) else {
             throw RuleCatalogError("\(field): expected an exact home-relative path, without traversal, tokens or globs.")
         }

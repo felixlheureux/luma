@@ -173,6 +173,58 @@ extension LumaAppDelegate {
                         report["undoRefreshesResidue"] = model.leftovers.contains { $0.id == next.id } && model.residueOutcome?.contains("restored") == true
                     }
                 }
+                // All additional discovery and mutation stays inside this disposable home.
+                try write(".mystery/data", Data("unknown owner".utf8))
+                try write(".ssh/key", Data("protected fixture".utf8))
+                try write(".vscode/extensions/data", Data("retained extensions".utf8))
+                let codeMetadata = ["CFBundleIdentifier": "com.microsoft.VSCode", "CFBundleName": "Synthetic Code"]
+                try write("Applications/Synthetic Code.app/Contents/Info.plist", PropertyListSerialization.data(fromPropertyList: codeMetadata, format: .xml, options: 0))
+                model.scanRunner = { request, emit in
+                    if request.target == .leftovers {
+                        return ScanResult(report: try await LeftoverScanner(home: home, applicationRoots: [apps], lookup: { _ in false }, emit: emit, owners: request.residueOwners).scan())
+                    }
+                    return try await ScanEngine.run(request, home: home, applicationRoots: [apps], emit: emit)
+                }
+                model.destination = .residues
+                model.ensureResidues(refresh: true)
+                try await wait { !model.residueDiscovery.isBusy && !model.residueLoading }
+                report["hiddenUnknownInspectOnly"] = model.visibleHiddenAppData.contains { $0.url.lastPathComponent == ".mystery" && $0.owner == nil && $0.bytes == nil && $0.state == .unknown }
+                report["hiddenInstalledKept"] = model.visibleHiddenAppData.contains { $0.url.lastPathComponent == ".vscode" && $0.state == .present }
+                    && !model.visibleResidues.contains { $0.url.lastPathComponent == ".vscode" }
+                report["hiddenCredentialsUnselected"] = !model.visibleResidues.contains { $0.url.lastPathComponent == ".ssh" } && model.residueSelection.isEmpty
+                let hiddenSaved = try await model.residueStore.load()
+                report["hiddenSavedObservations"] = hiddenSaved?.hiddenAppData?.contains { $0.url.lastPathComponent == ".mystery" } == true
+                model.residueHiddenOnly = true
+                try await Task.sleep(for: .milliseconds(250))
+                try saveScanCheckWindow(window, path: output + "-hidden.png")
+                model.residueHiddenOnly = false
+                try write("Library/Application Support/org.lumatest.installed/user-data", Data("retained personal data".utf8))
+                if let fixtureApp = model.visibleApplications.first(where: { $0.bundleID == "org.lumatest.installed" }) {
+                    model.destination = .applications; model.applicationTab = .installed
+                    gate.release.signal()
+                    model.uninstall(fixtureApp)
+                    try await wait { !model.cleanupSession.isRunning }
+                    report["remainingDataLinkAvailable"] = model.remainingDataOwner == fixtureApp.bundleID
+                    try await Task.sleep(for: .milliseconds(250))
+                    @MainActor func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
+                    guard let marker = window.contentView.flatMap({ descendants($0).first { $0.identifier?.rawValue == "luma-check-remaining-data" } }) else { throw LumaError.rejected("No remaining-data link") }
+                    let frame = marker.convert(marker.bounds, to: nil)
+                    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                        guard let event = NSEvent.mouseEvent(with: type, location: NSPoint(x: frame.midX, y: frame.midY), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { throw LumaError.rejected("No remaining-data pointer event") }
+                        NSApp.postEvent(event, atStart: false)
+                    }
+                    try await wait { model.destination == .residues && !model.residueDiscovery.isBusy && !model.residueLoading }
+                    report["remainingDataNavigation"] = model.residueOwnerFilter == fixtureApp.bundleID
+                        && model.residueDiscovery.session?.request.residueOwners == [fixtureApp.bundleID]
+                    report["remainingDataRetained"] = FileManager.default.fileExists(atPath: home.appendingPathComponent("Library/Application Support/org.lumatest.installed/user-data").path)
+                        && model.visibleResidues.contains { $0.ownerBundleID == fixtureApp.bundleID }
+                    report["targetedRefreshRetainsUnknown"] = model.hiddenAppData.contains { $0.url.lastPathComponent == ".mystery" }
+                    if let id = model.lastUninstallSessionID, let session = model.cleanupSession.sessions.first(where: { $0.id == id }) {
+                        model.undo(session)
+                        try await wait { !model.cleanupSession.isRunning && !model.residueDiscovery.isBusy && !model.residueLoading }
+                        report["restoreClearsRemainingDataLink"] = model.remainingDataOwner == nil && !model.visibleResidues.contains { $0.ownerBundleID == fixtureApp.bundleID }
+                    }
+                }
                 report["monitoringContinued"] = !model.cpuHistory.isEmpty
             } catch {
                 report["error"] = error.localizedDescription

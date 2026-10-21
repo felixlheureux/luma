@@ -5,7 +5,7 @@ import LumaCore
 struct StorageView: View {
     @Environment(AppModel.self) private var model
     private var filter: String { model.storageFilter }
-    private var isExploring: Bool { model.storageMode == "Explore" && filter != "Selected" }
+    private var isExploring: Bool { model.storageMode == "Explore" && (filter != "Selected" || model.storageInspecting) }
     private var sort: String { model.storageSort }
     private var showHidden: Bool { model.storageShowHidden }
     @ViewState private var reveal = StorageListReveal()
@@ -26,8 +26,9 @@ struct StorageView: View {
     private var listingKey: ListingKey {
         ListingKey(revision: model.storageRevision, query: StorageListingQuery(
             largestFiles: model.storageMode == "Largest files", directory: model.storageDirectory,
-            filter: filter, showHidden: showHidden, search: model.storageSearch,
-            location: model.storageLocation, sort: sort,
+            filter: model.storageInspecting ? "All items" : filter, showHidden: showHidden || model.storageInspecting,
+            search: model.storageInspecting ? "" : model.storageSearch,
+            location: model.storageInspecting ? "All locations" : model.storageLocation, sort: sort,
             selection: filter == "Selected" ? model.storageSelection : [],
             pinnedOrder: pointerInList || keyboardRow != nil ? pinnedOrder : []))
     }
@@ -52,7 +53,7 @@ struct StorageView: View {
                 }
                 if isExploring, let current {
                     navigation(index, current)
-                    Text("\(current.url.isFileURL ? current.url.path : "Accessible Mac storage") · \(formatBytes(current.bytes)) observed unique logical bytes").font(.caption).textSelection(.enabled)
+                    folderSummary(index, current)
                     if visible.isEmpty {
                         list.frame(maxWidth: .infinity, alignment: .center)
                     } else {
@@ -110,7 +111,10 @@ struct StorageView: View {
             let result = await withTaskCancellationHandler {
                 try? await worker.value
             } onCancel: { worker.cancel() }
-            if !Task.isCancelled, let result { visible = result.rows; explore = result.partition; mapEntries = result.map }
+            if !Task.isCancelled, let result {
+                visible = result.rows; explore = result.partition; mapEntries = result.map
+                if model.storageInspecting, let id = model.storageFocus { focusMap(id) }
+            }
         }
         .onChange(of: filter) { _, _ in reveal = StorageListReveal(); pinnedOrder = [] }
         .onChange(of: sort) { _, _ in pinnedOrder = [] }
@@ -118,13 +122,15 @@ struct StorageView: View {
             if let id { model.storageFocus = id; if pinnedOrder.isEmpty { pinnedOrder = visible.map(\.id) } }
         }
         .onChange(of: model.storageDirectory) { _, _ in reveal = StorageListReveal(); pinnedOrder = [] }
+        .onChange(of: model.storageMode) { _, value in if value == "Largest files" { model.storageInspecting = false } }
+        .onChange(of: model.storageRevealRequest) { _, _ in if let id = model.storageFocus { focusMap(id) } }
     }
 
     private var browsePicker: some View {
         @Bindable var model = model
         return Picker("Browse", selection: $model.storageMode) {
             Text("Largest files").tag("Largest files"); Text("Explore").tag("Explore")
-        }.pickerStyle(.segmented).labelsHidden().frame(width: 280)
+        }.pickerStyle(.segmented).labelsHidden().frame(width: 280, alignment: .leading)
     }
     @ViewBuilder private var scanControls: some View {
         if model.storageDiscovery.isBusy { Button("Stop discovery") { model.storageDiscovery.cancel() } }
@@ -142,56 +148,48 @@ struct StorageView: View {
     private func controls(_ index: StorageIndex) -> some View {
         @Bindable var model = model
         return VStack(alignment: .leading, spacing: 8) {
+            if model.storageInspecting {
+                HStack {
+                    Text("Folder inspection · browsing filters paused for this path")
+                    Spacer()
+                    Button("Resume filters") { model.storageInspecting = false }
+                }.foregroundStyle(.secondary)
+            }
             TextField("Search discovered paths", text: $model.storageSearch).textFieldStyle(.roundedBorder)
-                .disabled(filter == "Selected")
-            if filter == "Selected" {
+                .disabled(filter == "Selected" || model.storageInspecting)
+            if filter == "Selected" && !model.storageInspecting {
                 Text("All selected targets across folders · search, location and hidden filters are paused.").foregroundStyle(.secondary)
             }
             ViewThatFits(in: .horizontal) {
-                HStack { filters(index); Toggle("Hidden", isOn: Binding(get: { model.storageShowHidden }, set: { model.storageShowHidden = $0 })).disabled(filter == "Selected") }
-                VStack(alignment: .leading) { filters(index); Toggle("Hidden", isOn: Binding(get: { model.storageShowHidden }, set: { model.storageShowHidden = $0 })).disabled(filter == "Selected") }
+                HStack { filters(index); Toggle("Hidden", isOn: Binding(get: { model.storageShowHidden }, set: { model.storageShowHidden = $0 })).disabled(filter == "Selected" || model.storageInspecting) }
+                VStack(alignment: .leading) { filters(index); Toggle("Hidden", isOn: Binding(get: { model.storageShowHidden }, set: { model.storageShowHidden = $0 })).disabled(filter == "Selected" || model.storageInspecting) }
             }
         }.font(.caption)
     }
     private func filters(_ index: StorageIndex) -> some View {
         @Bindable var model = model
         return HStack {
-            Picker("Show", selection: Binding(get: { model.storageFilter }, set: { model.storageFilter = $0 })) { ForEach(["All items", "Selected", "Over 100 MB", "Older than a year", "Installers"], id: \.self) { Text($0) } }
+            Picker("Show", selection: Binding(get: { model.storageFilter }, set: { model.storageFilter = $0 })) { ForEach(["All items", "Selected", "Over 100 MB", "Older than a year", "Installers"], id: \.self) { Text($0) } }.disabled(model.storageInspecting)
             Picker("Sort", selection: $model.storageSort) { ForEach(["Size", "Name", "Modified"], id: \.self) { Text($0) } }
             Picker("Location", selection: $model.storageLocation) {
                 Text("All locations").tag("All locations")
                 ForEach(index.scopes, id: \.root.path) { Text($0.root.path).tag($0.root.path) }
                 ForEach(["Downloads", "Documents", "Desktop", "Projects"], id: \.self) { name in Text(name).tag(model.uninstallHome.appendingPathComponent(name).path) }
-            }.disabled(filter == "Selected")
+            }.disabled(filter == "Selected" || model.storageInspecting)
         }
     }
     private var list: some View {
         Surface(padding: 12) {
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        if visible.isEmpty {
-                            ContentUnavailableView("No matching results", systemImage: "magnifyingglass",
-                                description: Text("Try different filters. Some locations may still be unindexed or unavailable."))
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: .infinity, minHeight: 220, alignment: .center)
-                        }
-                        ForEach(isExploring ? explore.primary : Array(visible.prefix(reveal.displayLimit))) { node in row(node).id(node.id); Divider() }
-                        if isExploring, visible.count > 12 {
-                            DisclosureGroup("Other items (\(visible.count - 12))", isExpanded: $reveal.showOther) {
-                                EmptyView()
-                            }.padding(.vertical, 8).id("storage-remainder")
-                            // Keep row anchors directly in the lazy stack so map focus
-                            // can reveal a row before it enters the scroll viewport.
-                            if reveal.showOther {
-                                ForEach(Array(explore.remainder.prefix(max(0, reveal.displayLimit - 12)))) { node in
-                                    row(node).padding(.leading, 12).id(node.id); Divider()
-                                }
-                            }
-                        }
-                        if visible.count > reveal.displayLimit { Button("Other items · show 200 more") { reveal.displayLimit += 200; reveal.showOther = true }.padding() }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }.frame(height: visible.isEmpty ? 220 : 420)
+                FittingStorageList(isEmpty: visible.isEmpty) {
+                    if visible.count <= 12 {
+                        VStack(alignment: .leading, spacing: 0) { listRows }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 0) { listRows }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
                 .onChange(of: mapRevealRequest) { _, _ in
                     let target = mapRevealTarget
                     Task { @MainActor in
@@ -207,6 +205,29 @@ struct StorageView: View {
             pointerInList = inside
         }
     }
+
+    @ViewBuilder private var listRows: some View {
+        if visible.isEmpty {
+            ContentUnavailableView("No matching results", systemImage: "magnifyingglass",
+                description: Text("Try different filters. Some locations may still be unindexed or unavailable."))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 220, alignment: .center)
+        }
+        ForEach(isExploring ? explore.primary : Array(visible.prefix(reveal.displayLimit))) { node in row(node).id(node.id); Divider() }
+        if isExploring, visible.count > 12 {
+            DisclosureGroup("Other items (\(visible.count - 12))", isExpanded: $reveal.showOther) {
+                EmptyView()
+            }.padding(.vertical, 8).id("storage-remainder")
+            // Keep row anchors directly in the lazy stack so map focus
+            // can reveal a row before it enters the scroll viewport.
+            if reveal.showOther {
+                ForEach(Array(explore.remainder.prefix(max(0, reveal.displayLimit - 12)))) { node in
+                    row(node).padding(.leading, 12).id(node.id); Divider()
+                }
+            }
+        }
+        if visible.count > reveal.displayLimit { Button("Other items · show 200 more") { reveal.displayLimit += 200; reveal.showOther = true }.padding() }
+    }
     private func navigation(_ index: StorageIndex, _ current: StorageNode) -> some View {
         HStack {
             Button { model.storageHistory(back: true) } label: { Image(systemName: "chevron.left") }.disabled(model.storageBack.isEmpty).help("Back")
@@ -216,11 +237,39 @@ struct StorageView: View {
                 HStack {
                     ForEach(index.breadcrumbs(to: current.id)) { node in
                         Button(node.url.isFileURL ? node.url.lastPathComponent : "Mac") { model.navigateStorage(node.id) }
+                            .help(node.url.isFileURL ? node.url.path : "Accessible Mac storage")
                         if node.id != current.id { Image(systemName: "chevron.right") }
                     }
                 }.font(.caption)
             }
         }.buttonStyle(.borderless)
+    }
+    private func folderSummary(_ index: StorageIndex, _ node: StorageNode) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(node.url.isFileURL ? node.url.path : "Accessible Mac storage").textSelection(.enabled)
+            Text("\(formatBytes(index.selectedBytes([node.id]))) observed unique logical bytes · \(node.children.count) observed children · \(node.isComplete ? "complete coverage" : "partial coverage; skipped contents unknown")")
+                .foregroundStyle(.secondary)
+            if node.url.isFileURL && node.cloud == nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack { folderActions(node); Spacer() }
+                    VStack(alignment: .leading) { folderActions(node) }
+                }
+                if let reason = model.storageSelectionIssue(node) { Text(reason).foregroundStyle(.secondary) }
+            }
+        }.font(.caption)
+    }
+    @ViewBuilder private func folderActions(_ node: StorageNode) -> some View {
+        if !node.isComplete || node.requiresVerification == true || Date().timeIntervalSince(node.observedAt) >= 1800 {
+            Button("Analyze this folder") { model.analyzeStorageFolder(node) }
+                .disabled(model.storageDiscovery.isBusy || model.storageLoading || model.operationBusy || (model.scanSessions.isBusy && model.scanTarget == .storage))
+                .nativeCheckTarget("storage-analyze-folder")
+            Text("This folder only · up to 40,000 entries · bounded time").foregroundStyle(.secondary)
+        } else {
+            Button("Select this folder") { model.selectStorage(node, selected: true) }
+                .disabled(!model.storageEligible(node) || model.storageMoving)
+                .help(model.storageSelectionIssue(node) ?? "Replace selected descendants with this exact folder")
+                .nativeCheckTarget("storage-select-folder")
+        }
     }
     private func focusMap(_ id: String) {
         reveal.reveal(id, in: visible)
@@ -256,6 +305,12 @@ struct StorageView: View {
                     .onKeyPress(.return) { activate(node.id); return .handled }
                     .onHover { if $0 { model.storageFocus = node.id } }
                 if node.canNavigate { Button { model.navigateStorage(node.id) } label: { Image(systemName: "chevron.right") }.buttonStyle(.borderless).help("Open folder") }
+                if model.storageMode == "Largest files", !node.isDirectory, index?.containingFolder(of: node.id) != nil {
+                    Button { model.inspectStorageParent(node) } label: { Image(systemName: "folder").frame(width: 24, height: 24) }
+                        .buttonStyle(.borderless).help("Inspect containing folder")
+                        .accessibilityLabel("Inspect containing folder for \(node.url.lastPathComponent)")
+                        .nativeCheckTarget("storage-inspect-" + node.id)
+                }
             }
             if let cloud = node.cloud {
                 HStack {
@@ -275,12 +330,34 @@ struct StorageView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(node.url.path).textSelection(.enabled)
                     Text(node.issue ?? "Complete local observation. Personal data is never automatically junk.")
-                    if !model.storageEligible(node) { Text("Read-only, incomplete, protected or ignored location.") }
+                    if let reason = model.storageSelectionIssue(node) { Text(reason) }
+                    if node.cloud == nil, index?.containingFolder(of: node.id) != nil {
+                        Button("Inspect containing folder") { model.inspectStorageParent(node) }
+                    }
                     Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
                 }.font(.caption).foregroundStyle(.secondary)
             }.font(.system(size: 10))
         }.font(.system(size: 12)).padding(10).nativeCheckTarget("storage-row-" + node.id)
             .background(model.storageFocus == node.id ? Palette.accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Each responsive alternative measures its own content. Sharing one height
+/// between the side-by-side and stacked layouts would couple their geometry.
+private struct FittingStorageList<Content: View>: View {
+    let isEmpty: Bool
+    let content: Content
+    @ViewState private var contentHeight: CGFloat = 420
+    init(isEmpty: Bool, @ViewBuilder content: () -> Content) {
+        self.isEmpty = isEmpty
+        self.content = content()
+    }
+    var body: some View {
+        ScrollView {
+            content.onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in
+                contentHeight = height
+            }
+        }.frame(height: isEmpty ? 220 : min(420, max(1, contentHeight)))
     }
 }
 

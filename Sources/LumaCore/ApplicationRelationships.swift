@@ -83,6 +83,12 @@ public enum ApplicationRelationships {
         guard let relationship = candidates(owner: owner, home: home).first(where: { Filesystem.samePath($0.url, url) }) else {
             throw LumaError.rejected("No unambiguous exact ownership relationship matches this path.")
         }
+        if let mapping = knownPaths.first(where: { $0.relativePath.hasPrefix(".") && Filesystem.samePath(home.appendingPathComponent($0.relativePath), url) }) {
+            guard HiddenAppData.permitsMapping(mapping.relativePath), !mapping.cliNames.isEmpty,
+                  try Filesystem.attributes(url)[.type] as? FileAttributeType == .typeDirectory else {
+                throw LumaError.rejected("Hidden app data requires an exact supported directory mapping.")
+            }
+        }
         if Filesystem.samePath(url.exactDeletingLastPathComponent(), home.appendingPathComponent("Library/Containers")) {
             _ = try Filesystem.attributes(url)
             let data: Data

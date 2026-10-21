@@ -80,9 +80,10 @@ struct MaintenanceEntryView: View {
                     Button("Stop after current item") { model.cleanupSession.stop() }.disabled(!model.maintenanceCleaning)
                 }
             }
+            HomebrewMaintenanceSection()
             ProcessList()
         }
-        .task { if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) { model.refreshMaintenanceTrash(); if model.cleanupReport == nil { model.runScan(.maintenance) } } }
+        .task { if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) { model.refreshMaintenanceTrash(); if model.homebrewInventory == nil { model.refreshHomebrew() }; if model.cleanupReport == nil { model.runScan(.maintenance) } } }
         .alert("Move selected generated data to Trash?", isPresented: $approveCaches) {
             Button("Cancel", role: .cancel) {}
             Button("Move to Trash", role: .destructive) { model.trashMaintenanceCaches(approvedCaches) }

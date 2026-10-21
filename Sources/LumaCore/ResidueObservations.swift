@@ -4,10 +4,12 @@ import Foundation
 /// precisely the captured selection, then validated again by the journal.
 public struct ResidueObservations: Codable, Sendable {
     public let items: [CleanupItem]
+    public let hiddenAppData: [HiddenAppDataObservation]?
     public let savedAt: Date
     public let complete: Bool
     public let notices: [String]
-    public init(items: [CleanupItem], savedAt: Date = Date(), complete: Bool, notices: [String] = []) {
+    public init(items: [CleanupItem], savedAt: Date = Date(), complete: Bool, notices: [String] = [], hiddenAppData: [HiddenAppDataObservation] = []) {
+        self.hiddenAppData = Array(hiddenAppData.prefix(256))
         self.items = Array(items.prefix(4_000)); self.savedAt = savedAt
         self.complete = complete && items.count <= 4_000
         self.notices = Array(notices.prefix(200)) + (items.count > 4_000 ? ["Saved display limited to 4,000 observations. Refresh for current discovery."] : [])
@@ -38,7 +40,7 @@ public actor ResidueObservationStore {
             do {
                 let data = try Filesystem.readMetadata(url, limit: 8_388_608)
                 let value = try JSONDecoder().decode(ResidueObservations.self, from: data)
-                guard value.items.count <= 4_000 else { return nil }
+                guard value.items.count <= 4_000, (value.hiddenAppData?.count ?? 0) <= 256 else { return nil }
                 return value
             } catch {
                 if GeneratedDataScanner.failureState(error) == .missing { return nil }

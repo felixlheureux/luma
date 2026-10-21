@@ -18,6 +18,7 @@ public enum ApplicationUninstall {
 
     /// Ordinary native deletion rights only. No authorization helper or chmod.
     static func validateTrashRights(_ url: URL) throws {
+        if let reason = try HomebrewProvider.nativeUninstallBlock(url) { throw LumaError.rejected(reason) }
         let pinned = try PinnedPath(url)
         guard pinned.value.st_uid == getuid() || pinned.value.st_uid == 0 else {
             throw LumaError.rejected("This application belongs to another user; ordinary Trash is unsupported.")
@@ -125,6 +126,7 @@ public enum ApplicationUninstall {
     }
 
     static func validate(_ item: CleanupItem, app: ApplicationRecord, home: URL, context: CleanupExecutionContext) throws {
+        if let reason = try HomebrewProvider.nativeUninstallBlock(app.url) { throw LumaError.rejected(reason) }
         guard let paths = context.processPaths else { throw LumaError.rejected("Running processes could not be checked. Try again.") }
         guard !paths.contains(where: { Filesystem.isWithin(URL(fileURLWithPath: $0), root: app.url) }) else {
             throw LumaError.rejected("Quit the application and its helpers, then retry Uninstall.")

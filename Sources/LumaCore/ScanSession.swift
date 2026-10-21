@@ -61,6 +61,7 @@ public enum ScanEvent: Sendable {
     case storage(StorageIndex)
     case progress(ScanPulse)
     case item(CleanupItem)
+    case hiddenAppData(HiddenAppDataObservation)
     case application(ApplicationRecord)
     case duplicate(DuplicateGroup)
     case coverage(ScanCoverage)
@@ -110,6 +111,7 @@ public struct ScanSession: Identifiable, Sendable {
 /// These values carry no authority to create an executable snapshot.
 public struct ScanPreview: Sendable {
     public var items: [CleanupItem] = []
+    public var hiddenAppData: [HiddenAppDataObservation] = []
     public var applications: [ApplicationRecord] = []
     public var duplicates: [DuplicateGroup] = []
     public var coverage: [ScanCoverage] = []
@@ -168,6 +170,8 @@ private final class ScanMailbox: @unchecked Sendable {
         case .item(let item):
             let key = Data(item.url.path.utf8)
             if items.count < 1_500 || items[key] != nil { items[key] = item } else { preview.truncated = true }
+        case .hiddenAppData(let observation):
+            if preview.hiddenAppData.count < 256 { preview.hiddenAppData.append(observation) } else { preview.truncated = true }
         case .application(let app):
             let key = Data(app.url.path.utf8)
             if applications.count < 5_000 || applications[key] != nil { applications[key] = app } else { preview.truncated = true }

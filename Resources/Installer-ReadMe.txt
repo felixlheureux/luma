@@ -1,4 +1,4 @@
-Luma 0.2.3 — Development Build
+Luma 0.2.4 — Development Build
 
 macOS 26 or later · Apple Silicon
 
@@ -11,13 +11,18 @@ the menu monitor running. Choose Quit Luma to stop the app completely.
 
 Scans run locally. Apps uninstall directly from their rows, Residues supports
 in-place Trash/Undo, and Storage scans only when requested. Overview opens
-first. System includes verified M2 battery condition, cycles and capacity.
+first. Storage lists fit short results and keep long results scrollable.
+System includes verified M2 battery condition, cycles and capacity.
 
 Maintenance offers supported generated data with one approval, local home
 Trash emptying with a separate permanent-removal approval, and memory pressure
 with normal app Quit. Empty Trash cannot be undone; external/provider bins and
 changed or unsupported entries are excluded. Other cleanup moves selected
 items to macOS Trash and records their paths in Activity for verified Restore.
+
+Maintenance also shows read-only Homebrew suggestions. Brew-managed apps must
+be uninstalled through Homebrew so its receipts and artifacts stay consistent;
+Luma disables their Trash-only action and does not offer package Undo.
 
 This is an ad-hoc signed development build, not notarized. See the source,
 tests, product specification and safety limits in the Luma GitHub repository.

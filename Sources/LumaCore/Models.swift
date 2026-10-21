@@ -69,6 +69,7 @@ public struct CleanupItem: Identifiable, Codable, Sendable, Equatable {
 public struct ScanReport: Sendable {
     public var items: [CleanupItem] = []
     public var notices: [String] = []
+    public var hiddenAppData: [HiddenAppDataObservation] = []
     public var visited = 0
     public var isComplete = true
     public var coverage: [ScanCoverage] = []

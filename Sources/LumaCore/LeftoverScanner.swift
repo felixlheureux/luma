@@ -94,7 +94,13 @@ public enum ApplicationPresence {
 
     public static func launchServicesContains(_ identifier: String) -> Bool {
         return (try? NonMaterializingIO.perform {
-            guard let urls = LSCopyApplicationURLsForBundleIdentifier(identifier as CFString, nil)?.takeRetainedValue() as? [URL] else { return false }
+            var lookupError: Unmanaged<CFError>?
+            let result = LSCopyApplicationURLsForBundleIdentifier(identifier as CFString, &lookupError)?.takeRetainedValue()
+            if let lookupError {
+                let error = lookupError.takeRetainedValue()
+                return !(CFErrorGetDomain(error) == kCFErrorDomainOSStatus && CFErrorGetCode(error) == Int(kLSApplicationNotFoundErr))
+            }
+            guard let urls = result as? [URL] else { return true }
             return urls.contains { url in
                 do { try FilesystemAccess.requireLocal(url) }
                 catch { return GeneratedDataScanner.failureState(error) != .missing }
@@ -120,6 +126,8 @@ public struct KnownLeftoverPath: Sendable {
     public let owner: String
     public var explanation: String? = nil
     public var consequence: String? = nil
+    public var cliNames: [String] = []
+    public var otherOwners: [String] = []
 }
 
 public struct LeftoverScanner: Scanner {
@@ -129,17 +137,31 @@ public struct LeftoverScanner: Scanner {
     private let lookup: @Sendable (String) -> Bool
     private let emit: ScanEmitter
     private let owners: Set<String>?
+    private let toolLookup: @Sendable (KnownLeftoverPath, URL) -> HiddenOwnerState
     public static let knownPaths = ApplicationRelationships.knownPaths
     public static let locations = ApplicationRelationships.locations
 
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, applicationRoots: [URL]? = nil,
                 lookup: @escaping @Sendable (String) -> Bool = ApplicationPresence.launchServicesContains,
-                emit: @escaping ScanEmitter = { _ in }, owners: Set<String>? = nil) {
+                emit: @escaping ScanEmitter = { _ in }, owners: Set<String>? = nil,
+                toolLookup: @escaping @Sendable (KnownLeftoverPath, URL) -> HiddenOwnerState = HiddenAppData.toolPresence) {
+        self.toolLookup = toolLookup
         self.owners = owners
         self.home = home; self.applicationRoots = applicationRoots; self.lookup = lookup; self.emit = emit
     }
 
     public static func isSupportedIdentifier(_ id: String) -> Bool { ApplicationRelationships.supports(id) }
+
+    public static func owner(at url: URL, home: URL) -> String? {
+        if let mapping = ApplicationRelationships.namedPaths.first(where: { Filesystem.samePath(home.appendingPathComponent($0.relativePath), url) }) { return mapping.owner }
+        for location in locations where Filesystem.samePath(url.exactDeletingLastPathComponent(), home.appendingPathComponent(location.directory)) {
+            let name = url.lastPathComponent
+            guard location.suffix.isEmpty || name.hasSuffix(location.suffix) else { continue }
+            let owner = location.suffix.isEmpty ? name : String(name.dropLast(location.suffix.count))
+            if isSupportedIdentifier(owner) { return owner }
+        }
+        return nil
+    }
 
     public static func matches(_ item: CleanupItem, home: URL) -> Bool {
         guard item.ruleID == "application.leftover.exact-identifier", item.safety == .review,
@@ -190,7 +212,7 @@ public struct LeftoverScanner: Scanner {
                 report.visited += 1
             }
         }
-        let namedPaths = ApplicationRelationships.namedPaths
+        let namedPaths = ApplicationRelationships.namedPaths.filter { !$0.relativePath.hasPrefix(".") }
         for path in namedPaths where Self.isSupportedIdentifier(path.owner) && (owners == nil || owners!.contains(path.owner)) {
             try Task.checkCancellation()
             let url = home.appendingPathComponent(path.relativePath)
@@ -207,6 +229,7 @@ public struct LeftoverScanner: Scanner {
             } catch is CancellationError { throw CancellationError() }
             catch { report.recordFailure(error, at: url, category: .related, rule: id, emit: emit, missingIsExpected: true) }
         }
+        try HiddenAppData.discover(home: home, installed: installed, owners: owners, lookup: lookup, toolLookup: toolLookup, report: &report, emit: emit)
         report.items = report.items.filter { item in
             !report.items.contains { $0.id != item.id && Filesystem.isWithin(item.url, root: $0.url) }
         }

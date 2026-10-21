@@ -40,6 +40,7 @@ extension AppModel {
 
     func uninstallUnavailableReason(_ app: ApplicationRecord) -> String? {
         if !ApplicationUninstall.supportsBundle(app.bundleID) { return "Protected or unsupported application." }
+        if let token = homebrewCask(app) { return "Installed with Homebrew (\(token)). Use Homebrew to uninstall all cask artifacts and update receipts. Permanent removal has no Luma Undo." }
         let owner = app.bundleID.lowercased()
         if runningApplicationIDs.contains(where: { $0.lowercased() == owner || $0.lowercased().hasPrefix(owner + ".") })
             || runningApplicationURLs.contains(where: { Filesystem.isWithin($0, root: app.url) }) {
@@ -56,6 +57,7 @@ extension AppModel {
         operationBusy = true
         uninstallingApp = app.id
         uninstallOutcome = nil
+        remainingDataOwner = nil
         uninstallMessages[app.id] = "Preparing Uninstall…"
         status = "Preparing Uninstall for \(app.name)…"
         // Preserve progressive rows when the sizing worker yields to this mutation.
@@ -99,6 +101,15 @@ extension AppModel {
             } else {
                 uninstallOutcome = "\(app.name): \(preparationPhase.label) · \(uninstallMessages[app.id] ?? "Uninstall unavailable")"
             }
+            if history.contains(where: { $0.planID == capturedPlan?.id && $0.original == app.url && !$0.restored }) {
+                let home = uninstallHome
+                let hasRemainingData = await Task.detached(priority: .utility) {
+                    ApplicationRelationships.candidates(owner: app.bundleID, home: home).contains { relationship in
+                        (try? Filesystem.validatePath(relationship.url)) != nil
+                    }
+                }.value
+                if hasRemainingData { remainingDataOwner = app.bundleID }
+            }
             status = uninstallOutcome ?? "Review Activity"
         }
     }
@@ -124,7 +135,11 @@ extension AppModel {
                 scanSessions.invalidateSnapshots(for: [.leftovers])
             }
         }
-        if !affectedResidues.isEmpty { saveResidues() }
+        let removedHidden = hiddenAppData.filter { overlaps($0.url) }
+        // Affected rows are observations only; restored candidates are rechecked
+        // by their exact owner, without sweeping the home directory.
+        hiddenAppData.removeAll { overlaps($0.url) }
+        if !affectedResidues.isEmpty || !removedHidden.isEmpty { saveResidues() }
         if duplicates.contains(where: { $0.items.contains { overlaps($0.url) } }) {
             let invalid = duplicates.filter { $0.items.contains { overlaps($0.url) } }
             duplicates.removeAll { group in invalid.contains { $0.id == group.id } }
@@ -162,6 +177,7 @@ extension AppModel {
                     try ApplicationScanner.restoredRecord(at: url, verifiedBytes: record.bytes)
                 }.value
                 dirtyResidueOwners([app.bundleID])
+                if remainingDataOwner == app.bundleID { remainingDataOwner = nil }
                 removedApplicationPaths.remove(app.id)
                 applications.removeAll { $0.id == app.id }; applications.append(app)
             } catch { status = "Restored app; inventory metadata unavailable: \(error.localizedDescription)" }

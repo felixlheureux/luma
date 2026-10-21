@@ -1,6 +1,13 @@
 import SwiftUI
 import LumaCore
 
+struct StorageEligibilityContext: Equatable {
+    let revision: UInt64
+    let home: String
+    let ignored: Set<String>
+    let duplicatePaths: Set<String>
+}
+
 extension AppModel {
     func openCore(_ target: Destination) {
         switch target {
@@ -19,7 +26,8 @@ extension AppModel {
         storageDiscovery.onChange = { [weak self] in
             guard let self, self.storageAcceptAutomatic, let session = self.storageDiscovery.session else { return }
             if self.storageDiscovery.isBusy {
-                self.storageStatus = "Discovering · \(session.progress.entries) entries checked · previous observations stay visible"
+                let action = session.request.root.map { "Analyzing \($0.path)" } ?? "Discovering"
+                self.storageStatus = "\(action) · \(session.progress.entries) entries checked · previous observations stay visible"
                 if !self.storageRetainsCompletedResults, let partial = session.preview.storageIndex,
                    self.storagePreviewSession != session.id || self.storagePreviewRevision != session.preview.storageRevision {
                     self.storagePreviewSession = session.id
@@ -27,20 +35,32 @@ extension AppModel {
                     self.publishStorage(partial, completed: false)
                 }
             } else if ![.completed, .completedWithExclusions].contains(session.phase) {
+                self.storageFolderBaseline = nil
                 self.storageStatus = (session.detail ?? "Discovery stopped") + " · previous observations retained"
             }
         }
         storageDiscovery.onComplete = { [weak self] snapshot in
             guard let self, self.storageAcceptAutomatic, let index = snapshot.result.storageIndex else { return }
-            self.publishStorage(index)
-            self.storageStatus = "\(index.nodes.count) observations · \(index.scannedAt.formatted(date: .omitted, time: .shortened)) · partial local and iCloud coverage"
+            var published = index
+            defer { self.storageFolderBaseline = nil }
+            if let root = self.storageDiscovery.session?.request.root, let baseline = self.storageFolderBaseline {
+                guard let latest = self.storageIndex else { self.storageStatus = "Storage changed during analysis. Scan the current location again."; return }
+                do { published = try latest.mergingAnalyzedFolder(root.path, from: index, baseline: baseline) }
+                catch { self.storageStatus = error.localizedDescription; return }
+            }
+            self.publishStorage(published)
+            if let root = self.storageDiscovery.session?.request.root, let node = published.nodes[root.path] {
+                self.storageStatus = "\(root.path) analyzed · \(node.children.count) observed children · \(node.isComplete ? "complete" : "partial") coverage · other results retained"
+            } else {
+                self.storageStatus = "\(index.nodes.count) observations · \(index.scannedAt.formatted(date: .omitted, time: .shortened)) · partial local and iCloud coverage"
+            }
             self.saveStorage()
         }
     }
 
     func publishStorage(_ index: StorageIndex, completed: Bool = true) {
         let old = storageIndex
-        if old?.rootID != index.rootID { storageSelection = []; storageBack = []; storageForward = [] }
+        if old?.rootID != index.rootID { storageSelection = []; storageBack = []; storageForward = []; storageInspecting = false }
         else {
             storageSelection = storageSelection.filter { id in
                 guard let before = old?.nodes[id], let after = index.nodes[id] else { return false }
@@ -50,7 +70,7 @@ extension AppModel {
         storageIndex = index
         storageRoot = index.isDiscovery ? nil : index.scope.root
         storageExpectedVolume = index.scope.volume.identity
-        if storageDirectory.flatMap({ index.nodes[$0] }) == nil { storageDirectory = index.rootID }
+        if storageDirectory.flatMap({ index.nodes[$0] }) == nil { storageDirectory = index.rootID; storageInspecting = false }
         if completed {
             let capturedRoot = index.rootID, capturedDate = index.scannedAt
             storageVolumes.observe(index.scope) { [weak self] in
@@ -142,6 +162,26 @@ extension AppModel {
         if let previous = storageDirectory { storageBack.append(previous) }
         storageForward = []; storageFocus = nil; storageDirectory = id
     }
+    func inspectStorageParent(_ node: StorageNode) {
+        guard let parent = storageIndex?.containingFolder(of: node.id) else { return }
+        storageMode = "Explore"
+        navigateStorage(parent.id)
+        storageInspecting = true
+        storageFocus = node.id
+        storageRevealRequest = UUID()
+    }
+    func analyzeStorageFolder(_ node: StorageNode) {
+        guard let current = storageIndex, current.nodes[node.id]?.canNavigate == true,
+              node.cloud == nil, node.url.isFileURL, !operationBusy, !storageLoading,
+              !storageDiscovery.isBusy, !(scanSessions.isBusy && scanTarget == .storage) else { return }
+        let home = uninstallHome, exclusions = ignored, id = node.id
+        storageAcceptAutomatic = true
+        storageRetainsCompletedResults = true
+        storageFolderBaseline = current
+        storageDiscovery.start(.init(.storage, root: node.url)) { emit in
+            ScanResult(storageIndex: try current.analyzingFolder(id, home: home, ignoredPaths: exclusions, emit: emit))
+        }
+    }
     func storageHistory(back: Bool) {
         let target = back ? storageBack.popLast() : storageForward.popLast()
         guard let target, storageIndex?.nodes[target] != nil else { return }
@@ -156,13 +196,33 @@ extension AppModel {
         storageSelection.insert(node.id)
     }
     func storageEligible(_ node: StorageNode) -> Bool {
-        node.isComplete && Date().timeIntervalSince(node.observedAt) < 1800 && node.url.isFileURL && !node.isPackage
-            && SafetyEngine(home: uninstallHome, ignoredPaths: ignored).permitsManualSelection(at: node.url, authorizedRoots: [uninstallHome])
-            && storageIndex?.scopes.contains(where: { Filesystem.isWithin(node.url, root: $0.root) && !$0.volume.isReadOnly }) == true
+        storageIndex != nil && storageSelectionIssue(node) == nil
+    }
+    func storageSelectionIssue(_ node: StorageNode) -> String? {
+        guard let index = storageIndex, let current = index.nodes[node.id], current.sameObservation(as: node),
+              current.isComplete == node.isComplete, current.requiresVerification == node.requiresVerification else {
+            return "This observation changed. Inspect the current result before selecting it."
+        }
+        let groups = knownStorageDuplicates
+        guard current.isDirectory else {
+            return index.selectionIssue(for: current, home: uninstallHome, ignoredPaths: ignored, duplicateGroups: groups)
+        }
+        // Hover/focus changes must not walk an unchanged folder tree on every
+        // render. Cache display eligibility only; preparation and execution
+        // always verify current contents independently of this cache.
+        let context = StorageEligibilityContext(revision: storageRevision, home: uninstallHome.path, ignored: ignored,
+            duplicatePaths: Set(groups.flatMap(\.items).map(\.id)))
+        if storageEligibilityContext != context {
+            storageEligibilityContext = context; storageFolderEligibility = [:]
+        }
+        if let cached = storageFolderEligibility[current.id], Date() < cached.until { return cached.reason }
+        let reason = index.selectionIssue(for: current, home: uninstallHome, ignoredPaths: ignored, duplicateGroups: groups)
+        let oldest = reason == nil ? index.nodes.values.lazy.filter { Filesystem.isWithin($0.url, root: current.url) }.map(\.observedAt).min() ?? current.observedAt : current.observedAt
+        storageFolderEligibility[current.id] = (reason, oldest.addingTimeInterval(1800))
+        return reason
     }
     var storageUnavailableReason: String? {
         if let reason = mutationUnavailableReason { return reason }
-        if let index = storageIndex, Date().timeIntervalSince(index.scannedAt) >= 1800 { return "Observations are over 30 minutes old. Refresh before moving files." }
         guard !storageSelection.isEmpty else { return "Select local files to move to Trash." }
         guard let index = storageIndex, storageSelection.allSatisfy({ index.nodes[$0].map(storageEligible) == true }) else {
             return "Selection includes stale, ignored or read-only items. Deselect or refresh."

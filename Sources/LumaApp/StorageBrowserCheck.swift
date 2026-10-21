@@ -37,23 +37,36 @@ extension LumaAppDelegate {
             @MainActor func marker(_ window: NSWindow, _ name: String) -> NSView? {
                 window.contentView.flatMap { descendants($0).first { $0.identifier?.rawValue == "luma-check-" + name } }
             }
-            @MainActor func clickMarker(_ window: NSWindow, _ name: String, clickCount: Int = 1) throws {
+            @MainActor func clickMarker(_ window: NSWindow, _ name: String, clickCount: Int = 1) async throws {
+                report["lastPointerControl"] = name
+                // Deliver native events to this fixture window, as the keyboard
+                // checks below do. Do not reopen/activate another app instance.
+                report["nativeWindowEventDispatch"] = true
+                window.contentView?.layoutSubtreeIfNeeded()
+                report["pointerStage"] = "dispatch"
+                report["pointerActive"] = NSApp.isActive
+                report["pointerKey"] = window.isKeyWindow
                 guard let view = marker(window, name) else { throw LumaError.rejected("Missing Storage control: " + name) }
                 let frame = view.convert(view.bounds, to: nil)
+                guard frame.width > 0, frame.height > 0 else { throw LumaError.rejected("Empty Storage control: " + name) }
                 for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                     guard let event = NSEvent.mouseEvent(with: type, location: NSPoint(x: frame.midX, y: frame.midY),
                         modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
                         context: nil, eventNumber: 0, clickCount: clickCount, pressure: 1) else { throw LumaError.rejected("No Storage pointer event") }
-                    NSApp.postEvent(event, atStart: false)
+                    window.sendEvent(event)
                 }
             }
             do {
                 try await Task.sleep(for: .seconds(2))
                 let preparation = Task.detached(priority: .utility) {
-                    for path in ["Downloads/a/b/c", "Downloads/Empty", "Downloads/Unreadable", "Library/CloudStorage", ".Trash", "Downloads/Sample.bundle", "Documents"] {
+                    for path in ["Downloads/a/b/c", "Downloads/Project/.cache", "Downloads/Empty", "Downloads/Unreadable", "Library/CloudStorage", ".Trash", "Downloads/Sample.bundle", "Documents"] {
                         try FileManager.default.createDirectory(at: home.appendingPathComponent(path), withIntermediateDirectories: true)
                     }
-                    for i in 0..<180 { try Data("bounded fixture".utf8).write(to: home.appendingPathComponent("Documents/item-\(i)")) }
+                    for i in 0..<180 {
+                        try Data("bounded fixture".utf8).write(to: home.appendingPathComponent("Documents/item-\(i)"))
+                        try Data("folder fixture".utf8).write(to: downloads.appendingPathComponent("Project/.cache/item-\(i)"))
+                    }
+                    try Data(repeating: 7, count: 4096).write(to: downloads.appendingPathComponent("Project/.cache/archive.bin"))
                     for i in 0..<20 { try Data(repeating: UInt8(i), count: 30 + i).write(to: downloads.appendingPathComponent("entry-\(i).dmg")) }
                     let count = Int(ProcessInfo.processInfo.environment["LUMA_STORAGE_QA_FILES"] ?? "1000") ?? 1000
                     for i in 0..<count { try Data("nested fixture".utf8).write(to: downloads.appendingPathComponent("a/b/c/file-\(i)")) }
@@ -70,7 +83,7 @@ extension LumaAppDelegate {
                 guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain && $0.frame.width >= 600 && $0.frame.height >= 400 }) else { throw LumaError.rejected("No native Storage window") }
                 checkedWindow = window; originalFrame = window.frame
                 window.setContentSize(NSSize(width: 1200, height: 850))
-                window.makeKeyAndOrderFront(nil); NSApp.activate()
+                window.makeKeyAndOrderFront(nil); NSRunningApplication.current.activate(options: [.activateAllWindows])
                 try await Task.sleep(for: .milliseconds(200))
                 let trash = home.appendingPathComponent(".Trash")
                 let journal = try CleanupJournal(home: home, trashMover: { source in
@@ -131,6 +144,87 @@ extension LumaAppDelegate {
                 try await Task.sleep(for: .milliseconds(200))
                 try saveScanCheckWindow(window, path: output + "-cloud.png")
                 model.publishStorage(index)
+                // Exact parent inspection, scoped hidden/filter reveal, explicit
+                // bounded analysis and native parent-folder Trash/Undo.
+                let archive = downloads.appendingPathComponent("Project/.cache/archive.bin")
+                let cache = archive.deletingLastPathComponent()
+                let preserved = downloads.appendingPathComponent("entry-0.dmg")
+                guard let archiveNode = index.nodes[archive.path], let preservedNode = index.nodes[preserved.path] else { throw LumaError.rejected("Missing folder fixture") }
+                model.selectStorage(preservedNode, selected: true)
+                model.selectStorage(archiveNode, selected: true)
+                model.storageMode = "Largest files"; model.storageSearch = "archive.bin"
+                try await Task.sleep(for: .milliseconds(250))
+                let inspectStarted = Date()
+                try await clickMarker(window, "storage-inspect-" + archive.path)
+                try await wait { model.storageDirectory == cache.path && model.storageFocus == archive.path }
+                report["inspectFolderSeconds"] = Date().timeIntervalSince(inspectStarted)
+                try await Task.sleep(for: .milliseconds(250))
+                report["inspectExactParentAndFocus"] = model.storageMode == "Explore" && model.storageInspecting
+                    && model.storageSelection == [preserved.path, archive.path]
+                    && marker(window, "storage-row-" + archive.path).map { !$0.visibleRect.isEmpty } == true
+                    && index.breadcrumbs(to: cache.path).map(\.id).suffix(4) == [home.path, downloads.path, downloads.appendingPathComponent("Project").path, cache.path]
+                model.storageSearch = "no matching path"; model.storageFilter = "Selected"; model.storageLocation = home.appendingPathComponent("Documents").path
+                model.inspectStorageParent(archiveNode)
+                try await Task.sleep(for: .milliseconds(250))
+                report["inspectionPreservesFiltersAndHiddenPreference"] = model.storageSearch == "no matching path" && model.storageFilter == "Selected"
+                    && model.storageLocation == home.appendingPathComponent("Documents").path && !model.storageShowHidden
+                    && marker(window, "storage-row-" + archive.path) != nil
+                try await clickMarker(window, "storage-select-folder")
+                try await Task.sleep(for: .milliseconds(100))
+                model.selectStorage(archiveNode, selected: true)
+                report["parentReplacesDescendantsWithoutOverlap"] = model.storageSelection == [preserved.path, cache.path]
+                model.navigateStorage(downloads.path)
+                report["protectedParentBrowsableNotSelectable"] = model.storageDirectory == downloads.path && !model.storageEligible(index.nodes[downloads.path]!)
+                if let document = index.nodes[home.appendingPathComponent("Documents/item-0").path] {
+                    model.inspectStorageParent(document)
+                    report["documentsParentBrowsableNotSelectable"] = model.storageDirectory == home.appendingPathComponent("Documents").path
+                        && !model.storageEligible(index.nodes[model.storageDirectory!]!)
+                }
+                let boundedFolder = try await Task.detached { try index.analyzingFolder(cache.path, home: home, ignoredPaths: [], limit: 12) }.value
+                model.publishStorage(boundedFolder); model.inspectStorageParent(archiveNode)
+                try await Task.sleep(for: .milliseconds(250))
+                report["boundedFolderCannotSelect"] = boundedFolder.nodes[cache.path]?.isComplete == false
+                    && !model.storageEligible(boundedFolder.nodes[cache.path]!) && marker(window, "storage-analyze-folder") != nil
+                let unrelatedDate = boundedFolder.nodes[preserved.path]?.observedAt
+                let wholeScanSession = model.storageDiscovery.session?.id
+                let analyzeStarted = Date()
+                try await clickMarker(window, "storage-analyze-folder")
+                try await wait { model.storageDiscovery.session?.id != wholeScanSession && model.storageDiscovery.isBusy }
+                let concurrentRemoval = downloads.appendingPathComponent("entry-1.dmg")
+                if let latest = model.storageIndex { model.publishStorage(latest.removing([concurrentRemoval])) }
+                try await wait { !model.storageDiscovery.isBusy }
+                report["targetedAnalysisPreservesConcurrentUpdate"] = model.storageIndex?.nodes[concurrentRemoval.path] == nil
+                report["analyzeFolderSeconds"] = Date().timeIntervalSince(analyzeStarted)
+                report["targetedAnalysisRetainsUnrelatedObservations"] = model.storageIndex?.nodes[cache.path]?.isComplete == true
+                    && model.storageIndex?.nodes[cache.path]?.children.count == 181
+                    && model.storageIndex?.nodes[preserved.path]?.observedAt == unrelatedDate
+                    && model.storageSelection == [preserved.path] && model.storageDirectory == cache.path
+                    && model.storageDiscovery.session?.request.root?.path == cache.path
+                try await Task.sleep(for: .milliseconds(250))
+                window.setContentSize(NSSize(width: 720, height: 700))
+                try await Task.sleep(for: .milliseconds(200))
+                try saveScanCheckWindow(window, path: output + "-inspect-narrow.png")
+                if let frame = originalFrame { window.setFrame(frame, display: true) }
+                try await Task.sleep(for: .milliseconds(200))
+                model.storageSelection = []
+                try await clickMarker(window, "storage-select-folder")
+                try await wait { model.storageSelection == [cache.path] }
+                let folderMoveStarted = Date()
+                model.trashStorage()
+                try await wait { !model.operationBusy && !model.cleanupSession.isRunning }
+                report["folderTrashSeconds"] = Date().timeIntervalSince(folderMoveStarted)
+                report["folderDirectTrash"] = !FileManager.default.fileExists(atPath: cache.path) && !model.showingReview
+                    && window.attachedSheet == nil && model.storageOutcome?.contains("1 moved") == true
+                guard let folderSession = model.lastStorageSessionID.flatMap({ id in model.cleanupSession.sessions.first { $0.id == id } }) else { throw LumaError.rejected("Missing folder session") }
+                let folderUndoStarted = Date()
+                model.undo(folderSession)
+                try await wait { !model.operationBusy && !model.cleanupSession.isRunning && !model.storageDiscovery.isBusy }
+                report["folderUndoSeconds"] = Date().timeIntervalSince(folderUndoStarted)
+                report["folderNativeUndo"] = FileManager.default.fileExists(atPath: archive.path) && window.attachedSheet == nil
+                    && model.storageIndex?.nodes[archive.path] != nil
+                model.storageInspecting = false; model.storageSelection = []
+                model.storageSearch = ""; model.storageFilter = "All items"; model.storageLocation = "All locations"
+                model.publishStorage(index)
                 model.storageMode = "Explore"; model.navigateStorage(downloads.path)
                 try await Task.sleep(for: .milliseconds(250))
                 try saveScanCheckWindow(window, path: output + "-explore.png")
@@ -176,13 +270,13 @@ extension LumaAppDelegate {
                     report["selectedFooterFrame"] = NSStringFromRect(rect)
                 } else { report["selectedFooterVisible"] = false }
                 try saveScanCheckWindow(window, path: output + "-selected.png")
-                try clickMarker(window, "storage-select-" + hiddenID)
+                try await clickMarker(window, "storage-select-" + hiddenID)
                 try await Task.sleep(for: .milliseconds(150))
                 report["ineligibleSelectionCanDeselect"] = model.storageSelection == [leaf.path]
                 model.ignored = []; model.storageSelection = [leaf.path]
                 model.storageFilter = "All items"; model.storageLocation = "All locations"; model.storageSearch = ""
                 model.storageMode = "Explore"; model.navigateStorage(downloads.path)
-                window.makeKeyAndOrderFront(nil); NSApp.activate()
+                window.makeKeyAndOrderFront(nil); NSRunningApplication.current.activate(options: [.activateAllWindows])
                 var mapAgreement = true, mapReveal = true
                 for ordering in ["Size", "Name", "Modified"] {
                     model.storageSort = ordering
@@ -196,10 +290,11 @@ extension LumaAppDelegate {
                     if ordering == "Size", let folder = partition.primary.first(where: { $0.canNavigate && $0.bytes > 0 }) {
                         if let viewport = marker(window, "storage-map-viewport") { viewport.scrollToVisible(viewport.bounds) }
                         try await Task.sleep(for: .milliseconds(100))
-                        try clickMarker(window, "storage-map-" + folder.id)
+                        try await clickMarker(window, "storage-map-" + folder.id)
                         try await Task.sleep(for: .milliseconds(100))
                         report["mapSingleClickFocusesWithoutNavigation"] = model.storageDirectory == downloads.path && model.storageFocus == folder.id && model.storageSelection == [leaf.path]
-                        try clickMarker(window, "storage-map-" + folder.id, clickCount: 2)
+                        report["mapClickState"] = ["active": String(NSApp.isActive), "key": String(window.isKeyWindow), "directory": model.storageDirectory ?? "nil", "focus": model.storageFocus ?? "nil", "selection": model.storageSelection.sorted().joined(separator: ",")]
+                        try await clickMarker(window, "storage-map-" + folder.id, clickCount: 2)
                         try await wait { model.storageDirectory == folder.id }
                         report["mapDoubleClickOpensFolder"] = model.storageDirectory == folder.id && model.storageSelection == [leaf.path]
                         model.navigateStorage(downloads.path)
@@ -209,7 +304,7 @@ extension LumaAppDelegate {
                         let container = columns.convert(columns.bounds, to: content), listFrame = list.convert(list.bounds, to: content)
                         report["exploreUsesAvailableWidth"] = abs(container.maxX - listFrame.maxX) < 2
                     }
-                    try clickMarker(window, "storage-map-storage-remainder")
+                    try await clickMarker(window, "storage-map-storage-remainder")
                     try await Task.sleep(for: .milliseconds(200))
                     if let first = partition.remainder.first { mapReveal = mapReveal && marker(window, "storage-row-" + first.id).map { !$0.visibleRect.isEmpty } == true }
                     mapReveal = mapReveal && model.storageSelection == [leaf.path] && model.storageDiscovery.session?.id == navigationSession
@@ -302,7 +397,7 @@ extension LumaAppDelegate {
                 try saveScanCheckWindow(window, path: output + "-largest.png")
                 // Type through the native field editor, activate the first matching path,
                 // then dismiss a second popover with Escape.
-                window.makeKeyAndOrderFront(nil); NSApp.activate()
+                window.makeKeyAndOrderFront(nil); NSRunningApplication.current.activate(options: [.activateAllWindows])
                 model.search = ""; model.showingSearch = true
                 try await Task.sleep(for: .milliseconds(300))
                 let searchWindow = NSApp.windows.first { $0.isVisible && $0.className == "_NSPopoverWindow" }

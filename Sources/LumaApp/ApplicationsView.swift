@@ -61,7 +61,7 @@ struct ApplicationsView: View {
             }
         }
         .task(id: model.applicationTab) {
-            if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) && model.applicationTab == .installed { model.ensureApplicationInventory() }
+            if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) && model.applicationTab == .installed { model.ensureApplicationInventory(); if model.homebrewInventory == nil { model.refreshHomebrew() } }
         }
     }
     private func applicationRow(_ app: ApplicationRecord) -> some View {
@@ -70,6 +70,7 @@ struct ApplicationsView: View {
             ApplicationIconView(app: app)
             VStack(alignment: .leading, spacing: 4) {
                 Text(app.name).font(.system(size: 12, weight: .semibold))
+                if model.homebrewCask(app) != nil { Text("Installed with Homebrew").font(.caption2).foregroundStyle(.secondary) }
                 Text("\(app.version) · \(app.bundleID)").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
@@ -99,7 +100,10 @@ struct LeftoversView: View {
     @ViewState private var largestFirst = false
     @ViewState private var collapsed: Set<String> = []
     private var groups: [LeftoverGroup] {
-        LeftoverGroup.groups(for: model.visibleResidues, largestFirst: largestFirst, search: search)
+        LeftoverGroup.groups(for: model.visibleResidues.filter { item in
+            (model.residueOwnerFilter == nil || item.ownerBundleID == model.residueOwnerFilter)
+                && (!model.residueHiddenOnly || model.visibleHiddenAppData.contains { $0.id == item.id })
+        }, largestFirst: largestFirst, search: search)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -124,7 +128,14 @@ struct LeftoversView: View {
             }.frame(minHeight: 42, alignment: .topLeading)
             HStack {
                 TextField("Filter identifiers or paths", text: $search).textFieldStyle(.roundedBorder)
+                Toggle("Hidden app data", isOn: Binding(get: { model.residueHiddenOnly }, set: { model.residueHiddenOnly = $0 })).toggleStyle(.checkbox)
                 Toggle("Largest first", isOn: $largestFirst).toggleStyle(.checkbox)
+            }
+            if let owner = model.residueOwnerFilter {
+                HStack {
+                    Text("Remaining data for " + owner).font(.caption).textSelection(.enabled)
+                    Button("Show all owners") { model.residueOwnerFilter = nil }
+                }
             }
             if groups.isEmpty {
                 Text(model.residueDiscovery.isBusy ? "Discovering residues…" : model.didScanLeftovers ? "No residues in the checked locations match this filter. See coverage above." : "No current observations available. Refresh to retry.")
@@ -164,6 +175,7 @@ struct LeftoversView: View {
                     }
                 }
             }
+            HiddenAppDataSection(search: search)
         }.task { if !CommandLine.arguments.contains(where: { $0.hasPrefix("--check-") }) { model.ensureResidues() } }
     }
 }
@@ -194,11 +206,11 @@ struct ResidueActionBar: View {
                 Spacer()
                 Button("Deselect all") { model.residueSelection = [:] }
                 Button("Move to Trash") { model.trashResidues() }
-                    .disabled(model.selectedResidues.isEmpty || model.mutationUnavailableReason != nil)
-                    .help(model.mutationUnavailableReason ?? "Move exactly the selected residues to Trash")
+                    .disabled(model.selectedResidues.isEmpty || model.residueActionUnavailableReason != nil)
+                    .help(model.residueActionUnavailableReason ?? "Move exactly the selected residues to Trash")
             }
             HStack {
-                Text((model.residueMoving ? model.cleanupSession.detail?.phase : nil) ?? model.residueOutcome ?? model.mutationUnavailableReason ?? "Current ownership and file identity are checked before moving.").font(.caption).textSelection(.enabled)
+                Text((model.residueMoving ? model.cleanupSession.detail?.phase : nil) ?? model.residueOutcome ?? model.residueActionUnavailableReason ?? "Current ownership and file identity are checked before moving.").font(.caption).textSelection(.enabled)
                 Spacer()
                 if model.residueMoving {
                     Button("Stop") { model.cleanupSession.stop() }.disabled(model.cleanupSession.stopping)
@@ -226,7 +238,45 @@ struct ApplicationActionBar: View {
                           model.canUndo(session) {
                     Button("Undo") { model.undo(session) }.disabled(model.mutationUnavailableReason != nil)
                 }
+                if model.remainingDataOwner != nil && !model.cleanupSession.isRunning {
+                    Button("Review remaining data") { model.reviewRemainingData() }.nativeCheckTarget("remaining-data")
+                }
                 Button("Activity") { model.destination = .history }.nativeCheckTarget("Activity")
             }.padding(12).background(.bar)
+    }
+}
+
+private struct HiddenAppDataSection: View {
+    @Environment(AppModel.self) private var model
+    @ViewState private var expanded = false
+    let search: String
+    private var rows: [HiddenAppDataObservation] {
+        model.visibleHiddenAppData.filter { observation in
+            !model.visibleResidues.contains { $0.id == observation.id }
+                && (search.isEmpty || observation.url.path.localizedCaseInsensitiveContains(search)
+                    || observation.owner?.localizedCaseInsensitiveContains(search) == true)
+        }
+    }
+    var body: some View {
+        if !rows.isEmpty {
+            DisclosureGroup("Hidden app data · \(rows.count) inspect-only observations", isExpanded: $expanded) {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(rows) { row in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(row.url.path).textSelection(.enabled)
+                                Spacer()
+                                Text(row.bytes.map(formatBytes) ?? "Size not measured")
+                            }.font(.caption)
+                            Text(row.owner ?? "Unknown owner").font(.caption2)
+                            Text(row.state.rawValue).font(.caption2).foregroundStyle(.secondary)
+                            Text(row.detail).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
+                        }.padding(.leading, 12)
+                    }
+                }.padding(.top, 8)
+            }.accessibilityIdentifier("hidden-app-data")
+                .onChange(of: model.residueHiddenOnly) { _, hidden in if hidden { expanded = true } }
+                .onAppear { if model.residueHiddenOnly { expanded = true } }
+        }
     }
 }

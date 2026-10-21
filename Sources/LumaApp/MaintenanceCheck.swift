@@ -71,7 +71,7 @@ extension LumaAppDelegate {
                 report["firstResultsSeconds"] = Date().timeIntervalSince(firstResults)
                 guard let window = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }) else { throw LumaError.rejected("No Maintenance window") }
                 checkedWindow = window; originalFrame = window.frame
-                window.setContentSize(NSSize(width: 1050, height: 900)); window.makeKeyAndOrderFront(nil); NSApp.activate()
+                window.setContentSize(NSSize(width: 1050, height: 900)); window.makeKeyAndOrderFront(nil); NSRunningApplication.current.activate(options: [.activateAllWindows])
                 try await pause()
                 try require(model.selected.isEmpty && model.cleanup.count == 1, "emptyInitialSelection")
                 try require(model.maintenanceTrash?.count == 1, "independentTrashObservation")

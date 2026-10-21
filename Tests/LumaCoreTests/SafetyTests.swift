@@ -18,6 +18,27 @@ private struct Fixture {
 }
 
 @Suite("Safety boundaries") struct SafetyTests {
+    @Test(arguments: [".ssh/key", ".gnupg/private", ".aws/credentials", ".kube/config", ".config/app/data", ".cache/app/data", ".local/share/app/data", ".git-credentials", ".gitconfig", ".zshrc", ".bash_history", ".npmrc", ".netrc", ".SSH/key", ".CONFIG/app/data", ".zsh_sessions/history"])
+    func genericSelectionProtectsHomeCredentialsAndConfiguration(_ path: String) async throws {
+        let f = try Fixture(); defer { f.remove() }
+        let file = try f.file(path)
+        let policy = SafetyEngine(home: f.home)
+        var ancestor = file
+        while ancestor.path != f.home.deletingLastPathComponent().path {
+            #expect(!policy.permitsManualSelection(at: ancestor, authorizedRoots: [f.home]))
+            ancestor.deleteLastPathComponent()
+        }
+        let item = try Filesystem.item(file, category: .storage, safety: .userData, explanation: "fixture", consequence: "fixture", rule: "manual.folder-review")
+        #expect(throws: (any Error).self) { try policy.validate(item, authorizedRoots: [f.home]) }
+        let index = try StorageDiscovery.scan(home: f.home, roots: [f.home])
+        #expect(throws: (any Error).self) { try index.prepare(ids: [file.path], home: f.home, ignoredPaths: []) }
+        let plan = try CleanupPlan(items: [item], authorizedRoots: [f.home])
+        let journal = try CleanupJournal(home: f.home, trashMover: { _ in throw LumaError.rejected("Protected data reached mover") })
+        await #expect(throws: (any Error).self) { try await journal.execute(plan, context: { .init() }) }
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(await journal.snapshot().records.isEmpty)
+    }
+
     @Test func generatedRuleValidates() throws {
         let f = try Fixture(); defer { f.remove() }
         _ = try f.file("Library/Developer/Xcode/DerivedData/build.o")

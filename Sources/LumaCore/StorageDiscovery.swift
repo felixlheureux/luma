@@ -124,7 +124,8 @@ extension StorageNode {
              observedAt: observedAt, modified: modified, created: created, bytes: folderBytes ? aggregate ?? bytes : bytes,
              aggregateBytes: aggregate ?? aggregateBytes, issue: replacementIssue ?? issue,
              accessCapability: accessCapability, coverageState: coverageState,
-             children: replacementChildren ?? children, device: device, inode: inode, cloud: cloud)
+             children: replacementChildren ?? children, device: device, inode: inode, cloud: cloud,
+             requiresVerification: requiresVerification, ownerID: ownerID)
     }
 }
 
@@ -196,54 +197,60 @@ extension StorageIndex {
 
     public func prepare(ids: Set<String>, home: URL = FileManager.default.homeDirectoryForCurrentUser,
                         ignoredPaths: Set<String>, duplicateGroups: [DuplicateGroup] = []) throws -> CleanupPlan {
-        guard !ids.isEmpty, Date().timeIntervalSince(scannedAt) < 1800 else {
-            throw LumaError.rejected("Refresh Storage before moving these observations.")
-        }
-        let selected = try ids.sorted().map { id -> StorageNode in
-            guard let node = nodes[id], node.isComplete, node.url.isFileURL, Date().timeIntervalSince(node.observedAt) < 1800,
-                  scopes.contains(where: { Filesystem.isWithin(node.url, root: $0.root) && !$0.volume.isReadOnly }),
-                  SafetyEngine(home: home, ignoredPaths: ignoredPaths).permitsManualSelection(at: node.url, authorizedRoots: [home]) else {
-                throw LumaError.rejected("Selection contains incomplete, protected, ignored or read-only observations.")
+        try NonMaterializingIO.perform {
+            guard !ids.isEmpty else {
+                throw LumaError.rejected("Refresh Storage before moving these observations.")
             }
-            return node
-        }
-        for scope in scopes where selected.contains(where: { Filesystem.isWithin($0.url, root: scope.root) }) { try scope.validate() }
-        let known = Dictionary(duplicateGroups.flatMap(\.items).map { ($0.id, $0) }, uniquingKeysWith: { old, _ in old })
-        let items = try selected.map { node in
-            if node.isDirectory && known.values.contains(where: { Filesystem.isWithin($0.url, root: node.url) }) {
-                throw LumaError.rejected("This folder contains known duplicates. Select individual files so a verified copy can be kept.")
+            let selected = try ids.sorted().map { id -> StorageNode in
+                guard let node = nodes[id] else { throw LumaError.rejected("This observation is no longer available. Scan again.") }
+                if let issue = selectionIssue(for: node, home: home, ignoredPaths: ignoredPaths, duplicateGroups: duplicateGroups) { throw LumaError.rejected(issue) }
+                return node
             }
-            if node.isDirectory {
-                for descendant in nodes.values where Filesystem.isWithin(descendant.url, root: node.url) {
-                    try Task.checkCancellation()
-                    let observed = try PinnedPath(descendant.url)
-                    let modified = Date(timeIntervalSince1970: Double(observed.value.st_mtimespec.tv_sec) + Double(observed.value.st_mtimespec.tv_nsec) / 1_000_000_000)
-                    guard descendant.isComplete, UInt64(UInt32(bitPattern: observed.value.st_dev)) == descendant.device,
-                          observed.value.st_ino == descendant.inode, modified == descendant.modified else {
-                        throw LumaError.rejected("Folder contents changed since discovery. Refresh before moving it.")
+            for scope in scopes where selected.contains(where: { Filesystem.isWithin($0.url, root: scope.root) }) { try scope.validate() }
+            let known = Dictionary(duplicateGroups.flatMap(\.items).map { ($0.id, $0) }, uniquingKeysWith: { old, _ in old })
+            let items = try selected.map { node in
+                func verifyObservedContents() throws {
+                    guard node.isDirectory else { return }
+                    for descendant in nodes.values where Filesystem.isWithin(descendant.url, root: node.url) {
+                        try Task.checkCancellation()
+                        let observed = try PinnedPath(descendant.url)
+                        let modified = Date(timeIntervalSince1970: Double(observed.value.st_mtimespec.tv_sec) + Double(observed.value.st_mtimespec.tv_nsec) / 1_000_000_000)
+                        guard descendant.isComplete, UInt64(UInt32(bitPattern: observed.value.st_dev)) == descendant.device,
+                              observed.value.st_ino == descendant.inode, modified == descendant.modified,
+                              descendant.isDirectory || observed.value.st_size == descendant.bytes else {
+                            throw LumaError.rejected("Folder contents changed since discovery. Refresh before moving it.")
+                        }
+                        if descendant.isDirectory {
+                            let actual = Set(try PinnedPath.names(in: observed.descriptor).map { Data($0.utf8) })
+                            let expected = Set(descendant.children.compactMap { nodes[$0] }.map { Data($0.url.lastPathComponent.utf8) })
+                            guard actual == expected else { throw LumaError.rejected("Folder contents changed since discovery. Analyze this folder again.") }
+                        }
+                        try observed.revalidate()
                     }
                 }
+                try verifyObservedContents()
+                let pin = try PinnedPath(node.url)
+                guard UInt64(UInt32(bitPattern: pin.value.st_dev)) == node.device, pin.value.st_ino == node.inode,
+                      Date(timeIntervalSince1970: Double(pin.value.st_mtimespec.tv_sec) + Double(pin.value.st_mtimespec.tv_nsec) / 1_000_000_000) == node.modified else {
+                    throw LumaError.rejected("This item changed since discovery. Refresh before moving it.")
+                }
+                if let duplicate = known[node.id] {
+                    let fresh = try Filesystem.inspect(node.url).1
+                    guard fresh == duplicate.identity, fresh.location == duplicate.identity.location else { throw LumaError.rejected("Duplicate evidence changed. Compare the files again.") }
+                    return duplicate
+                }
+                let item = try Filesystem.item(node.url, category: .storage, safety: .userData,
+                    explanation: "Explicitly selected local personal data. Size and age do not make it unnecessary.",
+                    consequence: "Moving this item to Trash can affect your documents or projects.", rule: "manual.folder-review")
+                guard item.bytes == selectedBytes([node.id]) else { throw LumaError.rejected("The selected item's contents changed. Refresh before moving it.") }
+                try verifyObservedContents()
+                try pin.revalidate()
+                return item
             }
-            let pin = try PinnedPath(node.url)
-            guard UInt64(UInt32(bitPattern: pin.value.st_dev)) == node.device, pin.value.st_ino == node.inode,
-                  Date(timeIntervalSince1970: Double(pin.value.st_mtimespec.tv_sec) + Double(pin.value.st_mtimespec.tv_nsec) / 1_000_000_000) == node.modified else {
-                throw LumaError.rejected("This item changed since discovery. Refresh before moving it.")
-            }
-            if let duplicate = known[node.id] {
-                let fresh = try Filesystem.inspect(node.url).1
-                guard fresh == duplicate.identity, fresh.location == duplicate.identity.location else { throw LumaError.rejected("Duplicate evidence changed. Compare the files again.") }
-                return duplicate
-            }
-            let item = try Filesystem.item(node.url, category: .storage, safety: .userData,
-                explanation: "Explicitly selected local personal data. Size and age do not make it unnecessary.",
-                consequence: "Moving this item to Trash can affect your documents or projects.", rule: "manual.folder-review")
-            guard item.bytes == selectedBytes([node.id]) else { throw LumaError.rejected("The selected item's contents changed. Refresh before moving it.") }
-            try pin.revalidate()
-            return item
+            // Authority is narrow and captured only after explicit selection; no root-wide grant is persisted.
+            return try CleanupPlan(items: items, authorizedRoots: selected.map { $0.url.deletingLastPathComponent() },
+                                   ignoredPaths: ignoredPaths, duplicateGroups: duplicateGroups, source: .storage)
         }
-        // Authority is narrow and captured only after explicit selection; no root-wide grant is persisted.
-        return try CleanupPlan(items: items, authorizedRoots: selected.map { $0.url.deletingLastPathComponent() },
-                               ignoredPaths: ignoredPaths, duplicateGroups: duplicateGroups, source: .storage)
     }
 
     public func removing(_ paths: [URL]) -> Self {
@@ -276,7 +283,11 @@ public actor StorageObservationStore {
                   saved.nodes.allSatisfy({ $0.key == $0.value.id && $0.value.children.allSatisfy { saved.nodes[$0] != nil } }),
                   saved.validHierarchy,
                   saved.scopes.allSatisfy({ (try? $0.validate()) != nil }) else { return nil }
-            return saved
+            var nodes = saved.nodes
+            for (id, var node) in nodes { node.requiresVerification = true; nodes[id] = node }
+            return StorageIndex(rootID: saved.rootID, scope: saved.scope, nodes: nodes, scannedAt: saved.scannedAt,
+                duration: saved.duration, discoveryScopes: saved.discoveryScopes, discoveryBounds: saved.discoveryBounds,
+                discoveryEntryLimit: saved.discoveryEntryLimit, discoveryRootCount: saved.discoveryRootCount)
         } catch { return nil }
     }
     public func clear() throws {

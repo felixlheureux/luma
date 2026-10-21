@@ -2,12 +2,39 @@ import SwiftUI
 import LumaCore
 
 extension AppModel {
+    func dirtyRestoredResidueOwners(_ records: [CleanupRecord]) {
+        for record in records where record.planSource == .leftovers {
+            if let owner = LeftoverScanner.owner(at: record.original, home: uninstallHome) { dirtyResidueOwners([owner]) }
+        }
+    }
+    func mergeHiddenAppData(_ observations: [HiddenAppDataObservation]) {
+        var rows = Dictionary(hiddenAppData.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        for observation in observations { rows[observation.id] = observation }
+        hiddenAppData = Array(rows.values).sorted { $0.id < $1.id }
+    }
+    var visibleHiddenAppData: [HiddenAppDataObservation] {
+        var rows = Dictionary(hiddenAppData.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        if residueDiscovery.isBusy {
+            for observation in residueDiscovery.session?.preview.hiddenAppData ?? [] { rows[observation.id] = observation }
+        }
+        return rows.values.filter { observation in
+            !ignored.contains { Filesystem.isWithin(observation.url, root: URL(fileURLWithPath: $0)) }
+                && (residueOwnerFilter == nil || observation.owner == residueOwnerFilter)
+        }.sorted { $0.id < $1.id }
+    }
+    func reviewRemainingData() {
+        guard let owner = remainingDataOwner else { return }
+        residueOwnerFilter = owner; residueHiddenOnly = false
+        destination = .residues
+        ensureResidues()
+    }
     func dirtyResidueOwners(_ owners: Set<String>) {
-        residueDirtyOwners.formUnion(owners)
+        residueDirtyOwners.formUnion(HiddenAppData.affectedOwners(owners))
     }
 
     func residueEligible(_ item: CleanupItem) -> Bool {
-        item.ruleID == "application.leftover.exact-identifier" && item.safety == .review
+        if let observation = visibleHiddenAppData.first(where: { $0.id == item.id }), observation.state != .absent { return false }
+        return item.ruleID == "application.leftover.exact-identifier" && item.safety == .review
             && item.ownerBundleID.map(ApplicationRelationships.supports) == true && !isIgnored(item)
     }
     var visibleResidues: [CleanupItem] {
@@ -16,6 +43,10 @@ extension AppModel {
             for item in residueDiscovery.session?.preview.items ?? [] { rows[item.id] = item }
         }
         return rows.values.filter { !isIgnored($0) }.sorted { $0.id < $1.id }
+    }
+    var residueActionUnavailableReason: String? {
+        mutationUnavailableReason ?? (selectedResidues.contains { !residueEligible($0) }
+            ? "A selected owner's status changed. Deselect it or refresh before continuing." : nil)
     }
     var selectedResidues: [CleanupItem] {
         visibleResidues.filter { residueSelection[$0.id] != nil }
@@ -35,7 +66,7 @@ extension AppModel {
                 residueLoaded = true
                 do {
                     if let saved = try await residueStore.load(), leftovers.isEmpty {
-                        leftovers = saved.items; residueSavedAt = saved.savedAt
+                        leftovers = saved.items; hiddenAppData = saved.hiddenAppData ?? []; residueSavedAt = saved.savedAt
                         residueCoverage = saved.notices
                         residueStatus = "Saved observations · checking current ownership…"
                     }
@@ -43,7 +74,7 @@ extension AppModel {
             }
             guard !operationBusy else { residueEntered = false; return }
             let runner = scanRunner
-            let owners = !refresh && residueSavedAt != nil && !residueDirtyOwners.isEmpty ? residueDirtyOwners : nil
+            let owners = !refresh && (residueSavedAt != nil || residueOwnerFilter != nil) && !residueDirtyOwners.isEmpty ? residueDirtyOwners : nil
             residueDirtyOwners = []
             let request = ScanRequest(.leftovers, residueOwners: owners)
             residueDiscovery.start(request) { emit in try await runner(request, emit) }
@@ -51,12 +82,12 @@ extension AppModel {
     }
     func saveResidues() {
         let saved = ResidueObservations(items: leftovers, savedAt: residueSavedAt ?? Date(),
-            complete: residueCoverage.isEmpty, notices: residueCoverage)
+            complete: residueCoverage.isEmpty, notices: residueCoverage, hiddenAppData: hiddenAppData)
         let store = residueStore
         Task { do { try await store.save(saved) } catch { residueStatus = "Display results could not be saved: \(error.localizedDescription)" } }
     }
     func trashResidues() {
-        guard let journal, mutationUnavailableReason == nil else { residueOutcome = mutationUnavailableReason; return }
+        guard let journal, residueActionUnavailableReason == nil else { residueOutcome = residueActionUnavailableReason; return }
         let captured = selectedResidues
         guard !captured.isEmpty else { return }
         let exclusions = ignored, home = uninstallHome

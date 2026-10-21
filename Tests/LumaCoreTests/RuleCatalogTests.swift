@@ -75,8 +75,8 @@ private struct LegacyRule: Decodable {
             #expect(rule.tools == effectiveTools)
             #expect(!rule.provenance.isEmpty && !rule.regeneration.isEmpty)
         }
-        #expect(catalog.ownership.map(\.relativePath) == baseline.ownership.map(\.relativePath))
-        #expect(catalog.ownership.map(\.owner) == baseline.ownership.map(\.owner))
+        #expect(catalog.ownership.prefix(baseline.ownership.count).map(\.relativePath) == baseline.ownership.map(\.relativePath))
+        #expect(catalog.ownership.prefix(baseline.ownership.count).map(\.owner) == baseline.ownership.map(\.owner))
     }
 
     @Test func everyMigratedRuleFindsOnlyItsLegacyUnits() async throws {
@@ -184,7 +184,7 @@ private struct LegacyRule: Decodable {
             #expect(relationship.evidence == "Fixture explicit owner")
             #expect(relationship.consequence == "May contain documents")
         }
-        for mapping in try Rules.catalog().ownership {
+        for mapping in try Rules.catalog().ownership.filter({ !$0.relativePath.hasPrefix(".") }) {
             #expect(mapping.explanation == "Explicit ownership mapping: \(mapping.relativePath) → \(mapping.owner).")
             #expect(mapping.consequence == "May contain documents, offline content, extensions or sessions. Ownership does not make this data disposable.")
         }

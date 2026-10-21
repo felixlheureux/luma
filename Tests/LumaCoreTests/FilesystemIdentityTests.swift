@@ -166,14 +166,21 @@ struct FilesystemEdgeFixture {
 
     @Test func applicationFrameworkLinksRoundTripAndAliasesStayExcluded() async throws {
         let f = try FilesystemEdgeFixture(); defer { f.remove() }
-        let bundle = f.downloads.appendingPathComponent("Example.app")
-        _ = try f.file("Example.app/Contents/Info.plist", content: "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>org.example.fixture</string></dict></plist>")
-        let binary = try f.file("Example.app/Contents/Frameworks/Versions/A/library")
+        let bundle = f.home.appendingPathComponent("Applications/Example.app")
+        let binary = bundle.appendingPathComponent("Contents/Frameworks/Versions/A/library")
+        try FileManager.default.createDirectory(at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let plist = "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>org.example.fixture</string></dict></plist>"
+        try Data(plist.utf8).write(to: bundle.appendingPathComponent("Contents/Info.plist"))
+        try Data("fixture".utf8).write(to: binary)
         let link = bundle.appendingPathComponent("Contents/Frameworks/Versions/Current")
         try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: "A")
-        let item = try f.item(bundle)
+        // Internal framework links remain supported by dedicated app cleanup;
+        // generic Storage selection cannot traverse or remove a package.
+        #expect(throws: (any Error).self) { try f.item(bundle) }
+        let item = try Filesystem.item(bundle, category: .applications, safety: .review,
+            explanation: "fixture", consequence: "fixture", rule: "application.exact-bundle", owner: "org.example.fixture")
         let journal = try f.journal()
-        let record = try #require(try await journal.execute(CleanupPlan(items: [item], authorizedRoots: [f.downloads]), context: { .init() }).first)
+        let record = try #require(try await journal.execute(CleanupPlan(items: [item], source: .applications), context: { .init() }).first)
         try await journal.restore(record)
         #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == "A")
         #expect(try String(contentsOf: binary, encoding: .utf8) == "fixture")

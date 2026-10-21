@@ -103,6 +103,11 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
         case .failure: batteryReportIssue = "Battery details could not be refreshed. Live charge and power reporting continue."
         }
     }
+    var homebrewInventory: HomebrewInventory?
+    var homebrewLoading = false
+    var homebrewStatus = "Refresh Homebrew to inspect installed packages and dry-run suggestions."
+    @ObservationIgnored var homebrewTask: Task<Void, Never>?
+    @ObservationIgnored var homebrewReader: @Sendable () throws -> HomebrewInventory = { try HomebrewProvider().inventory() }
     var networkInterface: String?
     var networkTracker = NetworkActivityTracker()
     @ObservationIgnored var wakeObserver: NSObjectProtocol?
@@ -123,6 +128,11 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var storageIndex: StorageIndex? { didSet { storageRevision &+= 1 } }
     var storageDirectory: String?
     var storageFocus: String?
+    var storageInspecting = false
+    var storageRevealRequest = UUID()
+    @ObservationIgnored var storageEligibilityContext: StorageEligibilityContext?
+    @ObservationIgnored var storageFolderEligibility: [String: (reason: String?, until: Date)] = [:]
+    @ObservationIgnored var storageFolderBaseline: StorageIndex?
     let storageDiscovery = ScanController()
     @ObservationIgnored var storageStore = StorageObservationStore()
     var storageAcceptAutomatic = true
@@ -153,7 +163,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
 
     func invalidateStorage() {
         storageVolumes.stopObserving()
-        storageIndex = nil; storageDirectory = nil; storageFocus = nil
+        storageIndex = nil; storageDirectory = nil; storageFocus = nil; storageInspecting = false
         storage = []; storageSelection = []; clearSelection(for: Destination.storage.rawValue)
         completedScans.remove(.storage); completedSnapshots.removeValue(forKey: .storage)
         scanSessions.invalidateSnapshots(for: [.storage])
@@ -170,6 +180,10 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
     var applicationTab: ApplicationTab = .installed
     var applicationSearch = ""
     var leftovers: [CleanupItem] = []
+    var hiddenAppData: [HiddenAppDataObservation] = []
+    var residueHiddenOnly = false
+    var residueOwnerFilter: String?
+    var remainingDataOwner: String?
     let residueDiscovery = ScanController()
     @ObservationIgnored var residueStore = ResidueObservationStore()
     var residueSelection: [String: CleanupItem] = [:]
@@ -372,6 +386,7 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                 var rows = Dictionary(self.leftovers.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
                 for item in session.preview.items { rows[item.id] = item }
                 self.leftovers = Array(rows.values)
+                self.mergeHiddenAppData(session.preview.hiddenAppData)
                 self.residueEntered = false
                 self.residueStatus = session.detail ?? "Refresh stopped · previous observations retained"
                 self.residueCoverage = session.preview.notices + [self.residueStatus]
@@ -385,6 +400,10 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                 self.leftovers.removeAll { $0.ownerBundleID.map(owners.contains) == true }
                 self.leftovers.append(contentsOf: report.items)
             } else { self.leftovers = report.items }
+            if let owners = snapshot.request.residueOwners {
+                self.hiddenAppData.removeAll { $0.owner.map(owners.contains) == true }
+                self.mergeHiddenAppData(report.hiddenAppData)
+            } else { self.hiddenAppData = report.hiddenAppData }
             self.didScanLeftovers = true
             self.residueSavedAt = snapshot.finishedAt
             self.residueCoverage = snapshot.request.residueOwners == nil ? report.notices : Array(Set(self.residueCoverage + report.notices)).sorted()
@@ -828,7 +847,9 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
             do { apply(try await journal.reconcile()) }
             catch { journalError = error.localizedDescription; apply(await journal.snapshot()) }
             let restored = history.filter { $0.planID == sessionID && $0.restored }
-            if restored.contains(where: { $0.planSource == .leftovers }) { invalidateLeftovers() }
+            if restored.contains(where: { $0.planSource == .leftovers }) {
+                dirtyRestoredResidueOwners(restored)
+            }
             invalidateObservations(affected: restored.map(\.original))
             await refreshRestoredApplications(restored)
             let attempt = cleanupSession.undoAttempts.last { $0.sessionID == sessionID }
@@ -855,7 +876,9 @@ enum ApplicationTab: String, CaseIterable { case installed = "Installed", leftov
                 try await journal.restore(record)
                 apply(await journal.snapshot())
                 let restored = history.filter { $0.id == record.id && $0.restored }
-                if restored.contains(where: { $0.planSource == .leftovers }) { invalidateLeftovers() }
+                if restored.contains(where: { $0.planSource == .leftovers }) {
+                    dirtyRestoredResidueOwners(restored)
+                }
                 invalidateObservations(affected: restored.map(\.original))
                 await refreshRestoredApplications(restored)
                 status = "Restored \(record.original.lastPathComponent)"

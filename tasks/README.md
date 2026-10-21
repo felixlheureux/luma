@@ -23,9 +23,9 @@ Make the daily actions fast and obvious: uninstall from the app list, select res
 | 9 | 063 | [Correct M2 battery reporting](063-m2-battery-reporting.md) | Done | Existing monitoring; coordinate menu with 058 |
 | 10 | 059 | [Add simple Maintenance actions](059-maintenance.md) | Done | 054, 055; core corrections first |
 
-| 11 | 064 | [Inspect and select containing Storage folders](064-storage-containing-folders.md) | Not started | 056, 062 |
-| 12 | 065 | [Reconcile hidden home-directory application data](065-hidden-home-residues.md) | Not started | 055, 064 |
-| 13 | 066 | [Discover unused Homebrew dependencies and handle cask provenance](066-homebrew-inventory.md) | Not started | 054, 059, 060 |
+| 11 | 064 | [Inspect and select containing Storage folders](064-storage-containing-folders.md) | Done | 056, 062 |
+| 12 | 065 | [Reconcile hidden home-directory application data](065-hidden-home-residues.md) | Done | 055, 064 |
+| 13 | 066 | [Discover unused Homebrew dependencies and handle cask provenance](066-homebrew-inventory.md) | Done | 054, 059, 060 |
 
 Follow this order for a serial runner; dependencies permit independent work. Complete the current menu work and core corrections before adding Maintenance. Mark a task In progress when work starts. Mark it Done only after its behavior and meaningful validation are recorded. Preserve 054–057's implementation evidence; the follow-up defects are tracked in 060–063. This review changes tasks and guidance, not runtime code or a release.
 

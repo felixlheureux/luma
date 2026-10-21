@@ -17,6 +17,162 @@ private final class DiscoveryClock: @unchecked Sendable {
 }
 
 @Suite("Automatic local storage discovery") struct StorageDiscoveryTests {
+    @Test func exactContainingFolderAndProtectedAncestors() throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        let file = try f.file("Project/.cache/archive.bin", content: "large fixture")
+        let documents = f.home.appendingPathComponent("Documents")
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        let document = documents.appendingPathComponent("report")
+        try Data("document".utf8).write(to: document)
+        let index = try StorageDiscovery.scan(home: f.home, roots: [f.home])
+        let parent = try #require(index.containingFolder(of: file.path))
+        #expect(Filesystem.samePath(parent.url, file.deletingLastPathComponent()))
+        #expect(index.breadcrumbs(to: parent.id).map(\.id).suffix(4) == [f.home.path, f.downloads.path, f.downloads.appendingPathComponent("Project").path, parent.id])
+        #expect(index.selectionIssue(for: parent, home: f.home, ignoredPaths: []) == nil)
+        #expect(index.containingFolder(of: document.path)?.id == documents.path)
+        #expect(index.selectionIssue(for: index.nodes[documents.path]!, home: f.home, ignoredPaths: []) != nil)
+        #expect(index.selectionIssue(for: index.nodes[f.downloads.path]!, home: f.home, ignoredPaths: []) != nil)
+        #expect(index.containingFolder(of: f.home.path) == nil)
+        #expect(index.containingFolder(of: "unobserved") == nil)
+        #expect(throws: (any Error).self) { try index.analyzingFolder("unobserved", home: f.home, ignoredPaths: []) }
+        #expect(throws: (any Error).self) { try index.prepare(ids: [file.path, parent.id], home: f.home, ignoredPaths: []) }
+    }
+
+    @Test func targetedVerificationRetainsSiblingsAndBoundedCoverage() async throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        for i in 0..<180 { _ = try f.file("Project/cache/item-\(i)", content: "cache fixture") }
+        let retained = try f.file("retained", content: "keep")
+        let folder = f.downloads.appendingPathComponent("Project/cache")
+        let original = try StorageDiscovery.scan(home: f.home, roots: [f.downloads], limit: 128)
+        #expect(original.nodes[folder.path]?.isComplete == false)
+        #expect(original.nodes[retained.path] != nil)
+        let limited = try original.analyzingFolder(folder.path, home: f.home, ignoredPaths: [], limit: 12)
+        #expect(limited.validHierarchy && limited.nodes[folder.path]?.isComplete == false)
+        #expect(throws: (any Error).self) { try limited.prepare(ids: [folder.path], home: f.home, ignoredPaths: []) }
+        let refreshed = try FilesystemAccess.$restriction.withValue({ url in url.path == retained.path ? .unknown : .local }) {
+            try limited.analyzingFolder(folder.path, home: f.home, ignoredPaths: [])
+        }
+        #expect(refreshed.validHierarchy && refreshed.nodes[folder.path]?.isComplete == true)
+        #expect(refreshed.nodes[folder.path]?.children.count == 180)
+        #expect(refreshed.nodes[retained.path]?.observedAt == original.nodes[retained.path]?.observedAt)
+        let plan = try refreshed.prepare(ids: [folder.path], home: f.home, ignoredPaths: [])
+        let journal = try f.journal()
+        let records = try await journal.execute(plan, context: { .init() })
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+        try await journal.restore(try #require(records.first))
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("item-179").path))
+        #expect(try String(contentsOf: retained, encoding: .utf8) == "keep")
+    }
+
+    @Test func savedOnlyFoldersAndFilesNeedTargetedVerification() async throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        let file = try f.file("project/cache/file")
+        let retained = try f.file("elsewhere/keep")
+        let folder = file.deletingLastPathComponent()
+        let index = try StorageDiscovery.scan(home: f.home, roots: [f.downloads])
+        let store = StorageObservationStore(home: f.home)
+        try await store.save(index)
+        let saved = try #require(try await store.load())
+        for id in [file.path, folder.path, retained.path] {
+            #expect(saved.nodes[id]?.requiresVerification == true)
+            #expect(throws: (any Error).self) { try saved.prepare(ids: [id], home: f.home, ignoredPaths: []) }
+        }
+        let fresh = try saved.analyzingFolder(folder.path, home: f.home, ignoredPaths: [])
+        #expect(fresh.nodes[retained.path]?.requiresVerification == true)
+        #expect(fresh.nodes[file.path]?.requiresVerification != true)
+        #expect(try fresh.prepare(ids: [folder.path], home: f.home, ignoredPaths: []).items.count == 1)
+    }
+
+    @Test func reanalysisCannotFollowLinksPackagesProvidersOrReplacedRoots() throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        let file = try f.file("project/file")
+        let folder = file.deletingLastPathComponent()
+        let index = try StorageDiscovery.scan(home: f.home, roots: [f.downloads])
+        try FileManager.default.moveItem(at: folder, to: folder.appendingPathExtension("old"))
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        #expect(throws: (any Error).self) { try index.analyzingFolder(folder.path, home: f.home, ignoredPaths: []) }
+        try FileManager.default.removeItem(at: folder)
+        try FileManager.default.createSymbolicLink(at: folder, withDestinationURL: folder.appendingPathExtension("old"))
+        #expect(throws: (any Error).self) { try index.analyzingFolder(folder.path, home: f.home, ignoredPaths: []) }
+        let packageFile = try f.file("Sample.bundle/nested/internal")
+        let package = packageFile.deletingLastPathComponent().deletingLastPathComponent()
+        let withPackage = try StorageDiscovery.scan(home: f.home, roots: [f.downloads])
+        #expect(withPackage.nodes[package.appendingPathComponent("internal").path] == nil)
+        #expect(throws: (any Error).self) { try StorageIndex.scan(root: package.appendingPathComponent("nested"), home: f.home) }
+        #expect(throws: (any Error).self) { try f.item(packageFile) }
+        #expect(throws: (any Error).self) { try withPackage.analyzingFolder(package.path, home: f.home, ignoredPaths: []) }
+        #expect(throws: (any Error).self) { try withPackage.prepare(ids: [package.path], home: f.home, ignoredPaths: []) }
+        FilesystemAccess.$restriction.withValue({ _ in .dataless }) {
+            #expect(throws: (any Error).self) { try withPackage.analyzingFolder(f.downloads.path, home: f.home, ignoredPaths: []) }
+        }
+    }
+
+    @Test func folderChangesAfterAnalysisAndBeforeMutationAreRejected() async throws {
+        for change in ["addition", "replacement", "ignored", "unknown", "package", "link", "final-addition"] {
+            let f = try FilesystemEdgeFixture(); defer { f.remove() }
+            let file = try f.file("project/deeper/file", content: "same size")
+            let folder = f.downloads.appendingPathComponent("project")
+            var index = try StorageDiscovery.scan(home: f.home, roots: [f.downloads])
+            let journal = try f.journal()
+            if change == "final-addition" {
+                let plan = try index.prepare(ids: [folder.path], home: f.home, ignoredPaths: [])
+                await journal.setMutationCheckpoint { _ = try f.file("project/deeper/new") }
+                await #expect(throws: (any Error).self) { try await journal.execute(plan, context: { .init() }) }
+            } else {
+                var ignores: Set<String> = []
+                switch change {
+                case "addition": _ = try f.file("project/deeper/new")
+                case "replacement":
+                    try FileManager.default.removeItem(at: file)
+                    try Data("same size".utf8).write(to: file)
+                case "ignored": ignores = [file.path]
+                case "unknown":
+                    index = try FilesystemAccess.$restriction.withValue({ url in url.path == file.path ? .unknown : .local }) {
+                        try index.analyzingFolder(folder.path, home: f.home, ignoredPaths: [])
+                    }
+                case "package": _ = try f.file("project/Nested.bundle/internal")
+                default: try FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("escape"), withDestinationURL: f.home)
+                }
+                #expect(throws: (any Error).self) { try index.prepare(ids: [folder.path], home: f.home, ignoredPaths: ignores) }
+            }
+            #expect(FileManager.default.fileExists(atPath: folder.path))
+            #expect(try FileManager.default.contentsOfDirectory(atPath: f.trash.path).isEmpty)
+        }
+    }
+
+    @Test func analyzedFolderMergesIntoLatestStateWithoutRevivingRemovedSiblings() throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        let file = try f.file("project/cache/file")
+        let sibling = try f.file("unrelated/removed")
+        let folder = file.deletingLastPathComponent()
+        let baseline = try StorageDiscovery.scan(home: f.home, roots: [f.downloads])
+        let analysis = try baseline.analyzingFolder(folder.path, home: f.home, ignoredPaths: [])
+        let latest = baseline.removing([sibling])
+        let merged = try latest.mergingAnalyzedFolder(folder.path, from: analysis, baseline: baseline)
+        #expect(merged.validHierarchy && merged.nodes[sibling.path] == nil)
+        #expect(merged.nodes[folder.path]?.isComplete == true && merged.nodes[file.path] != nil)
+        #expect(merged.nodes[sibling.deletingLastPathComponent().path]?.issue == latest.nodes[sibling.deletingLastPathComponent().path]?.issue)
+        let changedTarget = baseline.removing([file])
+        #expect(throws: (any Error).self) { try changedTarget.mergingAnalyzedFolder(folder.path, from: analysis, baseline: baseline) }
+        #expect(changedTarget.nodes[file.path] == nil)
+        let removedTarget = baseline.removing([folder])
+        #expect(throws: (any Error).self) { try removedTarget.mergingAnalyzedFolder(folder.path, from: analysis, baseline: baseline) }
+    }
+
+    @Test func targetedHardLinksKeepLogicalAccountingAcrossBranches() throws {
+        let f = try FilesystemEdgeFixture(); defer { f.remove() }
+        let file = try f.file("a/content", content: "linked content")
+        let linked = f.downloads.appendingPathComponent("b/link")
+        try FileManager.default.createDirectory(at: linked.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.linkItem(at: file, to: linked)
+        let index = try StorageDiscovery.scan(home: f.home, roots: [f.downloads])
+        let refreshed = try index.analyzingFolder(linked.deletingLastPathComponent().path, home: f.home, ignoredPaths: [])
+        #expect(refreshed.nodes[refreshed.rootID]?.bytes == 14)
+        #expect(refreshed.nodes[linked.path]?.bytes == 14)
+        #expect(refreshed.selectedBytes([file.deletingLastPathComponent().path, linked.deletingLastPathComponent().path]) == 14)
+        #expect(try refreshed.prepare(ids: [linked.deletingLastPathComponent().path], home: f.home, ignoredPaths: []).logicalBytes == 14)
+    }
+
     @Test func normalizedRootsAvoidFirmlinksAndOverlaps() {
         let roots = StorageDiscovery.normalizedRoots([URL(fileURLWithPath: "/Users/example"), URL(fileURLWithPath: "/System/Volumes/Data/Users/example/Downloads"), URL(fileURLWithPath: "/Applications"), URL(fileURLWithPath: "/System/Volumes/Data/Applications")])
         #expect(roots.map(\.path) == ["/Users/example", "/Applications"])

@@ -1,6 +1,7 @@
 # 064 — Inspect and select containing folders in Storage
 
-Status: Not started  
+Status: Done
+
 Priority: P0  
 Depends on: Completed 056/062
 
@@ -45,3 +46,22 @@ From a large file, users can inspect its **actual filesystem parent** or a chose
 ## Validation
 
 Add focused Swift Testing cases to `Tests/LumaCoreTests/StorageDiscoveryTests.swift` and storage safety tests; extend `Sources/LumaApp/StorageBrowserCheck.swift` / `Scripts/check-storage-browser.sh` native fixture to cover inspect-folder and bounded reanalysis. Do not run on actual personal folders during tests.
+
+
+## Implementation — 2026-10-21
+
+- Largest files exposes an accessible, keyboard-focusable Inspect containing folder action with a standard folder icon and an explicit hit area. Resolution requires the observed exact filesystem parent and matching device. Explore reveals/highlights the originating file, retains history/selections and temporarily pauses browsing filters for the inspection path without changing their saved values or the global Hidden preference. Resume filters/Largest files restores normal filtering. Breadcrumbs expose observed ancestors and full-path help. The owner-requested Largest files/Explore picker now aligns with the left content edge.
+- The current folder shows its exact path, observed unique logical bytes, observed child count and complete/partial coverage. Select this folder uses existing ancestor/descendant selection rules and the fixed Trash footer. Protected parents remain browsable. Saved-only/expired/incomplete directories offer Analyze this folder: an explicit local subtree walk capped at 40,000 entries, the existing 15-second walk budget and 128-level depth bound. Packages, links, aliases, provider paths and volume changes remain excluded.
+- Targeted analysis replaces only that subtree, reconciles hard links and preserves unrelated dates, coverage and selections. Completion merges into the latest hierarchy, retaining concurrent unrelated removals/updates; a changed analyzed subtree or scope rejects publication inline rather than reviving removed observations. Per-revision folder eligibility caching also keys home, ignores, known duplicate paths and earliest contained observation expiry, keeping focus/map interactions responsive. Preparation and execution never trust that display cache.
+- Shared SafetyEngine policy protects sensitive home credentials, shell/git files and configuration/cache/local roots, including containing ancestors and conservative case variants. Generic package cleanup and custom roots inside packages are rejected. Saved display nodes require fresh verification. Preparation compares observed descendant identity, sizes and actual directory membership before/after capturing a plan; the existing plan/journal still revalidates ignores, duplicate keepers, ownership, providers, volume and full-tree identity before each move. Dedicated application cleanup retains supported internal framework links and journal Undo.
+
+## Validation
+
+- `bash Scripts/test.sh`: **361 tests across 37 suites pass**, with the five existing opt-in native Trash, volume, real-iCloud and benchmark checks skipped. New generated fixtures cover exact parents/protected ancestors, saved-only verification, bounded targeted analysis, hard links, changed/replaced/ignored/unknown/package/link contents, final-mutation additions, credential/configuration paths (16 parameter cases), and merging a completed analysis without reviving removed siblings or overwriting a changed target. The previous generic-app-link fixture now exercises its supported dedicated application rule and still checks Undo and alias rejection.
+- Final debug build and `Scripts/check-storage-browser.sh` pass **Light/Dark/System** on **Apple M2, 16 GB, macOS 27.0.1**, with **1,400 generated observations** and a 181-child analyzed folder. Actual Inspect/Analyze/Select controls, hidden-parent focus, filter retention, descendant replacement, blocked Downloads/Documents selection, concurrent unrelated observation removal, folder Trash/Undo, map single/double-click/list reveal, native Search keyboard activation, narrow layouts and continued monitoring pass. Only fixture metadata and an injected mover were used; no personal-folder scan, real Trash or cloud download ran.
+- Across appearances: first results **0.517–0.599 s**, warm open **0.154–0.156 s**, requested discovery **4.195–4.261 s**, maximum sampled discovery main-actor interval **0.101–0.112 s**. Parent inspection **0.231–0.281 s**, targeted analysis including concurrent-state merge **0.980–1.031 s**, folder Trash **1.706–1.759 s**, folder Undo/observation update **1.336–1.368 s**. Timings use the generated fixture above, not personal data or exact reclaimed disk measurements.
+- Native application footprint/reset and direct uninstall/Undo regression checks pass Light/Dark/System. Cleanup-session Stop/partial-outcome/direct-Undo checks pass Light/Dark. These verify the unchanged shared package policy/journal paths; the final merge follow-up reran the full core suite and native Storage checker.
+- Inspected dedicated in-process Light/Dark/System and narrow-window renders, including the requested left alignment. `Scripts/preview.sh` was attempted and still fails its existing missing `Documentation/Screenshots/overview.png` check; it is **not** recorded as passing. Dedicated own-window renders provide the UI evidence. Full VoiceOver/keyboard traversal, composited window appearance, macOS 26 manual integration and the skipped real-provider/native Trash cases remain limits.
+- Intermediate failures are excluded: a fixture compared directory URL spelling instead of exact paths; an unsupported SF Symbol produced an empty Inspect hit target; native checks needed an active-window precondition, and repeated uncached folder eligibility work delayed the double-click gesture. The final standard icon/hit area, explicit test activation and correctly invalidated eligibility cache pass without extending timeouts. Reference comparisons and read-only image ejection are recorded in [reference-checks.md](reference-checks.md).
+
+Task 064 is complete. Task 065 is next in the executable queue; no hidden-data residue or Homebrew inventory behavior was added here.

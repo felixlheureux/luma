@@ -16,6 +16,8 @@ required = [
     "liveMoveDetail", "elapsedClockPresent", "remainingResultsRetained",
     "oldScanTimeRetained", "savedRemainingObservations", "relaunchShowsSavedDuringRefresh", "selectionCleared",
     "nextActionWithoutRescan", "undoRefreshesResidue", "monitoringContinued",
+    "hiddenUnknownInspectOnly", "hiddenInstalledKept", "hiddenCredentialsUnselected", "hiddenSavedObservations",
+    "remainingDataLinkAvailable", "remainingDataNavigation", "remainingDataRetained", "targetedRefreshRetainsUnknown", "restoreClearsRemainingDataLink",
 ]
 requested = os.environ.get("LUMA_FEEDBACK_QA_OUTPUT_DIR")
 context = contextlib.nullcontext(requested) if requested else tempfile.TemporaryDirectory(prefix="luma-feedback-")

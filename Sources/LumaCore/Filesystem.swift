@@ -27,6 +27,21 @@ public enum Filesystem {
         try pinned.revalidate()
     }
 
+    /// A chosen scan root or file cannot bypass an opaque package ancestor.
+    static func validateOutsidePackages(_ url: URL) throws {
+        try NonMaterializingIO.perform {
+            let pin = try PinnedPath(url, allowInspectionRoot: true)
+            var cursor = url.exactStandardizedFileURL
+            while cursor.path != "/" {
+                guard try cursor.resourceValues(forKeys: [.isPackageKey]).isPackage != true else {
+                    throw LumaError.rejected("Package contents are outside generic Storage actions. Use the owning app's dedicated action.")
+                }
+                cursor = cursor.exactDeletingLastPathComponent()
+            }
+            try pin.revalidate()
+        }
+    }
+
     static func attributes(_ url: URL) throws -> [FileAttributeKey: Any] {
         try NonMaterializingIO.perform {
             try FilesystemAccess.requireLocal(url)
@@ -34,19 +49,20 @@ public enum Filesystem {
         }
     }
 
-    public static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil, applicationBundle: Bool = false) throws -> (Int64, FileIdentity) {
-        try inspect(url, limit: limit, progress: progress, onFile: nil, applicationBundle: applicationBundle)
+    public static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil, applicationBundle: Bool = false, excludingPackages: Bool = false) throws -> (Int64, FileIdentity) {
+        try inspect(url, limit: limit, progress: progress, onFile: nil, applicationBundle: applicationBundle, excludingPackages: excludingPackages)
     }
 
     /// The plan uses the same inspection to count content once across separate
     /// selected trees. This callback is synchronous and never escapes inspection.
     static func inspect(_ url: URL, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil,
-                        onFile: ((FileObjectID, Int64) throws -> Void)?, legacyFingerprint: Bool = false, applicationBundle: Bool = false) throws -> (Int64, FileIdentity) {
+                        onFile: ((FileObjectID, Int64) throws -> Void)?, legacyFingerprint: Bool = false, applicationBundle: Bool = false, excludingPackages: Bool = false) throws -> (Int64, FileIdentity) {
         let started = Date()
         defer { inspectionObserver?(Date().timeIntervalSince(started)) }
         return try NonMaterializingIO.perform {
             try MutationOutcome.checkCancellation()
             let pinned = try PinnedPath(url)
+            if excludingPackages { try validateOutsidePackages(url) }
             let root = pinned.value
             let device = UInt64(UInt32(bitPattern: root.st_dev))
             var size: Int64 = 0
@@ -82,6 +98,10 @@ public enum Filesystem {
                 guard permittedOwner(info.st_uid) else { throw LumaError.rejected("This tree contains an item owned by another user.") }
                 guard try path.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile != true else {
                     throw LumaError.rejected("Finder aliases are excluded from cleanup.")
+                }
+                if excludingPackages, info.st_mode & S_IFMT == S_IFDIR,
+                   try path.resourceValues(forKeys: [.isPackageKey]).isPackage == true {
+                    throw LumaError.rejected("This folder contains a package. Use the owning app's dedicated action instead.")
                 }
                 if legacyFingerprint {
                     let a = try attributes(path)
@@ -177,11 +197,11 @@ public enum Filesystem {
 
     public static func item(_ url: URL, category: ItemCategory, safety: SafetyLevel,
                             explanation: String, consequence: String, rule: String,
-                            owner: String? = nil, captureContents: Bool = false, progress: (@Sendable (Int, Int64) -> Void)? = nil) throws -> CleanupItem {
+                            owner: String? = nil, captureContents: Bool = false, limit: Int = 250_000, progress: (@Sendable (Int, Int64) -> Void)? = nil) throws -> CleanupItem {
         var contents: [String: Int64] = [:]
-        let (size, identity) = try inspect(url, progress: progress, onFile: { object, bytes in
+        let (size, identity) = try inspect(url, limit: limit, progress: progress, onFile: { object, bytes in
             if captureContents { contents["\(object.device):\(object.inode)"] = bytes }
-        }, applicationBundle: rule == "application.exact-bundle")
+        }, applicationBundle: rule == "application.exact-bundle", excludingPackages: rule == "manual.folder-review")
         var item = CleanupItem(url: url, bytes: size, category: category, safety: safety,
                            explanation: explanation, consequence: consequence, ruleID: rule,
                            ownerBundleID: owner, identity: identity, scannedAt: Date())

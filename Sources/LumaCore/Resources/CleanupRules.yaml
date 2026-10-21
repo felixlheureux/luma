@@ -1,6 +1,6 @@
 ---
 schemaVersion: 1
-catalogVersion: 2026.10.18.1
+catalogVersion: 2026.10.21.1
 locale: en
 generated:
 - id: developer.xcode.derived-data
@@ -547,3 +547,15 @@ ownership:
   provenance:
   - ApplicationRelationships.swift at ea11b37; migrated without widening ownership.
   reviewedOn: '2026-10-18'
+
+- relativePath: .vscode
+  owner: com.microsoft.VSCode
+  classification: review
+  cliNames: [code, code-insiders, codium, code-tunnel]
+  otherOwners: [com.microsoft.VSCodeInsiders, com.visualstudio.code.oss, com.vscodium]
+  explanation: 'Curated VS Code home data mapping; app variants and standalone CLIs retain this directory.'
+  consequence: Removes installed extensions and CLI state. Keep this data if you use remote tools or plan to reinstall; extensions may need to be downloaded again.
+  provenance:
+  - https://code.visualstudio.com/docs/configure/extensions/extension-marketplace
+  - https://code.visualstudio.com/docs/setup/uninstall
+  reviewedOn: '2026-10-21'

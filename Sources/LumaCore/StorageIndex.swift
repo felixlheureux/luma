@@ -22,6 +22,9 @@ public struct StorageNode: Identifiable, Codable, Sendable {
     let device: UInt64?
     let inode: UInt64?
     public var cloud: CloudStorageMetadata? = nil
+    /// Saved display metadata must be verified by an explicit scan before use.
+    public var requiresVerification: Bool? = nil
+    public var ownerID: UInt32? = nil
     public var canNavigate: Bool { isDirectory && !isPackage && (device != nil || cloud != nil || id == "luma://icloud-metadata") }
     public var isComplete: Bool { issue == nil && cloud == nil }
 }
@@ -73,7 +76,7 @@ public struct StorageIndex: Codable, Sendable {
         try scope.validate()
         return try NonMaterializingIO.perform {
             try ids.sorted().map { id in
-                guard let node = nodes[id], node.parentID == directory, node.isComplete else {
+                guard let node = nodes[id], node.parentID == directory, node.isComplete, node.requiresVerification != true else {
                     throw LumaError.rejected("Choose complete items in the current folder and scan again if needed.")
                 }
                 let pin = try PinnedPath(node.url)
@@ -104,6 +107,7 @@ public struct StorageIndex: Codable, Sendable {
         try NonMaterializingIO.perform {
             let started = Date()
             let root = root.exactStandardizedFileURL
+            try Filesystem.validateOutsidePackages(root.exactDeletingLastPathComponent())
             let scope = try StorageScope.capture(root: root, home: home)
             guard expectedVolume == nil || expectedVolume == scope.volume.identity else {
                 throw LumaError.rejected("The selected volume changed. Refresh the volume list and choose it again.")
@@ -131,6 +135,7 @@ public struct StorageIndex: Codable, Sendable {
                 var created: Date?
                 var inode: UInt64?
                 var nodeDevice: UInt64?
+                var ownerID: UInt32?
                 var bytes: Int64 = 0
                 var aggregate: Int64 = 0
                 var childIDs: [String] = []
@@ -175,6 +180,7 @@ public struct StorageIndex: Codable, Sendable {
                     created = metadata.created
                     nodeDevice = device
                     inode = info.st_ino
+                    ownerID = info.st_uid
                     if directory && !package {
                         if discovery, depth > 0, let previous = retained[url.path],
                            previous.device == nodeDevice, previous.inode == inode, previous.modified == modified {
@@ -255,7 +261,7 @@ public struct StorageIndex: Codable, Sendable {
                 }
                 let node = StorageNode(url: url, parentID: parent, isDirectory: directory, isPackage: package,
                     hidden: hidden, observedAt: started, modified: modified, created: created, bytes: bytes, aggregateBytes: aggregate, issue: issue,
-                    accessCapability: accessCapability, coverageState: coverageState, children: childIDs, device: nodeDevice, inode: inode)
+                    accessCapability: accessCapability, coverageState: coverageState, children: childIDs, device: nodeDevice, inode: inode, ownerID: ownerID)
                 nodes[node.id] = node
                 activeDirectories.removeValue(forKey: node.id)
                 if discovery && ((parent == root.path && nodes.count <= 16) || Date().timeIntervalSince(lastPublication) > 0.4) {

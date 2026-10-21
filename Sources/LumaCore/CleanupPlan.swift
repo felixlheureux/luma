@@ -95,7 +95,7 @@ public struct CleanupPlan: Identifiable, Sendable {
                 let (next, overflow) = contribution.addingReportingOverflow(bytes)
                 guard bytes >= 0, !overflow else { throw LumaError.rejected("The selection size could not be verified.") }
                 contribution = next
-            }, applicationBundle: item.ruleID == "application.exact-bundle")
+            }, applicationBundle: item.ruleID == "application.exact-bundle", excludingPackages: item.ruleID == "manual.folder-review")
             guard identity == item.identity, identity.location == item.identity.location, bytes == item.bytes else {
                 throw LumaError.rejected("Files changed since scanning. Scan again before reviewing their contents.")
             }

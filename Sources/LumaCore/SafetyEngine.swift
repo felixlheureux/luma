@@ -8,15 +8,29 @@ public struct SafetyEngine: Sendable {
         self.home = home; self.ignoredPaths = ignoredPaths
     }
 
+    private static let protectedHomeEntries: Set<String> = ["documents", "desktop", "pictures", "movies", "music", "downloads", "library", "applications", ".trash"]
+    private static let sensitiveHomeEntries: Set<String> = [
+        ".ssh", ".gnupg", ".aws", ".kube", ".config", ".cache", ".local", ".git", ".docker", ".azure",
+        ".gitconfig", ".git-credentials", ".git-credential-cache", ".netrc", ".npmrc", ".pypirc",
+        ".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".bash_history", ".bash_sessions", ".profile",
+        ".zshrc", ".zshenv", ".zprofile", ".zlogin", ".zlogout", ".zsh_history", ".zsh_sessions"
+    ]
+
     /// Metadata-free scope check for enabling explicit manual selections. Full
     /// filesystem, ownership and identity validation still happens in validate.
     public func permitsManualSelection(at url: URL, authorizedRoots: [URL]) -> Bool {
-        let protected = [home] + ["Documents", "Desktop", "Pictures", "Movies", "Music", "Downloads", "Library", "Applications", ".Trash"].map { home.appendingPathComponent($0) }
-        return Filesystem.isWithin(url, root: home)
-            && !["/System", "/Library", "/usr", "/bin", "/sbin", "/private", "/dev", "/Volumes"].contains { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }
-            && !protected.contains { Filesystem.samePath($0, url) }
-            && !Filesystem.isWithin(url, root: home.appendingPathComponent("Library"))
-            && !Filesystem.isWithin(url, root: home.appendingPathComponent(".Trash"))
+        guard url.isFileURL, Filesystem.isWithin(url, root: home) else { return false }
+        let relative = url.exactStandardizedFileURL.pathComponents.dropFirst(home.exactStandardizedFileURL.pathComponents.count)
+        // Every protected configuration root is immediately below home, so the
+        // only containing ancestor is home itself (the empty relative path).
+        // Fold case conservatively for case-insensitive APFS path spellings.
+        guard let first = relative.first?.lowercased(),
+              !(relative.count == 1 && Self.protectedHomeEntries.contains(first)),
+              !["library", ".trash"].contains(first), !Self.sensitiveHomeEntries.contains(first) else { return false }
+        if ApplicationRelationships.knownPaths.contains(where: { mapping in
+            mapping.relativePath.hasPrefix(".") && mapping.relativePath.split(separator: "/").first?.lowercased() == first
+        }) { return false }
+        return !["/System", "/Library", "/usr", "/bin", "/sbin", "/private", "/dev", "/Volumes"].contains { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) }
             && !ignoredPaths.contains { Filesystem.isWithin(url, root: URL(fileURLWithPath: $0)) || Filesystem.isWithin(URL(fileURLWithPath: $0), root: url) }
             && authorizedRoots.contains { !Filesystem.samePath(url, $0) && Filesystem.isWithin(url, root: $0) }
     }
@@ -102,6 +116,7 @@ public struct SafetyEngine: Sendable {
                   permitsManualSelection(at: url, authorizedRoots: authorizedRoots) else {
                 throw LumaError.rejected("This item requires an explicitly chosen folder inside your home directory.")
             }
+            try Filesystem.validateOutsidePackages(url)
         }
         if ["application.exact-bundle", "application.exact-related", "application.leftover.exact-identifier"].contains(item.ruleID),
            let owner = item.ownerBundleID, !runningBundleIDs.isEmpty {
@@ -117,6 +132,19 @@ public struct SafetyEngine: Sendable {
                 $0 == normalized || $0.hasPrefix(normalized + ".") || normalized.hasPrefix($0 + ".")
             }) else { throw LumaError.rejected("Quit the owning app and its helpers before cleaning these files.") }
         }
+        if let mapping = HiddenAppData.mapping(for: url, home: home) {
+            // App absence alone cannot establish absence of a CLI or shared installation.
+            let installed = try preflightOwners ?? ApplicationPresence.bundleIdentifiers(home: home)
+            guard !([mapping.owner] + mapping.otherOwners).contains(where: {
+                ApplicationPresence.hasOwner($0, installed: installed)
+            }), HiddenAppData.toolPresence(mapping, home: home) == .absent else {
+                throw LumaError.rejected("A matching app, CLI or shared installation is present, or its absence could not be verified. Keep this hidden data.")
+            }
+            let owners = ([mapping.owner] + mapping.otherOwners).map { $0.lowercased() }
+            guard !runningBundleIDs.contains(where: { running in owners.contains { running.lowercased() == $0 || running.lowercased().hasPrefix($0 + ".") } }) else {
+                throw LumaError.rejected("Quit matching applications and helpers before reviewing this hidden data.")
+            }
+        }
         let a = try Filesystem.attributes(url)
         if item.ruleID == "application.exact-bundle" {
             try ApplicationUninstall.validateTrashRights(url)
@@ -129,7 +157,7 @@ public struct SafetyEngine: Sendable {
         progress(.init("Verifying current files", current: item.name))
         let current = try Filesystem.inspect(url, progress: { entries, bytes in
             progress(.init("Verifying current files", current: item.name, entries: entries, bytes: bytes))
-        }, applicationBundle: item.ruleID == "application.exact-bundle").1
+        }, applicationBundle: item.ruleID == "application.exact-bundle", excludingPackages: item.ruleID == "manual.folder-review").1
         try pinned.revalidate(expected: location)
         guard current == item.identity else { throw LumaError.rejected("Files changed since scanning. Scan again to review their current contents.") }
         let homeDevice = (try Filesystem.attributes(home)[.systemNumber] as? NSNumber)?.uint64Value
